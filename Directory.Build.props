@@ -1,0 +1,12 @@
+<Project>
+  <!--
+    Props de compilación comunes a todos los proyectos del repo (Fase 1).
+    Los proyectos pueden sobreescribir (p. ej. los de test fijan IsPackable=false).
+  -->
+  <PropertyGroup>
+    <LangVersion>14</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+</Project>
