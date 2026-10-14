@@ -1,0 +1,44 @@
+<Project>
+  <!--
+    Versiones centralizadas de paquetes NuGet (Central Package Management).
+    Los .csproj referencian paquetes SIN versión; la única fuente de verdad es este fichero.
+    Versiones alineadas con el proyecto de referencia TiendaDawApi-NetCore (.NET 10).
+  -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- ══════════════ Clientes ══════════════ -->
+    <!-- SignalR: cliente compartido por Terminal y Blazor -->
+    <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.2" />
+
+    <!-- Rx.NET: capa reactiva (mensajes entrantes como IObservable) -->
+    <PackageVersion Include="System.Reactive" Version="6.0.1" />
+
+    <!-- Spectre.Console: UI de terminal elegante (paneles, colores, Live) -->
+    <PackageVersion Include="Spectre.Console" Version="0.57.2" />
+
+    <!-- Blazor WebAssembly -->
+    <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.2" />
+    <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- ══════════════ Servidor ══════════════ -->
+    <!-- Logging estructurado (estilo Tienda) -->
+    <PackageVersion Include="Serilog.AspNetCore" Version="10.0.0" />
+    <PackageVersion Include="Serilog.Sinks.Console" Version="6.1.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- ══════════════ Testing (NUnit, estilo Tienda) ══════════════ -->
+    <PackageVersion Include="NUnit" Version="4.6.1" />
+    <PackageVersion Include="NUnit3TestAdapter" Version="6.3.0" />
+    <PackageVersion Include="NUnit.Analyzers" Version="4.15.0" />
+    <PackageVersion Include="FluentAssertions" Version="7.2.2" />
+    <PackageVersion Include="Moq" Version="4.21.0" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+    <PackageVersion Include="coverlet.collector" Version="10.0.1" />
+  </ItemGroup>
+</Project>
