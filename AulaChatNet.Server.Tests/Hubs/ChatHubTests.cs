@@ -29,6 +29,13 @@ public class ChatHubTests
     private ChatStore _store = null!;
     private Mock<ILogger<ChatHub>> _logger = null!;
 
+    /// <summary>
+    /// Miembros de cada grupo simulado (grupo → conexiones), como hace
+    /// SignalR: los envíos a Clients.Group solo llega a quien se dio de alta
+    /// con Groups.AddToGroupAsync. Compartido por todos los hubs de un test.
+    /// </summary>
+    private Dictionary<string, HashSet<string>> _grupos = null!;
+
     [SetUp]
     public void Setup()
     {
@@ -40,6 +47,7 @@ public class ChatHubTests
 
         _store = new ChatStore(Options.Create(_config));
         _logger = new Mock<ILogger<ChatHub>>();
+        _grupos = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
     }
 
     // ── Dobles de SignalR ──
@@ -71,11 +79,49 @@ public class ChatHubTests
         var hub = new ChatHub(_store, Options.Create(_config), _logger.Object)
         {
             Context = Mock.Of<HubCallerContext>(c => c.ConnectionId == connectionId),
-            Clients = clientes.Object
+            Clients = clientes.Object,
+            Groups = CrearGrupos()
         };
 
         return new HubSimulado(hub, alCaller, porCanal);
     }
+
+    /// <summary>
+    /// Crea el gestor de grupos simulado: mantiene la PERTENENCIA real
+    /// (grupo → conexiones) para poder comprobar que el hub da de alta y da
+    /// de baja a cada conexión en su canal. Sin esto, un hub que envíe a
+    /// Clients.Group sin haberse dado de alta pasaría todos los tests.
+    /// </summary>
+    private IGroupManager CrearGrupos()
+    {
+        var grupos = new Mock<IGroupManager>();
+
+        grupos.Setup(g => g.AddToGroupAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback<string, string, CancellationToken>((conexion, grupo, _) =>
+            {
+                if (!_grupos.TryGetValue(grupo, out var miembros))
+                    _grupos[grupo] = miembros = [];
+
+                miembros.Add(conexion);
+            })
+            .Returns(Task.CompletedTask);
+
+        grupos.Setup(g => g.RemoveFromGroupAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback<string, string, CancellationToken>((conexion, grupo, _) =>
+            {
+                if (_grupos.TryGetValue(grupo, out var miembros))
+                    miembros.Remove(conexion);
+            })
+            .Returns(Task.CompletedTask);
+
+        return grupos.Object;
+    }
+
+    /// <summary>¿Está la conexión dada de alta en el grupo (canal) indicado?</summary>
+    private bool EstaEnGrupo(string connectionId, string grupo) =>
+        _grupos.TryGetValue(grupo, out var miembros) && miembros.Contains(connectionId);
 
     /// <summary>Devuelve (creándola si hace falta) la lista de eventos de un canal.</summary>
     private static List<Envio> ObtenerCanal(Dictionary<string, List<Envio>> porCanal, string nombre)
@@ -270,9 +316,68 @@ public class ChatHubTests
         error.Should().Be("Esta conexión ya está registrada en el canal");
     }
 
+    [Test]
+    public async Task ConnectAsync_DaDeAltaLaConexionEnElGrupoDelCanal()
+    {
+        // Arrange
+        var (hub, _, _) = CrearHub("conn-1");
+
+        // Act
+        await hub.ConnectAsync("Ana");
+
+        // Assert: sin el alta en el grupo, Clients.Group(canal) iría a un
+        // grupo vacío y nadie recibiría los mensajes (fallo silencioso)
+        EstaEnGrupo("conn-1", General).Should().BeTrue();
+    }
+
+    [Test]
+    public async Task ConnectAsync_CanalDesconocido_NoDaDeAltaEnNingunGrupo()
+    {
+        // Arrange
+        var (hub, _, _) = CrearHub("conn-1");
+
+        // Act
+        await hub.ConnectAsync("Ana", "#facil");
+
+        // Assert
+        _grupos.Should().BeEmpty();
+    }
+
     #endregion
 
     #region CambiarCanalAsync Tests
+
+    [Test]
+    public async Task CambiarCanal_Valido_SaleDelGrupoViejo_YEntraEnElNuevo()
+    {
+        // Arrange
+        var (hub, _, _) = CrearHub("conn-1");
+        await hub.ConnectAsync("Ana");
+        EstaEnGrupo("conn-1", General).Should().BeTrue();
+
+        // Act
+        var error = await hub.CambiarCanalAsync(Smr);
+
+        // Assert: si no saliera del grupo viejo seguiría viendo #general
+        error.Should().BeNull();
+        EstaEnGrupo("conn-1", General).Should().BeFalse();
+        EstaEnGrupo("conn-1", Smr).Should().BeTrue();
+    }
+
+    [Test]
+    public async Task CambiarCanal_AlMismoCanal_NoTocaLosGrupos()
+    {
+        // Arrange
+        var (hub, _, _) = CrearHub("conn-1");
+        await hub.ConnectAsync("Ana");
+
+        // Act: mismo canal → null sin emitir nada (el cliente solo repinta)
+        var error = await hub.CambiarCanalAsync(General);
+
+        // Assert
+        error.Should().BeNull();
+        EstaEnGrupo("conn-1", General).Should().BeTrue();
+    }
 
     [Test]
     public async Task CambiarCanal_Valido_EmiteSalidaEnElViejoYEntradaEnElNuevo()

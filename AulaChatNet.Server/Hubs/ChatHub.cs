@@ -100,6 +100,12 @@ public class ChatHub(IChatStore store, IOptions<ChatConfig> opciones, ILogger<Ch
             "Usuario {Usuario} conectado al canal {Canal} ({ConnectionId})",
             usuario, canalCanonico, Context.ConnectionId);
 
+        // 0) Alta en el GRUPO de SignalR del canal: cada canal es un grupo y
+        // sin este paso los envíos a Clients.Group(canal) irían a un grupo
+        // vacío y no los recibiría nadie (el historial, que va a Clients.Caller,
+        // sí llegaría: por eso el fallo es tan silencioso)
+        await Groups.AddToGroupAsync(Context.ConnectionId, canalCanonico);
+
         // 1) Historial del canal SOLO a este cliente: no se satura a los demás
         await Clients.Caller.SendAsync(ChatHubEventos.HistorialRecibido, store.GetHistorial(canalCanonico));
 
@@ -157,6 +163,12 @@ public class ChatHub(IChatStore store, IOptions<ChatConfig> opciones, ILogger<Ch
         logger.LogInformation(
             "Usuario {Usuario} cambia de {CanalViejo} a {CanalNuevo}",
             conexion.Usuario, conexion.Canal, canalNuevo);
+
+        // Intercambio de grupos: fuera del canal viejo ANTES de los avisos (el
+        // aviso de salida es para los que se quedan, no para el que se marcha)
+        // y dentro del nuevo para recibir los mensajes del suyo
+        await Groups.RemoveFromGroupAsync(Context.ConnectionId, conexion.Canal);
+        await Groups.AddToGroupAsync(Context.ConnectionId, canalNuevo);
 
         // Aviso de SALIDA en el canal anterior (para los que se quedan allí)
         var salida = MensajesSistema.UsuarioSalio(conexion.Usuario);
@@ -287,6 +299,8 @@ public class ChatHub(IChatStore store, IOptions<ChatConfig> opciones, ILogger<Ch
     /// <param name="exception">Excepción que causó la caída, si la hubo.</param>
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
+        // SignalR da de baja esta conexión de todos sus grupos al cerrarse,
+        // así que no hace falta quitarla del canal a mano
         var conexion = store.RemoveUsuario(Context.ConnectionId);
 
         if (conexion is not null)
