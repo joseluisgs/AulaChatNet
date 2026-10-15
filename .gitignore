@@ -30,6 +30,9 @@ artifacts/
 publish/
 TestResults/
 
+# Logs de la aplicación (Serilog)
+logs/
+
 # Contenido multimedia (no subir a git)
 /multimedia/
 

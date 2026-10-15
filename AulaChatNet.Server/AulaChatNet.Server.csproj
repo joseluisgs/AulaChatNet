@@ -8,9 +8,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Logging estructurado (estilo Tienda) -->
+    <!-- Logging estructurado (estilo Tienda): consola + fichero de errores con rolling -->
     <PackageReference Include="Serilog.AspNetCore" />
     <PackageReference Include="Serilog.Sinks.Console" />
+    <PackageReference Include="Serilog.Sinks.File" />
   </ItemGroup>
 
   <ItemGroup>

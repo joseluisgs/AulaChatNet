@@ -33,6 +33,14 @@ public class ChatConfig
     /// <summary>Canal único del chat en la Fase 1.</summary>
     public string Canal { get; set; } = "#general";
 
+    /// <summary>
+    /// Ruta del endpoint del hub de SignalR. Vive aquí porque la comparten
+    /// el servidor (que la publica) y los clientes (que se conectan a ella):
+    /// si hay que cambiarla, se cambia en un solo sitio.
+    /// </summary>
+    /// <example>/hubs/chat</example>
+    public string HubRuta { get; set; } = "/hubs/chat";
+
     /// <summary>Longitud mínima de un nombre de usuario.</summary>
     public int UsuarioLongitudMinima { get; set; } = 2;
 

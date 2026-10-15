@@ -24,6 +24,7 @@ public class ChatConfigTests
     {
         // Assert
         _config.Canal.Should().Be("#general");
+        _config.HubRuta.Should().Be("/hubs/chat");
         _config.UsuarioLongitudMinima.Should().Be(2);
         _config.UsuarioLongitudMaxima.Should().Be(20);
         _config.MensajeLongitudMaxima.Should().Be(500);
