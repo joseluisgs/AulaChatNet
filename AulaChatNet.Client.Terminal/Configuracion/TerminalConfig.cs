@@ -18,4 +18,11 @@ public class TerminalConfig
     /// vive fuera del repositorio.
     /// </summary>
     public bool RecordarSesion { get; set; } = true;
+
+    /// <summary>
+    /// URL base del servidor de chat. La URL completa del hub es esta más
+    /// <see cref="AulaChatNet.Shared.Configuracion.ChatConfig.HubRuta"/>
+    /// (p. ej. http://localhost:5030 + /hubs/chat).
+    /// </summary>
+    public string UrlServidor { get; set; } = "http://localhost:5030";
 }

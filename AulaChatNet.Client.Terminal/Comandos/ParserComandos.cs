@@ -24,7 +24,7 @@ public static class ParserComandos
     /// <summary>
     /// Analiza una línea escrita por el usuario y devuelve el comando que representa.
     /// </summary>
-    /// <param name="entrada">Lnea cruda leída del prompt (puede ser null).</param>
+    /// <param name="entrada">Línea cruda leída del prompt (puede ser null).</param>
     /// <returns>El comando tipado correspondiente; nunca null.</returns>
     public static Comando Parse(string? entrada)
     {
