@@ -110,11 +110,15 @@ flowchart TB
     style P fill:#40444b,color:#dcddde
 ```
 
-- **Cabecera fija**: identidad + punto de estado de la conexión (verde conectado, naranja reconectando, rojo caído). Este es el punto de Discord.
-- **Zona de mensajes**: pinta las últimas líneas que caben (margen por si un mensaje largo se envuelve) más la salida del último comando (`/ayuda`, `/canales`...). Escribir un mensaje normal la deja limpia.
-- **Pie fijo**: la línea de contadores (total y por sala) y el `> ` donde escribes.
+- **Cabecera fija**: identidad + punto de estado de la conexión (verde conectado, gris conectando, naranja reconectando, rojo caído). Este es el punto de Discord.
+- **Zona de mensajes**: pinta las últimas líneas que caben (margen por si un mensaje largo se envuelve) más la salida del último comando (`/ayuda`, `/canales`...). Escribir un mensaje normal la deja limpia. Las horas se pintan en **hora local**: el servidor guarda en UTC (la regla de oro: guardar UTC, convertir SOLO al presentar), y si no lo hiciésemos la terminal enseñaría otra hora.
+- **Pie fijo**: el punto de estado + la línea de contadores (total y por sala) y el `> ` donde escribes, con el cursor visible.
 
-**Las teclas se leen sin bloquear**: el bucle usa `Console.KeyAvailable` + una pausa corta de 50 ms; si no hay tecla, se repinta y se vuelve a mirar. Así el repintado sigue vivo mientras tecleas. De las teclas se aprovechan `Enter` (envía), `Retroceso` (borra), `Escape` (borra todo lo escrito) y `Ctrl+C` (salida ordenada).
+**La línea de entrada es un editor de verdad**: el texto se guarda en `EditorLinea` (una clase pura, sin consola, por eso testeable), que además del texto guarda la **posición del cursor**. Se pinta con el cursor **resaltado como un carácter con fondo claro** en lugar de mover el cursor real de la terminal — ese es el truco para que `AnsiConsole.Live` pueda repintar el lienzo entero sin pelearse con el cursor del SO.
+
+**Las teclas se leen sin bloquear**: el bucle usa `Console.KeyAvailable` + una pausa corta de 50 ms; si no hay tecla, se repinta y se vuelve a mirar. Así el repintado sigue vivo mientras tecleas. El editor aprovecha `Enter` (envía), `Retroceso` (borra atrás), `Supr` (borra delante), las flechas `←` `→` (mueven el cursor), `Inicio`/`Fin` (saltos), `Escape` (borra todo lo escrito) y `Ctrl+C` (salida ordenada).
+
+**Y la reconexión no te deja tirado**: SignalR reintenta solo (0, 2, 10 y 30 s), pero al reconectar el transporte **no basta**: el servidor ya te dio de baja y tu conexión nueva tiene otro `ConnectionId` que no está en ningún grupo. Por eso, al volver (`Reconnected`), el cliente **vuelve a invocar `ConnectAsync`** con el nick y el canal recordados — si no, quedarías de escayola: la cabecera diría "conectado" pero nadie te vería. Si los reintentos automáticos se agotan (`Closed`), el pie se convierte en instrucción: *"pulsa R para reconectar"*, y con `R` se reabre la conexión y se vuelve a entrar sin reiniciar el programa.
 
 > ⚠️ **Advertencia:** debajo se usa `Console.ReadKey`, el mismo que usan los prompts de Spectre, así que las teclas muertas y los acentos se comportan igual que en el resto del programa. Y un detalle que costó un lunes: **cada etiqueta de markup debe estar cerrada y sin `]` sueltos** — un `[bold]#5865f2]` con un corchete de más hacía estallar el primer repintado con `Encountered unescaped ']' token`.
 
@@ -156,7 +160,9 @@ Ese pintado incremental es reactivo a su vez: Rx entrega la **vista completa** d
 
 Además, para donde no conviene suscribirse (la cabecera se repinta en cada vuelta del bucle), hay lecturas síncronas del valor actual: `VistaMensajes`, `VistaUsuarios`, `EstadisticasActuales` y `EstadoValor` — que son simplemente `.Value` del `BehaviorSubject`.
 
-Y aquí está la idea bonita: **el bucle de la vista en vivo no procesa eventos, solo pinta el estado actual** cada 50 ms. Los eventos van llegando por SignalR → Rx actualiza el store → la siguiente vuelta del bucle pinta lo que hay. Sin colas, sin "cola de repintados", sin estados intermedios: la pantalla nunca miente.
+Y los cambios de conexión que solo conoce el cliente (la caída, la re-alta tras reconectar) **entran por el mismo sitio**: el cliente fabrica un mensaje de sistema local y lo añade a la vista de mensajes. Un único flujo para pintar TODO, sea o no del servidor.
+
+La idea bonita de todo esto: **el bucle de la vista en vivo no procesa eventos, solo pinta el estado actual** cada 50 ms. Los eventos van llegando por SignalR → Rx actualiza el store → la siguiente vuelta del bucle pinta lo que hay. Sin colas, sin "cola de repintados", sin estados intermedios: la pantalla nunca miente.
 
 📌 **Ejemplo real:** es el mismo patrón que React con un estado global (el componente no calcula nada: renderiza el estado), y el mismo que sigue `NotificationStore` de Blazor en el otro cliente.
 
@@ -205,6 +211,7 @@ Los tests de `SesionStoreTests` usan una carpeta temporal por test, así que el 
 | `ParserComandosTests` | Comandos, alias, mayúsculas, argumento presente/ausente |
 | `SesionStoreTests` | Guardar/cargar, fecha, fichero corrupto (no lanza y lo marca), fichero antiguo |
 | `ConectadosTests` | Fórmulas de "cuánta gente hay": singular/plural, orden de config, `●` del canal actual |
+| `EditorLineaTests` | Cursor de la línea de entrada: insertar en medio, borrar, mover, límites y pintado |
 | `TemaDiscordTests` | Paleta, colores derivados del nombre e iniciales |
 
 Además, el **smoke E2E** arranca el servidor real y el terminal con `stdin`/`stdout` acoplados a ficheros, y comprueba por marcadores de texto que salen la bienvenida, la cuenta de conectados, el prompt guiado, el mensaje ecoado y la salida ordenada. Ese es precisamente el valor del **dual-mode**: la misma app, probada sin consola.
@@ -215,6 +222,9 @@ Además, el **smoke E2E** arranca el servidor real y el terminal con `stdin`/`st
 |----------|-------------|
 | Arranque guiado | Banner → `GET /estadisticas` → bienvenida por casos → prompts con default → confirmación → conexión |
 | Vista en vivo | `AnsiConsole.Live` + `Layout` de 3 zonas; la cabecera y el pie se repintan en sitio, no se reimprimen |
+| Línea de entrada | `EditorLinea` (clase pura): texto + cursor, con el cursor resaltado en lugar de moverlo |
+| Reconexión | Al volver, se re-invoca `ConnectAsync` (el alta no viaja sola); si se agota, `R` reconecta sin reiniciar |
+| Horas | El servidor guarda en UTC y la terminal convierte a hora local SOLO al pintar |
 | Modos de entrada | Consola real → Live + `ReadKey`; tubería → `ReadLine` + pintado incremental (pruebas) |
 | Rx | Stores con `BehaviorSubject`; el bucle **solo pinta el estado actual** cada 50 ms |
 | Comandos | Parser puro con `record` + pattern matching; procesamiento compartido entre modos |

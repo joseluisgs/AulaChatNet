@@ -18,7 +18,7 @@ AulaChatNet es un proyecto educativo de ejemplo para el módulo **Desarrollo Web
 - 📡 **SignalR**: un único `ChatHub` en el servidor; mensajes, entradas, salidas y cambio de nick en tiempo real
 - 🗂️ **Canales por aula**: `#general`, `#daw`, `#dam`, `#asir` y `#smr` (grupos de SignalR, configurables en `appsettings.json`); historial y lista de conectados por canal, con cambio en vivo
 - 🔄 **Rx.NET**: los mensajes entrantes se exponen como `IObservable<MensajeDto>`; la UI se suscribe aplicando operadores reactivos (filtrar, agrupar, formatear)
-- 💻 **Múltiples clientes**: consola con Spectre.Console (vista en vivo con cabecera y pie fijos) y web con Blazor WebAssembly, ambos sobre el mismo hub
+- 💻 **Múltiples clientes**: consola con Spectre.Console (vista en vivo con cabecera y pie fijos, editor de línea con cursor y reconexión con re-alta) y web con Blazor WebAssembly, ambos sobre el mismo hub
 - 🎨 **Estética Discord**: layout de dos columnas, avatares (DiceBear) y paleta oscura
 - 🗄️ **Fase 1 en memoria**: estado en `ConcurrentDictionary`, sin base de datos
 
@@ -136,7 +136,7 @@ Todo se configura en `appsettings.json` (con override por entorno en `appsetting
 | Entorno | `.slnx`, Central Package Management, GitFlow | ✅ Hecho |
 | **Fase 1 · Shared** | DTOs, `ChatConfig`, avatar, operadores Rx | ✅ Hecho — 60 tests |
 | **Fase 1 · Server** | `ChatHub`, `ChatStore` en memoria, canales, estadísticas, Serilog | ✅ Hecho — 71 tests |
-| **Fase 1 · Terminal** | Spectre.Console, vista en vivo, entrada guiada, comandos y sesión | ✅ Hecho — 64 tests |
+| **Fase 1 · Terminal** | Spectre.Console, vista en vivo, entrada guiada, comandos y sesión | ✅ Hecho — 76 tests |
 | **Fase 1 · Blazor** | Layout Discord + store reactiva estilo `NotificationStore` | ⏳ Pendiente |
 | Fase 2 | Persistencia (SQLite + EF Core) | 🔜 Futura |
 | Fase 3 | Extras (moderación, comandos `/`, reacciones) | 🔜 Futura |
