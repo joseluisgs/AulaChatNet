@@ -18,4 +18,10 @@ public static class ChatHubMetodos
 
     /// <summary>Método para cambiar el nombre en caliente: CambiarNickAsync(nuevoNick).</summary>
     public const string CambiarNick = "CambiarNickAsync";
+
+    /// <summary>
+    /// Método de CONSULTA (no difunde): devuelve los conectados de un canal
+    /// cualquiera solo a quien lo pregunta: ObtenerUsuariosAsync(canal).
+    /// </summary>
+    public const string ObtenerUsuarios = "ObtenerUsuariosAsync";
 }

@@ -47,7 +47,7 @@ public static class ParserComandos
             "/canales" => new Comando.Canales(),
             "/canal" => CrearCanal(argumento),
             "/nick" or "/nickname" => CrearNick(argumento),
-            "/usuarios" or "/quienes" => new Comando.Usuarios(),
+            "/usuarios" or "/quienes" => new Comando.Usuarios(argumento),
             "/limpiar" or "/clear" => new Comando.Limpiar(),
             "/salir" or "/exit" or "/quit" => new Comando.Salir(),
             _ => new Comando.Desconocido(partes[0])

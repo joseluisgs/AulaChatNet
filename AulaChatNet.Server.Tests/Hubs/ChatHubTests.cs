@@ -825,4 +825,50 @@ public class ChatHubTests
     }
 
     #endregion
+
+    #region ObtenerUsuariosAsync Tests
+
+    [Test]
+    public async Task ObtenerUsuarios_DeOtroCanal_DevuelveLaListaSinEstarEnEl()
+    {
+        // Arrange: Ana en #general, Luis en #smr; NO hay que estar en la sala
+        var (primero, _, _) = CrearHub("conn-1");
+        await primero.ConnectAsync("Ana");
+        var (segundo, _, _) = CrearHub("conn-2");
+        await segundo.ConnectAsync("Luis", Smr);
+
+        // Act: Luis consulta #general sin cambiar de canal
+        var usuarios = await segundo.ObtenerUsuariosAsync(General);
+
+        // Assert
+        usuarios.Should().ContainSingle(u => u.Usuario == "Ana");
+    }
+
+    [Test]
+    public async Task ObtenerUsuarios_CanalDesconocido_DevuelveNull()
+    {
+        // Arrange
+        var (hub, _, _) = CrearHub("conn-1");
+
+        // Act
+        var usuarios = await hub.ObtenerUsuariosAsync("#facil");
+
+        // Assert: null = "el servidor no conoce ese canal"
+        usuarios.Should().BeNull();
+    }
+
+    [Test]
+    public async Task ObtenerUsuarios_SinRegistro_DevuelveLaListaIgual()
+    {
+        // Arrange: una pestaña puede consultar ANTES de darse de alta
+        var (consultador, _, _) = CrearHub("conn-9");
+
+        // Act
+        var usuarios = await consultador.ObtenerUsuariosAsync(General);
+
+        // Assert
+        usuarios.Should().NotBeNull();
+    }
+
+    #endregion
 }

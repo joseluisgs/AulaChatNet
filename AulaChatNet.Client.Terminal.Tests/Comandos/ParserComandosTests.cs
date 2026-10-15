@@ -141,6 +141,30 @@ public class ParserComandosTests
     }
 
     [Test]
+    public void Parse_UsuariosSinArgumento_LlevaCanalNulo()
+    {
+        // Act: sin argumento = los conectados de TU canal
+        var comando = ParserComandos.Parse("/usuarios");
+
+        // Assert
+        comando.Should().BeOfType<Comando.Usuarios>()
+            .Which.NombreCanal.Should().BeNull();
+    }
+
+    [Test]
+    [TestCase("/usuarios #daw")]
+    [TestCase("/quienes daw")]    // alias y canal sin almohadilla: ambos valen
+    public void Parse_UsuariosConArgumento_LlevaElCanal(string entrada)
+    {
+        // Act: con argumento = consulta a otra sala sin cambiar de canal
+        var comando = ParserComandos.Parse(entrada);
+
+        // Assert
+        comando.Should().BeOfType<Comando.Usuarios>()
+            .Which.NombreCanal.Should().Be(entrada.Split(' ')[1]);
+    }
+
+    [Test]
     [TestCase("/limpiar")]
     [TestCase("/clear")]         // alias en inglés
     public void Parse_Limpiar_DevuelveLimpiar(string entrada)

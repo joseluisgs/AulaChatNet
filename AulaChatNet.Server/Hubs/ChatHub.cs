@@ -255,6 +255,27 @@ public class ChatHub(IChatStore store, IOptions<ChatConfig> opciones, ILogger<Ch
     }
 
     /// <summary>
+    /// Devuelve los usuarios de CUALQUIER canal (consulta bajo demanda):
+    /// solo responde AL QUE PREGUNTA y no difunde nada a nadie más, por lo
+    /// que sirve para mirar dentro de otra sala sin cambiar de canal.
+    /// </summary>
+    /// <param name="canal">Canal a consultar (se valida con la configuración).</param>
+    /// <returns>La lista de conectados del canal, o null si el canal no existe.</returns>
+    public Task<IReadOnlyList<UsuarioConectadoDto>?> ObtenerUsuariosAsync(string? canal)
+    {
+        var canonico = Config.EncontrarCanal(canal);
+
+        if (canonico is null)
+        {
+            logger.LogWarning(
+                "Consulta de usuarios rechazada ({ConnectionId}): canal {Canal}", Context.ConnectionId, canal);
+            return Task.FromResult<IReadOnlyList<UsuarioConectadoDto>?>(null);
+        }
+
+        return Task.FromResult<IReadOnlyList<UsuarioConectadoDto>?>(store.GetUsuarios(canonico));
+    }
+
+    /// <summary>
     /// Difunde un mensaje del usuario registrado al grupo de SU canal.
     /// </summary>
     /// <param name="texto">Texto escrito (se valida con ChatConfig).</param>

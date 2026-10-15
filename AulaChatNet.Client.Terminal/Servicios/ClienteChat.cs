@@ -211,6 +211,16 @@ public class ClienteChat : IDisposable
         await _conexion.InvokeAsync<string?>(ChatHubMetodos.CambiarNick, nuevoNick);
 
     /// <summary>
+    /// Consulta los conectados de CUALQUIER canal: el servidor responde SOLO
+    /// a este cliente (no difunde nada), igual que un GET de una API.
+    /// </summary>
+    /// <param name="canal">Canal a consultar (ya validado por el llamador).</param>
+    /// <returns>La lista de esa sala, o null si el servidor no conoce el canal.</returns>
+    public async Task<IReadOnlyList<UsuarioConectadoDto>?> ObtenerUsuariosAsync(string canal) =>
+        await _conexion.InvokeAsync<IReadOnlyList<UsuarioConectadoDto>?>(
+            ChatHubMetodos.ObtenerUsuarios, canal);
+
+    /// <summary>
     /// Cierra la conexión de forma ordenada (el servidor despide al usuario
     /// en su canal con OnDisconnectedAsync).
     /// </summary>

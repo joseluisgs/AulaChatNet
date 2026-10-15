@@ -32,8 +32,9 @@ public abstract record Comando
     /// <param name="Nombre">Nuevo nombre escrito por el usuario.</param>
     public sealed record Nick(string Nombre) : Comando;
 
-    /// <summary>/usuarios: ver los conectados del canal actual.</summary>
-    public sealed record Usuarios : Comando;
+    /// <summary>/usuarios [canal]: ver los conectados de tu canal o de otro cualquiera.</summary>
+    /// <param name="NombreCanal">Canal a consultar (null = el canal actual).</param>
+    public sealed record Usuarios(string? NombreCanal = null) : Comando;
 
     /// <summary>/limpiar: limpiar la vista y repintar desde el búfer local.</summary>
     public sealed record Limpiar : Comando;
