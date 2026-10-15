@@ -118,6 +118,10 @@ public class ChatHub(IChatStore store, IOptions<ChatConfig> opciones, ILogger<Ch
         await Clients.Group(canalCanonico).SendAsync(
             ChatHubEventos.ListaUsuariosActualizada, store.GetUsuarios(canalCanonico));
 
+        // 4) Estadísticas globales a TODOS: contadores de total y por sala
+        //    para la línea de estado de cada cliente
+        await Clients.All.SendAsync(ChatHubEventos.EstadisticasActualizadas, store.GetEstadisticas());
+
         return null;
     }
 
@@ -187,6 +191,9 @@ public class ChatHub(IChatStore store, IOptions<ChatConfig> opciones, ILogger<Ch
         await Clients.Group(canalNuevo).SendAsync(ChatHubEventos.MensajeNuevo, entrada);
         await Clients.Group(canalNuevo).SendAsync(
             ChatHubEventos.ListaUsuariosActualizada, store.GetUsuarios(canalNuevo));
+
+        // Estadísticas globales a TODOS: los contadores por sala han cambiado
+        await Clients.All.SendAsync(ChatHubEventos.EstadisticasActualizadas, store.GetEstadisticas());
 
         return null;
     }
@@ -321,6 +328,9 @@ public class ChatHub(IChatStore store, IOptions<ChatConfig> opciones, ILogger<Ch
             await Clients.Group(conexion.Canal).SendAsync(ChatHubEventos.MensajeNuevo, mensaje);
             await Clients.Group(conexion.Canal).SendAsync(
                 ChatHubEventos.ListaUsuariosActualizada, store.GetUsuarios(conexion.Canal));
+
+            // Estadísticas globales a TODOS: uno menos conectado
+            await Clients.All.SendAsync(ChatHubEventos.EstadisticasActualizadas, store.GetEstadisticas());
         }
         else
         {

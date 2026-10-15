@@ -175,6 +175,21 @@ public class ChatStore(IOptions<ChatConfig> opciones) : IChatStore
             .ToArray();
 
     /// <inheritdoc />
+    public EstadisticasDto GetEstadisticas()
+    {
+        // Agrupamos las conexiones vivas por su canal: como CADA conexión está
+        // en exactamente UN canal, la suma de los grupos es el total real
+        var conteos = _conexiones.Values
+            .GroupBy(c => c.Canal, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new ConteoCanalDto(g.Key, g.Count()))
+            .OrderByDescending(c => c.Conectados)
+            .ThenBy(c => c.Canal, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return new EstadisticasDto(_conexiones.Count, conteos);
+    }
+
+    /// <inheritdoc />
     public ConexionChat? GetConexion(string connectionId) =>
         _conexiones.TryGetValue(connectionId, out var conexion)
             ? new ConexionChat(conexion.Canal, conexion.Datos.Usuario)

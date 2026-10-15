@@ -81,6 +81,13 @@ public interface IChatStore
     IReadOnlyList<UsuarioConectadoDto> GetUsuarios(string canal);
 
     /// <summary>
+    /// Devuelve las estadísticas globales: total de personas conectadas y
+    /// cuántas hay en cada sala (solo las salas con alguien dentro).
+    /// </summary>
+    /// <returns>Copia instantánea de los contadores, para emitirla a los clientes.</returns>
+    EstadisticasDto GetEstadisticas();
+
+    /// <summary>
     /// Devuelve en qué canal está una conexión y cómo se llama.
     /// </summary>
     /// <param name="connectionId">Identificador de la conexión SignalR.</param>

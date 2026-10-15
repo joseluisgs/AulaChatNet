@@ -11,6 +11,7 @@ namespace AulaChatNet.Shared.Constantes;
 /// - <see cref="MensajeNuevo"/> → cualquier mensaje (normal o de sistema, p. ej. "X ha salido")
 /// - <see cref="ListaUsuariosActualizada"/> → se emite tras cada entrada Y cada desconexión
 /// - <see cref="HistorialRecibido"/> → solo al cliente que se conecta (mensajes anteriores)
+/// - <see cref="EstadisticasActualizadas"/> → a TODOS: total de conectados y conteo por sala
 /// </remarks>
 /// </summary>
 public static class ChatHubEventos
@@ -29,4 +30,11 @@ public static class ChatHubEventos
     /// Argumento: IReadOnlyList&lt;MensajeDto&gt;.
     /// </summary>
     public const string HistorialRecibido = "HistorialRecibido";
+
+    /// <summary>
+    /// Notifica las estadísticas globales (total de conectados y conteo por
+    /// sala) a TODOS los clientes cuando alguien entra, sale o cambia de sala.
+    /// Argumento: EstadisticasDto.
+    /// </summary>
+    public const string EstadisticasActualizadas = "EstadisticasActualizadas";
 }

@@ -415,4 +415,68 @@ public class ChatStoreTests
     }
 
     #endregion
+
+    #region GetEstadisticas Tests
+
+    [Test]
+    public void GetEstadisticas_SinNadie_DevuelveCero()
+    {
+        // Act
+        var est = _store.GetEstadisticas();
+
+        // Assert
+        est.TotalConectados.Should().Be(0);
+        est.Canales.Should().BeEmpty();
+    }
+
+    [Test]
+    public void GetEstadisticas_VariosUsuarios_CuentaTotalYPorSala()
+    {
+        // Arrange: 3 en #general y 1 en #smr
+        _store.AddUsuario(General, "Ana", "conn-1");
+        _store.AddUsuario(General, "Luis", "conn-2");
+        _store.AddUsuario(General, "Marta", "conn-3");
+        _store.AddUsuario(Smr, "Carlos", "conn-4");
+
+        // Act
+        var est = _store.GetEstadisticas();
+
+        // Assert
+        est.TotalConectados.Should().Be(4);
+        est.Canales.Should().ContainSingle(c => c.Canal == General && c.Conectados == 3);
+        est.Canales.Should().ContainSingle(c => c.Canal == Smr && c.Conectados == 1);
+    }
+
+    [Test]
+    public void GetEstadisticas_SalaVacia_NoApareceEnElDesglose()
+    {
+        // Arrange: alguien entró y salió de #smr; solo queda Ana en #general
+        _store.AddUsuario(Smr, "Luis", "conn-1");
+        _store.RemoveUsuario("conn-1");
+        _store.AddUsuario(General, "Ana", "conn-2");
+
+        // Act
+        var est = _store.GetEstadisticas();
+
+        // Assert: las salas vacías no se emiten (el cliente las pinta con 0)
+        est.TotalConectados.Should().Be(1);
+        est.Canales.Should().ContainSingle().Which.Canal.Should().Be(General);
+    }
+
+    [Test]
+    public void GetEstadisticas_OrdenadoPorNumeroDeConectados()
+    {
+        // Arrange: #smr con 2, #general con 1
+        _store.AddUsuario(Smr, "Ana", "conn-1");
+        _store.AddUsuario(Smr, "Luis", "conn-2");
+        _store.AddUsuario(General, "Marta", "conn-3");
+
+        // Act
+        var est = _store.GetEstadisticas();
+
+        // Assert: la sala más poblada primero
+        est.Canales.Select(c => c.Canal).Should().Equal(Smr, General);
+    }
+
+    #endregion
 }

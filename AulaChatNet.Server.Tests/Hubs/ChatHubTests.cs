@@ -36,6 +36,12 @@ public class ChatHubTests
     /// </summary>
     private Dictionary<string, HashSet<string>> _grupos = null!;
 
+    /// <summary>
+    /// Eventos emitidos con Clients.All (compartido por todos los hubs del
+    /// test): aquí caen los broadcasts como EstadisticasActualizadas.
+    /// </summary>
+    private List<Envio> _aTodos = null!;
+
     [SetUp]
     public void Setup()
     {
@@ -48,6 +54,7 @@ public class ChatHubTests
         _store = new ChatStore(Options.Create(_config));
         _logger = new Mock<ILogger<ChatHub>>();
         _grupos = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+        _aTodos = [];
     }
 
     // ── Dobles de SignalR ──
@@ -73,6 +80,7 @@ public class ChatHubTests
 
         var clientes = new Mock<IHubCallerClients>();
         clientes.Setup(c => c.Caller).Returns(proxyCaller.Object);
+        clientes.Setup(c => c.All).Returns(CrearProxy(_aTodos).Object);
         clientes.Setup(c => c.Group(It.IsAny<string>()))
             .Returns<string>(nombre => CrearProxy(ObtenerCanal(porCanal, nombre)).Object);
 
@@ -343,6 +351,25 @@ public class ChatHubTests
         _grupos.Should().BeEmpty();
     }
 
+    [Test]
+    public async Task ConnectAsync_Conectado_EmiteEstadisticasATodos()
+    {
+        // Arrange
+        var (hub, _, _) = CrearHub("conn-1");
+
+        // Act
+        await hub.ConnectAsync("Ana");
+
+        // Assert: los contadores (total y por sala) van a TODOS, no solo al canal
+        var eventos = _aTodos
+            .Where(e => e.Metodo == ChatHubEventos.EstadisticasActualizadas).ToArray();
+        eventos.Should().ContainSingle();
+
+        var est = (EstadisticasDto)eventos[0].Argumentos[0];
+        est.TotalConectados.Should().Be(1);
+        est.Canales.Should().ContainSingle(c => c.Canal == General && c.Conectados == 1);
+    }
+
     #endregion
 
     #region CambiarCanalAsync Tests
@@ -377,6 +404,27 @@ public class ChatHubTests
         // Assert
         error.Should().BeNull();
         EstaEnGrupo("conn-1", General).Should().BeTrue();
+    }
+
+    [Test]
+    public async Task CambiarCanal_ActualizaLasEstadisticasGlobales()
+    {
+        // Arrange
+        var (hub, _, _) = CrearHub("conn-1");
+        await hub.ConnectAsync("Ana");
+        _aTodos.Clear();
+
+        // Act
+        (await hub.CambiarCanalAsync(Smr)).Should().BeNull();
+
+        // Assert: #general queda fuera del reparto y #smr pasa a 1
+        var eventos = _aTodos
+            .Where(e => e.Metodo == ChatHubEventos.EstadisticasActualizadas).ToArray();
+        eventos.Should().ContainSingle();
+
+        var est = (EstadisticasDto)eventos[0].Argumentos[0];
+        est.TotalConectados.Should().Be(1);
+        est.Canales.Should().ContainSingle(c => c.Canal == Smr && c.Conectados == 1);
     }
 
     [Test]
@@ -736,6 +784,27 @@ public class ChatHubTests
 
         // Assert
         porCanal.Should().BeEmpty();
+    }
+
+    [Test]
+    public async Task OnDisconnectedAsync_ActualizaLasEstadisticasSinElQueSeFue()
+    {
+        // Arrange
+        var (hub, _, _) = CrearHub("conn-1");
+        await hub.ConnectAsync("Ana", Smr);
+        _aTodos.Clear();
+
+        // Act
+        await hub.OnDisconnectedAsync(null);
+
+        // Assert: nadie queda en el reparto global
+        var eventos = _aTodos
+            .Where(e => e.Metodo == ChatHubEventos.EstadisticasActualizadas).ToArray();
+        eventos.Should().ContainSingle();
+
+        var est = (EstadisticasDto)eventos[0].Argumentos[0];
+        est.TotalConectados.Should().Be(0);
+        est.Canales.Should().BeEmpty();
     }
 
     [Test]
