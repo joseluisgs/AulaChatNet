@@ -286,7 +286,9 @@ async Task BucleEnVivo()
             new Layout("Mensajes"),
             new Layout("Pie").Size(2));
 
-    var entrada = new StringBuilder();
+    // Editor con cursor: la lógica de "dónde estoy escribiendo" vive en
+    // EditorLinea (testeable); aquí solo se traducen teclas a sus métodos
+    var editor = new EditorLinea();
     var vistaPrevia = cliente.VistaMensajes;
 
     await AnsiConsole.Live(raiz)
@@ -310,11 +312,18 @@ async Task BucleEnVivo()
                 // 2) Zona de mensajes: lo que toque ver + salida del último comando
                 raiz["Mensajes"].Update(CrearZonaMensajes(cliente, mostrarDesde, salidas));
 
-                // 3) Pie fijo: contadores (total y por sala) + línea de input
+                // 3) Pie fijo: contadores + línea de input con cursor.
+                //    Con la conexión caída (reintentos agotados) la fila de
+                //    estado se convierte en instrucción: pulsa R para volver
+                var filaEstado = cliente.EstadoValor == EstadoConexion.Desconectado
+                    ? new Markup(
+                        $"{PuntoEstadoComoMarkup(cliente)} [grey]·[/] la reconexión automática " +
+                        "se agotó: pulsa [bold]R[/] para reconectar, o [bold]/salir[/] para salir")
+                    : new Markup(EstadoComoMarkup(cliente));
+
                 raiz["Pie"].Update(new Rows(
-                    new Markup(EstadoComoMarkup(cliente)),
-                    // (_ literal: un [_] sería un estilo inventado y estallaría)
-                    new Markup($"[grey]>[/] {Markup.Escape(entrada.ToString())}_")));
+                    filaEstado,
+                    new Markup($"[grey]>[/] {editor.ParaPintar()}")));
 
                 contexto.Refresh();
 
@@ -325,21 +334,52 @@ async Task BucleEnVivo()
 
                     if (tecla.Key == ConsoleKey.Enter)
                     {
-                        var linea = entrada.ToString();
-                        entrada.Clear();
+                        var linea = editor.Texto;
+                        editor.Limpiar();
                         await ProcesarLinea(linea); // el bucle repinta el resultado
                     }
-                    else if (tecla.Key == ConsoleKey.Backspace && entrada.Length > 0)
+                    else if (tecla.Key == ConsoleKey.Backspace)
                     {
-                        entrada.Remove(entrada.Length - 1, 1);
+                        editor.BorrarAtras();
+                    }
+                    else if (tecla.Key == ConsoleKey.Delete)
+                    {
+                        editor.BorrarDelante();
+                    }
+                    else if (tecla.Key == ConsoleKey.LeftArrow)
+                    {
+                        editor.MoverIzquierda();
+                    }
+                    else if (tecla.Key == ConsoleKey.RightArrow)
+                    {
+                        editor.MoverDerecha();
+                    }
+                    else if (tecla.Key == ConsoleKey.Home)
+                    {
+                        editor.Inicio();
+                    }
+                    else if (tecla.Key == ConsoleKey.End)
+                    {
+                        editor.Fin();
                     }
                     else if (tecla.Key == ConsoleKey.Escape)
                     {
-                        entrada.Clear(); // Escape = borrar lo escrito
+                        editor.Limpiar(); // Escape = borrar lo escrito
+                    }
+                    else if (cliente.EstadoValor == EstadoConexion.Desconectado
+                             && tecla.Key == ConsoleKey.R
+                             && editor.Longitud == 0)
+                    {
+                        // Solo con la línea vacía: si no, la "r" es texto
+                        var errorRecon = await cliente.ReconectarAsync();
+
+                        PublicarLinea(errorRecon is null
+                            ? "[green]●[/] Reconectado: sesión recuperada."
+                            : $"[red]✗ {Markup.Escape(errorRecon)}[/]");
                     }
                     else if (!char.IsControl(tecla.KeyChar))
                     {
-                        entrada.Append(tecla.KeyChar);
+                        editor.Insertar(tecla.KeyChar);
                     }
                 }
 
@@ -618,9 +658,9 @@ static async Task PintarConectadosInicialesAsync(string urlServidor, ChatConfig 
     }
 }
 
-// Cabecera de la vista en vivo: identidad + punto de estado de la conexión
-// (el ● de Discord: verde conectado, naranja reconectando, rojo caído).
-static string CabeceraComoMarkup(ClienteChat cliente, string nick, string canal)
+// El ● de Discord (compartido por la cabecera en vivo y la línea de estado):
+// verde conectado, gris conectando, naranja reconectando, rojo caído.
+static string PuntoEstadoComoMarkup(ClienteChat cliente)
 {
     var (color, texto) = cliente.EstadoValor switch
     {
@@ -630,29 +670,38 @@ static string CabeceraComoMarkup(ClienteChat cliente, string nick, string canal)
         _ => ("red", "desconectado")
     };
 
+    return $"[{color}]● {texto}[/]";
+}
+
+// Cabecera de la vista en vivo: identidad + punto de estado de la conexión
+static string CabeceraComoMarkup(ClienteChat cliente, string nick, string canal)
+{
     // ESTILO COMBINADO en una sola etiqueta ([#hex bold], como [bold red]):
     // nunca un ToMarkup() con ] huérfano — eso rompía el primer repintado
     return $"[{TemaDiscord.Blurple.ToMarkup()} bold]AulaChatNet[/] [grey]·[/] " +
            $"{Markup.Escape(nick)} [grey]·[/] {Markup.Escape(canal)} [grey]·[/] " +
-           $"[{color}]● {texto}[/]";
+           PuntoEstadoComoMarkup(cliente);
 }
 
 // Línea de estado (pie fijo en vivo; línea previa al prompt en tubería):
-// total de conectados y reparto por SALA, en orden de la configuración.
-// El ● marca el canal en el que estamos; las salas vacías muestran 0 (el
-// servidor solo emite las que tienen gente). La fórmula vive en Conectados
-// para poder testearla sin consola.
+// punto de conexión + total de conectados y reparto por SALA, en orden de la
+// configuración. El ● marca el canal en el que estamos; las salas vacías
+// muestran 0 (el servidor solo emite las que tienen gente). Las fórmulas
+// viven en Conectados para poder testearlas sin consola.
 static string EstadoComoMarkup(ClienteChat cliente)
 {
     var est = cliente.EstadisticasActuales;
 
-    return $"[grey]📌 {est.TotalConectados} conectados:[/] " +
+    return PuntoEstadoComoMarkup(cliente) + " [grey]·[/] " +
+           $"[grey]📌 {est.TotalConectados} conectados:[/] " +
            Conectados.ConteosPorSala(cliente.Canales, est, cliente.Canal);
 }
 
 // Una línea de mensaje como markup (la MISMA fórmula en los dos modos):
-// sistema en gris cursiva; normal con timestamp (la hora UTC del servidor),
-// iniciales entre corchetes y nombre con su color derivado.
+// sistema en gris cursiva; normal con hora, iniciales entre corchetes y
+// nombre con su color derivado. El servidor marca en UTC (la regla de oro:
+// guardar UTC, convertir SOLO al presentar), así que aquí se pasa a la
+// hora local del que mira — sin esto, la terminal enseñaría otra hora.
 static string LineaMensajeMarkup(MensajeDto mensaje)
 {
     if (mensaje.Tipo == TipoMensaje.Sistema)
@@ -661,7 +710,7 @@ static string LineaMensajeMarkup(MensajeDto mensaje)
     var hex = TemaDiscord.ColorDe(mensaje.Usuario).ToMarkup();
     var iniciales = TemaDiscord.Iniciales(mensaje.Usuario);
 
-    return $"[grey]{mensaje.Timestamp:HH:mm}[/] " +
+    return $"[grey]{mensaje.Timestamp.ToLocalTime():HH:mm}[/] " +
            $"[{hex}][[{iniciales}]][/] " +
            $"[{hex}]{Markup.Escape(mensaje.Usuario)}[/]: {Markup.Escape(mensaje.Texto)}";
 }
@@ -738,8 +787,10 @@ static async Task<IRenderable> CrearContenidoUsuariosAsync(
 
     var usuarios = await cliente.ObtenerUsuariosAsync(canonico);
 
+    // null = canal desconocido O no se pudo consultar (conexión caída):
+    // el mismo mensaje sirve para los dos casos sin mentir en ninguno
     return usuarios is null
-        ? new Markup("[red]✗ El servidor no conoce ese canal.[/]")
+        ? new Markup("[red]✗ No pude consultar la lista de ese canal.[/]")
         : CrearFilasUsuarios(canonico, usuarios);
 }
 

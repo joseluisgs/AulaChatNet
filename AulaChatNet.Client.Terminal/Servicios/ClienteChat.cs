@@ -2,6 +2,7 @@ using System.Reactive.Subjects;
 using AulaChatNet.Shared.Configuracion;
 using AulaChatNet.Shared.Constantes;
 using AulaChatNet.Shared.Dtos;
+using AulaChatNet.Shared.Helpers;
 using Microsoft.AspNetCore.SignalR.Client;
 
 namespace AulaChatNet.Client.Terminal.Servicios;
@@ -41,6 +42,18 @@ public class ClienteChat : IDisposable
     private readonly BehaviorSubject<EstadisticasDto> _estadisticas = new(new EstadisticasDto(0, []));
     private readonly BehaviorSubject<string?> _canalActual = new(null);
     private readonly BehaviorSubject<EstadoConexion> _estado = new(EstadoConexion.Desconectado);
+
+    // Último nick y canal con los que se logró registrar: la reconexión los
+    // reutiliza para volver a darse de alta sin volver a preguntar al usuario
+    private string? _usuarioActual;
+
+    // true mientras CERRAMOS la conexión a propósito (salida ordenada o
+    // registro rechazado): el evento Closed salta también en esos casos y
+    // no queremos un aviso de "conexión perdida" cuando la perdimos nosotros
+    private bool _cierreIntencionado;
+
+    /// <summary>Error devuelto al invocar el hub con la conexión caída.</summary>
+    private const string ErrorSinConexion = "Sin conexión con el servidor";
 
     /// <summary>
     /// Crea el cliente y prepara la conexión (aún NO conectada: eso es
@@ -87,15 +100,19 @@ public class ClienteChat : IDisposable
             return Task.CompletedTask;
         };
 
-        _conexion.Reconnected += _ =>
-        {
-            _estado.OnNext(EstadoConexion.Conectado);
-            return Task.CompletedTask;
-        };
+        // Reconexión automática de SignalR: el transporte vuelve solo, pero
+        // el ALTA en el servidor no (ver ReenviarAltaAsync)
+        _conexion.Reconnected += _ => ReenviarAltaAsync();
 
         _conexion.Closed += _ =>
         {
             _estado.OnNext(EstadoConexion.Desconectado);
+
+            // Aviso solo cuando la caída NO la pedimos nosotros: así el
+            // modo tubería (que no tiene cabecera) también se entera
+            if (!_cierreIntencionado)
+                AvisoLocal("Se perdió la conexión con el servidor.");
+
             return Task.CompletedTask;
         };
     }
@@ -149,6 +166,7 @@ public class ClienteChat : IDisposable
     {
         try
         {
+            _cierreIntencionado = false;
             _estado.OnNext(EstadoConexion.Conectando);
             await _conexion.StartAsync();
         }
@@ -165,13 +183,19 @@ public class ClienteChat : IDisposable
         if (error is not null)
         {
             // Registro rechazado (p. ej. nombre en uso): cerramos para que
-            // el llamador pueda preguntar de nuevo sin estados colgados
+            // el llamador pueda preguntar de nuevo sin estados colgados.
+            // El cierre es NUESTRO, así que Closed no debe avisar de nada
             _estado.OnNext(EstadoConexion.Desconectado);
+            _cierreIntencionado = true;
             await _conexion.StopAsync();
+            _cierreIntencionado = false;
 
             return error;
         }
 
+        // Identidad de cara a la reconexión: con estos dos valores basta
+        // para volver a darse de alta si la conexión se cae (ver ReenviarAlta)
+        _usuarioActual = usuario;
         _canalActual.OnNext(_config.EncontrarCanal(canal));
         _estado.OnNext(EstadoConexion.Conectado);
 
@@ -183,8 +207,19 @@ public class ClienteChat : IDisposable
     /// </summary>
     /// <param name="texto">Texto ya recortado.</param>
     /// <returns>null si todo fue correcto; el error del servidor si no.</returns>
-    public async Task<string?> EnviarAsync(string texto) =>
-        await _conexion.InvokeAsync<string?>(ChatHubMetodos.Enviar, texto);
+    public async Task<string?> EnviarAsync(string texto)
+    {
+        try
+        {
+            return await _conexion.InvokeAsync<string?>(ChatHubMetodos.Enviar, texto);
+        }
+        catch (Exception)
+        {
+            // Conexión caída: InvokeAsync LANZA en vez de devolver el error
+            // del servidor, así que lo convertimos al mismo patrón string?
+            return ErrorSinConexion;
+        }
+    }
 
     /// <summary>
     /// Cambia al canal dado; el historial del nuevo canal llegará después
@@ -194,12 +229,19 @@ public class ClienteChat : IDisposable
     /// <returns>null si el cambio fue correcto; el error del servidor si no.</returns>
     public async Task<string?> CambiarCanalAsync(string canal)
     {
-        var error = await _conexion.InvokeAsync<string?>(ChatHubMetodos.CambiarCanal, canal);
+        try
+        {
+            var error = await _conexion.InvokeAsync<string?>(ChatHubMetodos.CambiarCanal, canal);
 
-        if (error is null)
-            _canalActual.OnNext(_config.EncontrarCanal(canal));
+            if (error is null)
+                _canalActual.OnNext(_config.EncontrarCanal(canal));
 
-        return error;
+            return error;
+        }
+        catch (Exception)
+        {
+            return ErrorSinConexion;
+        }
     }
 
     /// <summary>
@@ -207,18 +249,130 @@ public class ClienteChat : IDisposable
     /// </summary>
     /// <param name="nuevoNick">Nuevo nombre (ya validado localmente).</param>
     /// <returns>null si el cambio fue correcto; el error del servidor si no.</returns>
-    public async Task<string?> CambiarNickAsync(string nuevoNick) =>
-        await _conexion.InvokeAsync<string?>(ChatHubMetodos.CambiarNick, nuevoNick);
+    public async Task<string?> CambiarNickAsync(string nuevoNick)
+    {
+        try
+        {
+            var error = await _conexion.InvokeAsync<string?>(ChatHubMetodos.CambiarNick, nuevoNick);
+
+            if (error is null)
+                _usuarioActual = nuevoNick; // la reconexión usará el nick nuevo
+
+            return error;
+        }
+        catch (Exception)
+        {
+            return ErrorSinConexion;
+        }
+    }
 
     /// <summary>
     /// Consulta los conectados de CUALQUIER canal: el servidor responde SOLO
     /// a este cliente (no difunde nada), igual que un GET de una API.
     /// </summary>
     /// <param name="canal">Canal a consultar (ya validado por el llamador).</param>
-    /// <returns>La lista de esa sala, o null si el servidor no conoce el canal.</returns>
-    public async Task<IReadOnlyList<UsuarioConectadoDto>?> ObtenerUsuariosAsync(string canal) =>
-        await _conexion.InvokeAsync<IReadOnlyList<UsuarioConectadoDto>?>(
-            ChatHubMetodos.ObtenerUsuarios, canal);
+    /// <returns>La lista de esa sala, o null si el servidor no conoce el canal o no hay conexión.</returns>
+    public async Task<IReadOnlyList<UsuarioConectadoDto>?> ObtenerUsuariosAsync(string canal)
+    {
+        try
+        {
+            return await _conexion.InvokeAsync<IReadOnlyList<UsuarioConectadoDto>?>(
+                ChatHubMetodos.ObtenerUsuarios, canal);
+        }
+        catch (Exception)
+        {
+            // null también significa "no pude consultar": el que lo pinta
+            // usa un mensaje que vale para ambos casos
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Tras una reconexión automática de SignalR: el transporte vuelve SOLO,
+    /// pero el ALTA no. Al caer, el servidor ya ejecutó OnDisconnectedAsync
+    /// (nos dio de baja y nos quitó del grupo del canal), y la conexión
+    /// nueva tiene OTRO ConnectionId que no está en ningún grupo. Sin este
+    /// paso, el cliente quedaría de escayola: la cabecera dice "conectado"
+    /// pero nadie nos ve y a nosotros no nos llega nada.
+    /// </summary>
+    private async Task ReenviarAltaAsync()
+    {
+        _estado.OnNext(EstadoConexion.Conectado);
+
+        // Aún no hay identidad (la conexión se cayó antes del primer alta):
+        // no hay nada que re-registrar
+        if (_usuarioActual is null || _canalActual.Value is null)
+            return;
+
+        try
+        {
+            var error = await _conexion.InvokeAsync<string?>(
+                ChatHubMetodos.Conectar, _usuarioActual, _canalActual.Value);
+
+            // El servidor re-registra y RE-ENVÍA historial, lista y
+            // estadísticas; este aviso solo confirma el alta local
+            AvisoLocal(error is null
+                ? $"Reconectado: vuelto a entrar en {_canalActual.Value} como {_usuarioActual}."
+                : $"No pude volver a registrar la sesión: {error}");
+        }
+        catch (Exception)
+        {
+            // Se cayó otra vez mientras re-registrábamos: el bucle de la
+            // conexión ya se encarga de reconectar (Reconnecting/Reconnected)
+        }
+    }
+
+    /// <summary>
+    /// Reconexión MANUAL para cuando la automática se ha agotado (Closed):
+    /// vuelve a arrancar el transporte y a dar de alta al usuario con el
+    /// nick y el canal de la sesión actual, sin reiniciar el programa.
+    /// </summary>
+    /// <returns>null si se volvió a entrar; el error, si no.</returns>
+    public async Task<string?> ReconectarAsync()
+    {
+        if (_usuarioActual is null || _canalActual.Value is null)
+            return "No hay ninguna sesión previa para reconectar";
+
+        try
+        {
+            _cierreIntencionado = false;
+            _estado.OnNext(EstadoConexion.Conectando);
+            await _conexion.StartAsync();
+
+            var error = await _conexion.InvokeAsync<string?>(
+                ChatHubMetodos.Conectar, _usuarioActual, _canalActual.Value);
+
+            if (error is not null)
+            {
+                _estado.OnNext(EstadoConexion.Desconectado);
+                return error;
+            }
+
+            _estado.OnNext(EstadoConexion.Conectado);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _estado.OnNext(EstadoConexion.Desconectado);
+
+            return $"No se pudo reconectar ({ex.GetType().Name}). ¿Sigue el servidor arrancado?";
+        }
+    }
+
+    /// <summary>
+    /// Aviso local en la vista de mensajes (sin pasar por el servidor): los
+    /// cambios de conexión los conoce el cliente, y la UI solo pinta lo que
+    /// hay en los stores — este también entra por ahí, como un mensaje de
+    /// sistema más, para que los dos modos de entrada lo vean igual.
+    /// </summary>
+    /// <param name="texto">Texto del aviso.</param>
+    private void AvisoLocal(string texto)
+    {
+        var aviso = new MensajeDto(
+            Guid.NewGuid(), MensajesSistema.Autor, texto, DateTime.UtcNow, TipoMensaje.Sistema);
+
+        _mensajes.OnNext([.. _mensajes.Value, aviso]);
+    }
 
     /// <summary>
     /// Cierra la conexión de forma ordenada (el servidor despide al usuario
@@ -228,7 +382,9 @@ public class ClienteChat : IDisposable
     {
         try
         {
+            _cierreIntencionado = true; // cierre pedido: Closed no avisa
             await _conexion.StopAsync();
+            _cierreIntencionado = false;
             _estado.OnNext(EstadoConexion.Desconectado);
         }
         catch
