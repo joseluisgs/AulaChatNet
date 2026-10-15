@@ -10,8 +10,8 @@
 
   <ItemGroup>
     <!-- ══════════════ Clientes ══════════════ -->
-    <!-- SignalR: cliente compartido por Terminal y Blazor -->
-    <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.2" />
+    <!-- SignalR: cliente compartido por Terminal y Blazor (10.0.13: incluye el parche de GHSA-334f-vvp4-7g6p) -->
+    <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.13" />
 
     <!-- Configuración de clientes (appsettings.json de cada proyecto) -->
     <PackageVersion Include="Microsoft.Extensions.Configuration.Json" Version="10.0.13" />
