@@ -17,13 +17,23 @@ public class ChatConfigTests
     [SetUp]
     public void Setup() => _config = new ChatConfig();
 
+    /// <summary>
+    /// Puebla la lista de canales como haría el ConfigurationBinder con el
+    /// appsettings de Fase 1 (el binder AÑADE, por eso el default está vacío).
+    /// </summary>
+    private void PonerCanalesDeFase1() =>
+        _config.Canales.AddRange(["#general", "#smr", "#daw", "#asir", "#dam"]);
+
     #region Valores por defecto Tests
 
     [Test]
-    public void Constructor_ValoresPorDefecto_DevuelveLimitesDeFase1()
+    public void Constructor_CanalesVacios_ListaPreparadaParaElBinder()
     {
         // Assert
-        _config.Canal.Should().Be("#general");
+        // La lista arranca vacía: el ConfigurationBinder AÑADE lo de
+        // appsettings (si tuviera defaults, se duplicarían con los del fichero)
+        _config.Canales.Should().BeEmpty();
+        _config.CanalPorDefecto.Should().Be("#general");
         _config.HubRuta.Should().Be("/hubs/chat");
         _config.UsuarioLongitudMinima.Should().Be(2);
         _config.UsuarioLongitudMaxima.Should().Be(20);
@@ -144,6 +154,94 @@ public class ChatConfigTests
 
         // Assert
         error.Should().BeNull();
+    }
+
+    #endregion
+
+    #region Canales Tests
+
+    [Test]
+    [TestCase("#general")]
+    [TestCase("#smr")]
+    [TestCase("#SMR")]      // insensible a mayúsculas
+    [TestCase("smr")]       // sin almohadilla también vale
+    [TestCase("  #daw  ")]  // con espacios alrededor
+    public void EsCanalValido_CanalDeLaLista_RetornaTrue(string canal)
+    {
+        // Arrange
+        PonerCanalesDeFase1();
+
+        // Act
+        var valido = _config.EsCanalValido(canal);
+
+        // Assert
+        valido.Should().BeTrue();
+    }
+
+    [Test]
+    [TestCase("#facil")]    // no está en la lista
+    [TestCase("")]
+    [TestCase("   ")]
+    [TestCase(null)]
+    public void EsCanalValido_CanalDesconocido_RetornaFalse(string? canal)
+    {
+        // Arrange
+        PonerCanalesDeFase1();
+
+        // Act
+        var valido = _config.EsCanalValido(canal);
+
+        // Assert
+        valido.Should().BeFalse();
+    }
+
+    [Test]
+    public void EncontrarCanal_SinAlmohadilla_RetornaLaFormaCanonica()
+    {
+        // Arrange
+        PonerCanalesDeFase1();
+
+        // Act
+        var canonico = _config.EncontrarCanal("smr");
+
+        // Assert
+        canonico.Should().Be("#smr");
+    }
+
+    [Test]
+    public void EncontrarCanal_CanalDesconocido_RetornaNull()
+    {
+        // Act
+        var canonico = _config.EncontrarCanal("#otra");
+
+        // Assert
+        canonico.Should().BeNull();
+    }
+
+    [Test]
+    public void ErrorCanalDesconocido_ListaTodosLosCanalesConfigurados()
+    {
+        // Arrange
+        PonerCanalesDeFase1();
+
+        // Act
+        var error = _config.ErrorCanalDesconocido("#otra");
+
+        // Assert
+        error.Should().Contain("#otra").And.Contain("#smr").And.Contain("#dam");
+    }
+
+    [Test]
+    public void CanalPorDefecto_SiLaListaEstaVacia_RetornaElDeSeguridad()
+    {
+        // Arrange
+        _config.Canales.Clear();
+
+        // Act
+        var defecto = _config.CanalPorDefecto;
+
+        // Assert: red de seguridad, como los defaults de la clase
+        defecto.Should().Be("#general");
     }
 
     #endregion

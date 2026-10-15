@@ -7,56 +7,63 @@ using Microsoft.Extensions.Options;
 namespace AulaChatNet.Server.Services;
 
 /// <summary>
-/// Implementación en memoria del estado del chat (Fase 1). Sin base de datos:
-/// todo vive en colecciones concurrentes que mueren al parar el servidor.
+/// Implementación en memoria del estado de los canales (Fase 1). Sin base de
+/// datos: todo vive en colecciones concurrentes que mueren al parar el servidor.
 ///
 /// <remarks>
-/// Estructuras internas y por qué dos diccionarios:
+/// Estructuras internas y por qué así:
 /// <list type="bullet">
-/// <item><c>_usuariosPorConnection</c> (connectionId → usuario): responde
-/// "¿quién soy yo?" al enviar un mensaje o desconectar, en O(1).</item>
-/// <item><c>_usuariosPorNombre</c> (clave normalizada → usuario): su
-/// <c>TryAdd</c> da la unicidad de nombres de forma ATÓMICA: si dos personas
-/// escriben "Ana" a la vez, solo una gana sin necesidad de bloqueos.</item>
-/// <item><c>_historial</c>: cola circular con el límite de
-/// <c>ChatConfig.HistorialMaximo</c>.</item>
+/// <item><c>_conexiones</c> (connectionId → canal + usuario): la ÚNICA fuente
+/// de verdad de "quién está conectado y dónde"; responde en O(1).</item>
+/// <item><c>_canales</c> (canal → <see cref="EstadoCanal"/>): unicidad de
+/// nombres e historial SEPARADOS por canal; su <c>TryAdd</c> de nombres da
+/// la unicidad de forma atómica, sin bloqueos.</item>
 /// </list>
+/// Un mismo <see cref="UsuarioConectado"/> se reutiliza al cambiar de canal,
+/// conservando así la hora de entrada de la sesión.
 /// </remarks>
 /// </summary>
 public class ChatStore(IOptions<ChatConfig> opciones) : IChatStore
 {
     private const string ErrorConexionYaRegistrada = "Esta conexión ya está registrada en el canal";
+    private const string ErrorSinRegistro = "No estás registrado en el canal, vuelve a conectarte";
 
-    private readonly ConcurrentDictionary<string, UsuarioConectado> _usuariosPorConnection = new();
-    private readonly ConcurrentDictionary<string, UsuarioConectado> _usuariosPorNombre = new(StringComparer.Ordinal);
-    private readonly ConcurrentQueue<MensajeDto> _historial = new();
+    private readonly ConcurrentDictionary<string, EstadoCanal> _canales = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, Conexion> _conexiones = new();
 
     // Las opciones son singleton: leerlas en cada operación refleja cambios
     // de configuración sin recrear el store.
     private ChatConfig Config => opciones.Value;
 
+    /// <summary>Registro interno de una conexión viva.</summary>
+    /// <param name="Canal">Canal canónico donde está la conexión.</param>
+    /// <param name="Estado">Estado del canal (para liberar el nombre al salir).</param>
+    /// <param name="Datos">Datos visibles del usuario (nombre y entrada).</param>
+    private sealed record Conexion(string Canal, EstadoCanal Estado, UsuarioConectado Datos);
+
     /// <inheritdoc />
-    public string? AddUsuario(string usuario, string connectionId)
+    public string? AddUsuario(string canal, string usuario, string connectionId)
     {
+        var estado = _canales.GetOrAdd(canal, _ => new EstadoCanal());
+
         // Chequeo rápido previo: una conexión no puede darse de alta dos veces
-        if (_usuariosPorConnection.ContainsKey(connectionId))
+        if (_conexiones.ContainsKey(connectionId))
             return ErrorConexionYaRegistrada;
 
         // Clave de unicidad normalizada: "ANA", "Ana" y "ana" son el mismo nombre
         var clave = Normalizar(usuario);
         var nuevo = new UsuarioConectado(usuario, DateTime.UtcNow);
 
-        // TryAdd atómico: si otra persona llegó primero con ese nombre, aquí
-        // se rechaza sin necesidad de bloquear nada
-        if (!_usuariosPorNombre.TryAdd(clave, nuevo))
+        // TryAdd atómico POR CANAL: si alguien llegó primero con ese nombre
+        // en este canal, se rechaza sin necesidad de bloquear nada
+        if (!estado.UsuariosPorNombre.TryAdd(clave, nuevo))
             return Config.ErrorUsuarioDuplicado;
 
         // Carrera posible: dos conexiones registrando el mismo nombre a la vez.
-        // Solo una gana en el índice de nombres; la otra falla aquí y debe
-        // deshacer su alta para no dejar un nombre "fantasma" bloqueado.
-        if (!_usuariosPorConnection.TryAdd(connectionId, nuevo))
+        // Solo una gana; la otra deshace su alta para no dejar un nombre fantasma.
+        if (!_conexiones.TryAdd(connectionId, new Conexion(canal, estado, nuevo)))
         {
-            _usuariosPorNombre.TryRemove(
+            estado.UsuariosPorNombre.TryRemove(
                 new KeyValuePair<string, UsuarioConectado>(clave, nuevo));
 
             return ErrorConexionYaRegistrada;
@@ -66,44 +73,86 @@ public class ChatStore(IOptions<ChatConfig> opciones) : IChatStore
     }
 
     /// <inheritdoc />
-    public void AddMensaje(MensajeDto mensaje)
+    public string? CambiarCanal(string connectionId, string canalNuevo)
     {
-        _historial.Enqueue(mensaje);
+        if (!_conexiones.TryGetValue(connectionId, out var conexion))
+            return ErrorSinRegistro;
+
+        // Mismo canal (ignorando mayúsculas): no hay nada que mover
+        if (string.Equals(conexion.Canal, canalNuevo, StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        var estadoNuevo = _canales.GetOrAdd(canalNuevo, _ => new EstadoCanal());
+        var clave = Normalizar(conexion.Datos.Usuario);
+
+        // Unicidad del nombre en el canal de DESTINO
+        if (!estadoNuevo.UsuariosPorNombre.TryAdd(clave, conexion.Datos))
+            return Config.ErrorUsuarioDuplicado;
+
+        // Mover la conexión: TryUpdate es atómico y solo actualiza si el
+        // registro sigue siendo el mismo (si la conexión se cayó entre tanto,
+        // no se mueve nada y se deshace el alta provisional en el destino)
+        if (!_conexiones.TryUpdate(connectionId, new Conexion(canalNuevo, estadoNuevo, conexion.Datos), conexion))
+        {
+            estadoNuevo.UsuariosPorNombre.TryRemove(
+                new KeyValuePair<string, UsuarioConectado>(clave, conexion.Datos));
+
+            return ErrorSinRegistro;
+        }
+
+        // Liberar el nombre en el canal ANTERIOR (con la misma protección
+        // clave/valor: solo borra si sigue siendo ese registro)
+        conexion.Estado.UsuariosPorNombre.TryRemove(
+            new KeyValuePair<string, UsuarioConectado>(clave, conexion.Datos));
+
+        return null;
+    }
+
+    /// <inheritdoc />
+    public void AddMensaje(string canal, MensajeDto mensaje)
+    {
+        var estado = _canales.GetOrAdd(canal, _ => new EstadoCanal());
+        estado.Historial.Enqueue(mensaje);
 
         // Cola circular: al superar el límite configurado, el más antiguo
         // sale del historial (el bucle contempla que el límite sea pequeño).
-        while (_historial.Count > Config.HistorialMaximo && _historial.TryDequeue(out _))
+        while (estado.Historial.Count > Config.HistorialMaximo && estado.Historial.TryDequeue(out _))
         {
         }
     }
 
     /// <inheritdoc />
-    public IReadOnlyList<MensajeDto> GetHistorial() => _historial.ToArray();
+    public IReadOnlyList<MensajeDto> GetHistorial(string canal) =>
+        _canales.TryGetValue(canal, out var estado) ? estado.Historial.ToArray() : [];
 
     /// <inheritdoc />
-    public IReadOnlyList<UsuarioConectadoDto> GetUsuarios() =>
-        _usuariosPorConnection.Values
+    public IReadOnlyList<UsuarioConectadoDto> GetUsuarios(string canal) =>
+        _conexiones.Values
+            .Where(c => string.Equals(c.Canal, canal, StringComparison.OrdinalIgnoreCase))
+            .Select(c => c.Datos)
             .OrderBy(u => u.Usuario, StringComparer.CurrentCultureIgnoreCase)
             .Select(u => new UsuarioConectadoDto(u.Usuario, u.ConectadoDesde))
             .ToArray();
 
     /// <inheritdoc />
-    public string? GetUsuarioDeConexion(string connectionId) =>
-        _usuariosPorConnection.TryGetValue(connectionId, out var usuario) ? usuario.Usuario : null;
+    public ConexionChat? GetConexion(string connectionId) =>
+        _conexiones.TryGetValue(connectionId, out var conexion)
+            ? new ConexionChat(conexion.Canal, conexion.Datos.Usuario)
+            : null;
 
     /// <inheritdoc />
-    public string? RemoveUsuario(string connectionId)
+    public ConexionChat? RemoveUsuario(string connectionId)
     {
-        if (!_usuariosPorConnection.TryRemove(connectionId, out var usuario))
+        if (!_conexiones.TryRemove(connectionId, out var conexion))
             return null;
 
-        // TryRemove por par clave/valor: solo borra si el registro sigue siendo
-        // el mismo; así nunca se borra por accidente el alta de otra conexión
-        // que haya reaprovechado el nombre tras una salida concurrente.
-        _usuariosPorNombre.TryRemove(
-            new KeyValuePair<string, UsuarioConectado>(Normalizar(usuario.Usuario), usuario));
+        // TryRemove por par clave/valor: solo borra si el registro sigue
+        // siendo el mismo (nunca borra por accidente el alta de otra
+        // conexión que haya reaprovechado el nombre).
+        conexion.Estado.UsuariosPorNombre.TryRemove(
+            new KeyValuePair<string, UsuarioConectado>(Normalizar(conexion.Datos.Usuario), conexion.Datos));
 
-        return usuario.Usuario;
+        return new ConexionChat(conexion.Canal, conexion.Datos.Usuario);
     }
 
     /// <summary>

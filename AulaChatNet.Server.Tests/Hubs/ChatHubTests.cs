@@ -1,4 +1,5 @@
 using AulaChatNet.Server.Hubs;
+using AulaChatNet.Server.Models;
 using AulaChatNet.Server.Services;
 using AulaChatNet.Shared.Configuracion;
 using AulaChatNet.Shared.Constantes;
@@ -13,13 +14,17 @@ namespace AulaChatNet.Server.Tests.Hubs;
 
 /// <summary>
 /// Suite de tests para ChatHub.
-/// Simula SignalR con Moq: un HubCallerContext por conexión y proxies que
-/// registran cada SendCoreAsync, para comprobar QUIÉN recibe cada evento
-/// (el historial SOLO al que entra; los mensajes a todos).
+/// Simula SignalR con Moq: un HubCallerContext por conexión, un proxy para
+/// el caller y proxies POR GRUPO (canal), para comprobar QUIÉN recibe cada
+/// evento y EN QUÉ CANAL (el historial SOLO al que entra; los mensajes al
+/// grupo de su canal).
 /// </summary>
 [TestFixture]
 public class ChatHubTests
 {
+    private const string General = "#general";
+    private const string Smr = "#smr";
+
     private ChatConfig _config = null!;
     private ChatStore _store = null!;
     private Mock<ILogger<ChatHub>> _logger = null!;
@@ -28,6 +33,11 @@ public class ChatHubTests
     public void Setup()
     {
         _config = new ChatConfig();
+
+        // Poblamos la lista como haría el ConfigurationBinder con el
+        // appsettings de Fase 1 (el binder AÑADE, por eso el default está vacío)
+        _config.Canales.AddRange(["#general", "#smr", "#daw", "#asir", "#dam"]);
+
         _store = new ChatStore(Options.Create(_config));
         _logger = new Mock<ILogger<ChatHub>>();
     }
@@ -38,24 +48,25 @@ public class ChatHubTests
     private record Envio(string Metodo, object[] Argumentos);
 
     /// <summary>Hub simulado con sus listas de eventos emitidos.</summary>
-    private sealed record HubSimulado(ChatHub Hub, List<Envio> AlCaller, List<Envio> ATodos);
+    private sealed record HubSimulado(ChatHub Hub, List<Envio> AlCaller, Dictionary<string, List<Envio>> PorCanal);
 
     /// <summary>
-    /// Crea un hub con su propia conexión y proxies que graban lo emitido.
+    /// Crea un hub con su propia conexión y proxies que graban lo emitido:
+    /// el caller registra en su lista y cada grupo (canal) en la suya.
     /// Cada test crea los hubs que necesite (uno por conexión simulada).
     /// </summary>
     /// <param name="connectionId">Identificador de la conexión simulada.</param>
     private HubSimulado CrearHub(string connectionId)
     {
         var alCaller = new List<Envio>();
-        var aTodos = new List<Envio>();
+        var porCanal = new Dictionary<string, List<Envio>>(StringComparer.OrdinalIgnoreCase);
 
         var proxyCaller = CrearProxy(alCaller);
-        var proxyTodos = CrearProxy(aTodos);
 
         var clientes = new Mock<IHubCallerClients>();
         clientes.Setup(c => c.Caller).Returns(proxyCaller.Object);
-        clientes.Setup(c => c.All).Returns(proxyTodos.Object);
+        clientes.Setup(c => c.Group(It.IsAny<string>()))
+            .Returns<string>(nombre => CrearProxy(ObtenerCanal(porCanal, nombre)).Object);
 
         var hub = new ChatHub(_store, Options.Create(_config), _logger.Object)
         {
@@ -63,14 +74,19 @@ public class ChatHubTests
             Clients = clientes.Object
         };
 
-        return new HubSimulado(hub, alCaller, aTodos);
+        return new HubSimulado(hub, alCaller, porCanal);
     }
 
-    /// <summary>
-    /// Crea un proxy simulado que registra cada evento en la lista dada.
-    /// Caller devuelve ISingleClientProxy (subtipo de IClientProxy), por eso
-    /// el mock es de ese tipo: sirve igualmente para All.
-    /// </summary>
+    /// <summary>Devuelve (creándola si hace falta) la lista de eventos de un canal.</summary>
+    private static List<Envio> ObtenerCanal(Dictionary<string, List<Envio>> porCanal, string nombre)
+    {
+        if (!porCanal.TryGetValue(nombre, out var lista))
+            porCanal[nombre] = lista = [];
+
+        return lista;
+    }
+
+    /// <summary>Crea un proxy simulado que registra cada evento en la lista dada.</summary>
     private static Mock<ISingleClientProxy> CrearProxy(List<Envio> envios)
     {
         var proxy = new Mock<ISingleClientProxy>();
@@ -86,7 +102,7 @@ public class ChatHubTests
     #region ConnectAsync Tests
 
     [Test]
-    public async Task ConnectAsync_NombreValido_DevuelveNullYRegistraElUsuario()
+    public async Task ConnectAsync_SinCanal_EntraEnElCanalPorDefecto()
     {
         // Arrange
         var (hub, _, _) = CrearHub("conn-1");
@@ -96,56 +112,86 @@ public class ChatHubTests
 
         // Assert
         error.Should().BeNull();
-        _store.GetUsuarioDeConexion("conn-1").Should().Be("Ana");
+        _store.GetConexion("conn-1").Should().Be(new ConexionChat(General, "Ana"));
+    }
+
+    [Test]
+    public async Task ConnectAsync_CanalEspecifico_EntraEnEseCanal()
+    {
+        // Arrange
+        var (hub, _, _) = CrearHub("conn-1");
+
+        // Act
+        var error = await hub.ConnectAsync("Ana", "smr"); // sin almohadilla
+
+        // Assert
+        error.Should().BeNull();
+        _store.GetConexion("conn-1").Should().Be(new ConexionChat(Smr, "Ana"));
+    }
+
+    [Test]
+    public async Task ConnectAsync_CanalDesconocido_DevuelveError()
+    {
+        // Arrange
+        var (hub, _, _) = CrearHub("conn-1");
+
+        // Act
+        var error = await hub.ConnectAsync("Ana", "#facil");
+
+        // Assert
+        error.Should().Contain("#facil").And.Contain("#smr");
+        _store.GetUsuarios(General).Should().BeEmpty();
     }
 
     [Test]
     public async Task ConnectAsync_NombreValido_EnviaElHistorialSoloAlQueEntra()
     {
         // Arrange
-        var (hub, alCaller, aTodos) = CrearHub("conn-1");
+        var (hub, alCaller, _) = CrearHub("conn-1");
 
         // Act
         await hub.ConnectAsync("Ana");
 
         // Assert: el historial va SOLO al caller, sin saturar a los demás
         alCaller.Count(e => e.Metodo == ChatHubEventos.HistorialRecibido).Should().Be(1);
-        aTodos.Should().NotContain(e => e.Metodo == ChatHubEventos.HistorialRecibido);
     }
 
     [Test]
-    public async Task ConnectAsync_NombreValido_EmiteElAvisoDeUnionATodos()
+    public async Task ConnectAsync_NombreValido_EmiteUnionYListaASuCanal()
     {
         // Arrange
-        var (hub, _, aTodos) = CrearHub("conn-1");
+        var (hub, _, porCanal) = CrearHub("conn-1");
 
         // Act
         await hub.ConnectAsync("Ana");
 
         // Assert
-        var avisos = aTodos.Where(e => e.Metodo == ChatHubEventos.MensajeNuevo).ToArray();
-        avisos.Should().ContainSingle();
+        var eventos = ObtenerCanal(porCanal, General);
 
+        var avisos = eventos.Where(e => e.Metodo == ChatHubEventos.MensajeNuevo).ToArray();
+        avisos.Should().ContainSingle();
         var mensaje = (MensajeDto)avisos[0].Argumentos[0];
         mensaje.Texto.Should().Be("Ana se ha unido al canal");
         mensaje.Tipo.Should().Be(TipoMensaje.Sistema);
-    }
 
-    [Test]
-    public async Task ConnectAsync_NombreValido_NotificaLaListaDeUsuariosATodos()
-    {
-        // Arrange
-        var (hub, _, aTodos) = CrearHub("conn-1");
-
-        // Act
-        await hub.ConnectAsync("Ana");
-
-        // Assert
-        var listas = aTodos.Where(e => e.Metodo == ChatHubEventos.ListaUsuariosActualizada).ToArray();
+        var listas = eventos.Where(e => e.Metodo == ChatHubEventos.ListaUsuariosActualizada).ToArray();
         listas.Should().ContainSingle();
 
         var usuarios = (IReadOnlyList<UsuarioConectadoDto>)listas[0].Argumentos[0];
         usuarios.Should().ContainSingle(u => u.Usuario == "Ana");
+    }
+
+    [Test]
+    public async Task ConnectAsync_NombreValido_NoEmiteNadaEnLosDemasCanales()
+    {
+        // Arrange
+        var (hub, _, porCanal) = CrearHub("conn-1");
+
+        // Act
+        await hub.ConnectAsync("Ana", "#smr");
+
+        // Assert: #general no debe recibir nada
+        ObtenerCanal(porCanal, General).Should().BeEmpty();
     }
 
     [Test]
@@ -159,7 +205,7 @@ public class ChatHubTests
 
         // Assert
         error.Should().Be(_config.ErrorUsuarioLongitud);
-        _store.GetUsuarios().Should().BeEmpty();
+        _store.GetUsuarios(General).Should().BeEmpty();
     }
 
     [Test]
@@ -176,7 +222,7 @@ public class ChatHubTests
     }
 
     [Test]
-    public async Task ConnectAsync_NombreEnUso_DevuelveErrorDuplicado()
+    public async Task ConnectAsync_NombreEnUsoEnEseCanal_DevuelveErrorDuplicado()
     {
         // Arrange
         var (primero, _, _) = CrearHub("conn-1");
@@ -189,7 +235,25 @@ public class ChatHubTests
 
         // Assert
         error.Should().Be(_config.ErrorUsuarioDuplicado);
-        _store.GetUsuarios().Should().ContainSingle();
+        _store.GetUsuarios(General).Should().ContainSingle();
+    }
+
+    [Test]
+    public async Task ConnectAsync_MismoNombreEnOtroCanal_SePermite()
+    {
+        // Arrange: una "Ana" en #general
+        var (primero, _, _) = CrearHub("conn-1");
+        (await primero.ConnectAsync("Ana")).Should().BeNull();
+
+        var (segundo, _, _) = CrearHub("conn-2");
+
+        // Act: otra "Ana" entra en #smr
+        var error = await segundo.ConnectAsync("Ana", "#smr");
+
+        // Assert
+        error.Should().BeNull();
+        _store.GetUsuarios(General).Should().ContainSingle();
+        _store.GetUsuarios(Smr).Should().ContainSingle();
     }
 
     [Test]
@@ -206,18 +270,118 @@ public class ChatHubTests
         error.Should().Be("Esta conexión ya está registrada en el canal");
     }
 
+    #endregion
+
+    #region CambiarCanalAsync Tests
+
     [Test]
-    public async Task ConnectAsync_NombreConEspacios_LosRecorta()
+    public async Task CambiarCanal_Valido_EmiteSalidaEnElViejoYEntradaEnElNuevo()
     {
         // Arrange
-        var (hub, _, _) = CrearHub("conn-1");
+        var (hub, _, porCanal) = CrearHub("conn-1");
+        await hub.ConnectAsync("Ana");
+        ObtenerCanal(porCanal, General).Clear();
+        ObtenerCanal(porCanal, Smr).Clear();
 
         // Act
-        var error = await hub.ConnectAsync("  Ana  ");
+        var error = await hub.CambiarCanalAsync("#smr");
 
         // Assert
         error.Should().BeNull();
-        _store.GetUsuarios().Should().ContainSingle(u => u.Usuario == "Ana");
+
+        var salida = ObtenerCanal(porCanal, General)
+            .Where(e => e.Metodo == ChatHubEventos.MensajeNuevo).ToArray();
+        salida.Should().ContainSingle();
+        ((MensajeDto)salida[0].Argumentos[0]).Texto.Should().Be("Ana ha salido del canal");
+
+        var entrada = ObtenerCanal(porCanal, Smr)
+            .Where(e => e.Metodo == ChatHubEventos.MensajeNuevo).ToArray();
+        entrada.Should().ContainSingle();
+        ((MensajeDto)entrada[0].Argumentos[0]).Texto.Should().Be("Ana se ha unido al canal");
+
+        // Ambos canales reciben su lista actualizada
+        ObtenerCanal(porCanal, General)
+            .Should().Contain(e => e.Metodo == ChatHubEventos.ListaUsuariosActualizada);
+        ObtenerCanal(porCanal, Smr)
+            .Should().Contain(e => e.Metodo == ChatHubEventos.ListaUsuariosActualizada);
+    }
+
+    [Test]
+    public async Task CambiarCanal_EnviaElHistorialDelNuevoCanalSoloAlQueCambia()
+    {
+        // Arrange
+        var (hub, alCaller, _) = CrearHub("conn-1");
+        await hub.ConnectAsync("Ana");
+        alCaller.Clear();
+
+        // Act
+        await hub.CambiarCanalAsync(Smr);
+
+        // Assert
+        var historiales = alCaller.Where(e => e.Metodo == ChatHubEventos.HistorialRecibido).ToArray();
+        historiales.Should().ContainSingle();
+    }
+
+    [Test]
+    public async Task CambiarCanal_NombreOcupadoEnElDestino_DevuelveErrorYNoSeMueve()
+    {
+        // Arrange: otra "Ana" vive en #smr
+        var (primero, _, _) = CrearHub("conn-1");
+        (await primero.ConnectAsync("Ana")).Should().BeNull();
+
+        var (segundo, _, _) = CrearHub("conn-2");
+        (await segundo.ConnectAsync("Ana", "#smr")).Should().BeNull();
+
+        // Act: la Ana de #general intenta ir a #smr
+        var error = await primero.CambiarCanalAsync("#smr");
+
+        // Assert
+        error.Should().Be(_config.ErrorUsuarioDuplicado);
+        _store.GetConexion("conn-1").Should().Be(new ConexionChat(General, "Ana"));
+    }
+
+    [Test]
+    public async Task CambiarCanal_CanalDesconocido_DevuelveError()
+    {
+        // Arrange
+        var (hub, _, _) = CrearHub("conn-1");
+        await hub.ConnectAsync("Ana");
+
+        // Act
+        var error = await hub.CambiarCanalAsync("#inexistente");
+
+        // Assert
+        error.Should().Contain("#inexistente");
+        _store.GetConexion("conn-1").Should().Be(new ConexionChat(General, "Ana"));
+    }
+
+    [Test]
+    public async Task CambiarCanal_SinRegistro_DevuelveError()
+    {
+        // Arrange
+        var (hub, _, _) = CrearHub("conn-9");
+
+        // Act
+        var error = await hub.CambiarCanalAsync("#smr");
+
+        // Assert
+        error.Should().Be("No estás registrado en el canal, vuelve a conectarte");
+    }
+
+    [Test]
+    public async Task CambiarCanal_AlCanalActual_DevuelveNullSinEmitirNada()
+    {
+        // Arrange
+        var (hub, _, porCanal) = CrearHub("conn-1");
+        await hub.ConnectAsync("Ana");
+        ObtenerCanal(porCanal, General).Clear();
+
+        // Act
+        var error = await hub.CambiarCanalAsync("#GENERAL"); // mayúsculas
+
+        // Assert
+        error.Should().BeNull();
+        ObtenerCanal(porCanal, General).Should().BeEmpty();
     }
 
     #endregion
@@ -228,23 +392,23 @@ public class ChatHubTests
     public async Task SendAsync_ConexionNoRegistrada_DevuelveError()
     {
         // Arrange
-        var (hub, _, aTodos) = CrearHub("conn-5");
+        var (hub, _, porCanal) = CrearHub("conn-5");
 
         // Act: alguien que no se ha dado de alta intenta escribir
         var error = await hub.SendAsync("Buenas");
 
         // Assert
         error.Should().Be("No estás registrado en el canal, vuelve a conectarte");
-        aTodos.Should().BeEmpty();
+        porCanal.Should().BeEmpty();
     }
 
     [Test]
-    public async Task SendAsync_MensajeValido_DevuelveNullYLoDifundeATodos()
+    public async Task SendAsync_MensajeValido_DifundeASuCanalYNoAlosDemas()
     {
         // Arrange
-        var (hub, _, aTodos) = CrearHub("conn-1");
-        await hub.ConnectAsync("Ana");
-        aTodos.Clear();
+        var (hub, _, porCanal) = CrearHub("conn-1");
+        await hub.ConnectAsync("Ana", "#smr");
+        ObtenerCanal(porCanal, Smr).Clear();
 
         // Act
         var error = await hub.SendAsync("Buenas a todos");
@@ -252,17 +416,21 @@ public class ChatHubTests
         // Assert
         error.Should().BeNull();
 
-        var difundidos = aTodos.Where(e => e.Metodo == ChatHubEventos.MensajeNuevo).ToArray();
+        var difundidos = ObtenerCanal(porCanal, Smr)
+            .Where(e => e.Metodo == ChatHubEventos.MensajeNuevo).ToArray();
         difundidos.Should().ContainSingle();
 
         var mensaje = (MensajeDto)difundidos[0].Argumentos[0];
         mensaje.Usuario.Should().Be("Ana");
         mensaje.Texto.Should().Be("Buenas a todos");
         mensaje.Tipo.Should().Be(TipoMensaje.Normal);
+
+        // #general no debe recibir nada
+        ObtenerCanal(porCanal, General).Should().BeEmpty();
     }
 
     [Test]
-    public async Task SendAsync_MensajeValido_EntraEnElHistorial()
+    public async Task SendAsync_MensajeValido_EntraEnElHistorialDeSuCanal()
     {
         // Arrange
         var (hub, _, _) = CrearHub("conn-1");
@@ -271,11 +439,12 @@ public class ChatHubTests
         // Act
         await hub.SendAsync("Buenas a todos");
 
-        // Assert: unión + mensaje escrito
-        var historial = _store.GetHistorial();
+        // Assert: unión + mensaje escrito en #general; #smr sigue vacío
+        var historial = _store.GetHistorial(General);
         historial.Should().HaveCount(2);
         historial[^1].Texto.Should().Be("Buenas a todos");
         historial[^1].Tipo.Should().Be(TipoMensaje.Normal);
+        _store.GetHistorial(Smr).Should().BeEmpty();
     }
 
     [Test]
@@ -311,55 +480,61 @@ public class ChatHubTests
     #region OnDisconnectedAsync Tests
 
     [Test]
-    public async Task OnDisconnectedAsync_UsuarioRegistrado_EmiteLaSalidaYLaLista()
+    public async Task OnDisconnectedAsync_UsuarioRegistrado_EmiteLaSalidaYSuListaEnSuCanal()
     {
         // Arrange
-        var (hub, _, aTodos) = CrearHub("conn-1");
-        await hub.ConnectAsync("Ana");
-        aTodos.Clear();
+        var (hub, _, porCanal) = CrearHub("conn-1");
+        await hub.ConnectAsync("Ana", "#smr");
+        ObtenerCanal(porCanal, Smr).Clear();
 
         // Act
         await hub.OnDisconnectedAsync(null);
 
         // Assert
-        var avisos = aTodos.Where(e => e.Metodo == ChatHubEventos.MensajeNuevo).ToArray();
+        var avisos = ObtenerCanal(porCanal, Smr)
+            .Where(e => e.Metodo == ChatHubEventos.MensajeNuevo).ToArray();
         avisos.Should().ContainSingle();
 
         var salida = (MensajeDto)avisos[0].Argumentos[0];
         salida.Texto.Should().Be("Ana ha salido del canal");
         salida.Tipo.Should().Be(TipoMensaje.Sistema);
 
-        aTodos.Should().Contain(e => e.Metodo == ChatHubEventos.ListaUsuariosActualizada);
-        _store.GetUsuarios().Should().BeEmpty();
+        ObtenerCanal(porCanal, Smr)
+            .Should().Contain(e => e.Metodo == ChatHubEventos.ListaUsuariosActualizada);
+        _store.GetUsuarios(Smr).Should().BeEmpty();
+
+        // Otros canales no se enteran
+        ObtenerCanal(porCanal, General).Should().BeEmpty();
     }
 
     [Test]
     public async Task OnDisconnectedAsync_SinRegistro_NoEmiteNada()
     {
         // Arrange: una pestaña que se abre y se cierra sin escribir nada
-        var (hub, _, aTodos) = CrearHub("conn-9");
+        var (hub, _, porCanal) = CrearHub("conn-9");
 
         // Act
         await hub.OnDisconnectedAsync(null);
 
         // Assert
-        aTodos.Should().BeEmpty();
+        porCanal.Should().BeEmpty();
     }
 
     [Test]
     public async Task OnDisconnectedAsync_ConExcepcion_NoLanzaYEmiteLaSalida()
     {
         // Arrange
-        var (hub, _, aTodos) = CrearHub("conn-1");
+        var (hub, _, porCanal) = CrearHub("conn-1");
         await hub.ConnectAsync("Ana");
-        aTodos.Clear();
+        ObtenerCanal(porCanal, General).Clear();
 
         // Act: caída por excepción (corte de red...)
         Func<Task> acto = async () => await hub.OnDisconnectedAsync(new Exception("Corte de red"));
 
         // Assert
         await acto.Should().NotThrowAsync();
-        aTodos.Should().Contain(e => e.Metodo == ChatHubEventos.MensajeNuevo);
+        ObtenerCanal(porCanal, General)
+            .Should().Contain(e => e.Metodo == ChatHubEventos.MensajeNuevo);
     }
 
     #endregion

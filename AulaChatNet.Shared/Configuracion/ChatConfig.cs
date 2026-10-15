@@ -30,8 +30,24 @@ public class ChatConfig
     /// <summary>Nombre de la sección de configuración en appsettings.json.</summary>
     public const string Seccion = "Chat";
 
-    /// <summary>Canal único del chat en la Fase 1.</summary>
-    public string Canal { get; set; } = "#general";
+    /// <summary>
+    /// Canales de texto disponibles, en orden. El primero es el canal por
+    /// defecto al conectar. La lista vive en appsettings: añadir o quitar
+    /// un aula no requiere tocar código.
+    ///
+    /// <remarks>
+    /// Arranca VACÍA a propósito: el ConfigurationBinder de .NET AÑADE los
+    /// valores de appsettings a la lista existente en lugar de reemplazarla,
+    /// así que una lista con valores por defecto los duplicaría con los del
+    /// fichero. Si un proyecto no tuviera la sección "Chat",
+    /// <see cref="CanalPorDefecto"/> sigue ofreciendo "#general".
+    /// </remarks>
+    /// </summary>
+    /// <example>#general, #smr, #daw, #asir, #dam</example>
+    public List<string> Canales { get; set; } = [];
+
+    /// <summary>Canal al que entra un cliente que no especifica otro.</summary>
+    public string CanalPorDefecto => Canales.Count > 0 ? Canales[0] : "#general";
 
     /// <summary>
     /// Ruta del endpoint del hub de SignalR. Vive aquí porque la comparten
@@ -86,6 +102,45 @@ public class ChatConfig
     // ── Validación ──
     // Un único sitio donde se aplica la regla: el servidor la usa para
     // rechazar peticiones y los clientes para avisar antes de enviar.
+
+    /// <summary>
+    /// Normaliza un canal escrito por el usuario: recorta los espacios,
+    /// añade la almohadilla si falta y pasa a mayúsculas ("smr" → "#SMR").
+    /// Así "smr", "#smr" y "#SMR" son el mismo canal.
+    /// </summary>
+    /// <param name="canal">Canal escrito por el usuario.</param>
+    /// <returns>Forma normalizada del canal.</returns>
+    public static string NormalizarCanal(string canal)
+    {
+        var limpio = canal.Trim();
+        return (limpio.StartsWith('#') ? limpio : $"#{limpio}").ToUpperInvariant();
+    }
+
+    /// <summary>
+    /// Devuelve la forma canónica de un canal (la que aparece en la
+    /// configuración) si existe; null si no está en la lista.
+    /// </summary>
+    /// <param name="canal">Canal escrito por el usuario (puede ser null).</param>
+    /// <returns>Canal canónico (p. ej. "#smr") o null si no existe.</returns>
+    public string? EncontrarCanal(string? canal) =>
+        string.IsNullOrWhiteSpace(canal)
+            ? null
+            : Canales.FirstOrDefault(c =>
+                string.Equals(NormalizarCanal(c), NormalizarCanal(canal), StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Indica si un canal existe entre los configurados
+    /// (insensible a mayúsculas y a la almohadilla inicial).
+    /// </summary>
+    /// <param name="canal">Canal escrito por el usuario (puede ser null).</param>
+    /// <returns>true si el canal está en la lista.</returns>
+    public bool EsCanalValido(string? canal) => EncontrarCanal(canal) is not null;
+
+    /// <summary>Error cuando el canal no está en la lista configurada.</summary>
+    /// <param name="canal">Canal intentado por el usuario.</param>
+    /// <returns>Mensaje en español con los canales válidos.</returns>
+    public string ErrorCanalDesconocido(string canal) =>
+        $"El canal {canal} no existe. Canales válidos: {string.Join(", ", Canales)}";
 
     /// <summary>
     /// Valida un nombre de usuario según la configuración.

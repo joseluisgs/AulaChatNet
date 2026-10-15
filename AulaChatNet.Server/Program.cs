@@ -105,8 +105,9 @@ static void PrintStartupInfo(IConfiguration configuration)
     Log.Information("=================================================================");
     Log.Information("AulaChatNet - Chat en tiempo real para el aula");
     Log.Information("=================================================================");
-    Log.Information("CANAL:");
-    Log.Information("  Nombre:        {Canal}", chat.Canal);
+    Log.Information("CANALES (appsettings.json → sección Chat):");
+    Log.Information("  Disponibles:   {Canales}", string.Join(", ", chat.Canales));
+    Log.Information("  Por defecto:   {Canal}", chat.CanalPorDefecto);
     Log.Information("SIGNALR (realtime):");
     Log.Information("  Hub del chat:  http://{Host}:{Puerto}{Ruta}", host, puerto, chat.HubRuta);
     Log.Information("CLIENTES:");

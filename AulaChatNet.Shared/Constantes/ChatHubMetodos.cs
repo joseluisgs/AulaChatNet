@@ -12,4 +12,7 @@ public static class ChatHubMetodos
 
     /// <summary>Método para enviar un mensaje al canal: SendAsync(texto).</summary>
     public const string Enviar = "SendAsync";
+
+    /// <summary>Método para moverse a otro canal: CambiarCanalAsync(canal).</summary>
+    public const string CambiarCanal = "CambiarCanalAsync";
 }

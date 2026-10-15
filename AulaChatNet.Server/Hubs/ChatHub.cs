@@ -13,28 +13,36 @@ namespace AulaChatNet.Server.Hubs;
 /// entre los clientes (terminal y Blazor) y el store en memoria.
 ///
 /// <remarks>
+/// Cada canal de la configuración es un GRUPO de SignalR: los mensajes se
+/// emiten con <c>Clients.Group(canal)</c>, así cada sala recibe solo lo suyo.
+///
 /// Flujo de la Fase 1:
 /// <list type="number">
 /// <item>El cliente se conecta al hub y llama a <see cref="ConnectAsync"/>
-/// con su nombre de usuario.</item>
-/// <item>El servidor valida, registra y le envía SOLO a él el historial
-/// (<see cref="ChatHubEventos.HistorialRecibido"/>).</item>
-/// <item>Cada <see cref="SendAsync"/> se difunde a todos como
-/// <see cref="ChatHubEventos.MensajeNuevo"/>.</item>
-/// <item>Al desconectar se emite "X ha salido del canal" y la lista de
-/// usuarios actualizada.</item>
+/// con su nombre (y opcionalmente su canal; si no, el por defecto).</item>
+/// <item>El servidor valida, registra y le envía SOLO a él el historial del
+/// canal (<see cref="ChatHubEventos.HistorialRecibido"/>).</item>
+/// <item>Cada <see cref="SendAsync"/> se difunde al grupo de su canal.</item>
+/// <item><see cref="CambiarCanalAsync"/> mueve al usuario entre grupos
+/// (aviso de salida en el viejo, de entrada en el nuevo).</item>
+/// <item>Al desconectar se emite "X ha salido del canal" al SUYO.</item>
 /// </list>
 /// El nombre llega como parámetro de ConnectAsync (y no en OnConnectedAsync)
 /// porque SignalR conecta primero y "quién eres" se dice después: así el
 /// servidor puede rechazar nombres inválidos o duplicados devolviendo un
 /// mensaje de error al cliente.
+///
+/// Matiz conocido: en el instante exacto de un cambio de canal puede
+/// colarse un mensaje de la sala anterior (carrera inherente a los grupos);
+/// el cliente, al recibir el historial del nuevo canal, repinta y lo corrige.
 /// </remarks>
 /// </summary>
 /// <example>
 /// ws://localhost:5030/hubs/chat
 /// <code>
-/// await conexion.InvokeAsync(ChatHubMetodos.Conectar, "Ana");  // → null si OK
-/// await conexion.InvokeAsync(ChatHubMetodos.Enviar, "Buenas"); // → null si OK
+/// await conexion.InvokeAsync(ChatHubMetodos.Conectar, "Ana", "#smr"); // → null si OK
+/// await conexion.InvokeAsync(ChatHubMetodos.CambiarCanal, "#daw");    // → null si OK
+/// await conexion.InvokeAsync(ChatHubMetodos.Enviar, "Buenas");        // → null si OK
 /// </code>
 /// </example>
 public class ChatHub(IChatStore store, IOptions<ChatConfig> opciones, ILogger<ChatHub> logger) : Hub
@@ -54,16 +62,31 @@ public class ChatHub(IChatStore store, IOptions<ChatConfig> opciones, ILogger<Ch
     }
 
     /// <summary>
-    /// Da de alta al usuario en el canal y le envía el historial.
+    /// Da de alta al usuario en un canal y le envía el historial de ese canal.
     /// </summary>
     /// <param name="usuario">Nombre elegido (se recorta y se valida con ChatConfig).</param>
+    /// <param name="canal">Canal a entrar (opcional; si se omite, el por defecto de la config).</param>
     /// <returns>null si todo fue correcto; el mensaje de error si no (el cliente se desconecta).</returns>
-    public async Task<string?> ConnectAsync(string? usuario)
+    public async Task<string?> ConnectAsync(string? usuario, string? canal = null)
     {
         usuario = usuario?.Trim() ?? string.Empty;
 
-        // Una sola expresión: valida el nombre Y lo registra en el store
-        var error = Config.ValidarUsuario(usuario) ?? store.AddUsuario(usuario, Context.ConnectionId);
+        // Si no indican canal, se entra al primero de la configuración
+        var canalCanonico = Config.EncontrarCanal(
+            string.IsNullOrWhiteSpace(canal) ? Config.CanalPorDefecto : canal);
+
+        if (canalCanonico is null)
+        {
+            var errorCanal = Config.ErrorCanalDesconocido(canal?.Trim() ?? string.Empty);
+            logger.LogWarning(
+                "Registro rechazado ({ConnectionId}): {Error}", Context.ConnectionId, errorCanal);
+
+            return errorCanal;
+        }
+
+        // Una sola expresión: valida el nombre Y lo registra en el canal
+        var error = Config.ValidarUsuario(usuario)
+                    ?? store.AddUsuario(canalCanonico, usuario, Context.ConnectionId);
 
         if (error is not null)
         {
@@ -75,32 +98,97 @@ public class ChatHub(IChatStore store, IOptions<ChatConfig> opciones, ILogger<Ch
 
         logger.LogInformation(
             "Usuario {Usuario} conectado al canal {Canal} ({ConnectionId})",
-            usuario, Config.Canal, Context.ConnectionId);
+            usuario, canalCanonico, Context.ConnectionId);
 
-        // 1) Historial SOLO a este cliente: no se satura a los demás reenviándolo
-        await Clients.Caller.SendAsync(ChatHubEventos.HistorialRecibido, store.GetHistorial());
+        // 1) Historial del canal SOLO a este cliente: no se satura a los demás
+        await Clients.Caller.SendAsync(ChatHubEventos.HistorialRecibido, store.GetHistorial(canalCanonico));
 
-        // 2) "X se ha unido al canal" a todos (también al que acaba de entrar)
+        // 2) "X se ha unido al canal" a los miembros del canal (también al que entra)
         var mensaje = MensajesSistema.UsuarioUnido(usuario);
-        store.AddMensaje(mensaje);
-        await Clients.All.SendAsync(ChatHubEventos.MensajeNuevo, mensaje);
+        store.AddMensaje(canalCanonico, mensaje);
+        await Clients.Group(canalCanonico).SendAsync(ChatHubEventos.MensajeNuevo, mensaje);
 
-        // 3) Lista de usuarios actualizada para todos (punto verde de en línea)
-        await Clients.All.SendAsync(ChatHubEventos.ListaUsuariosActualizada, store.GetUsuarios());
+        // 3) Lista de usuarios del canal actualizada (punto verde de en línea)
+        await Clients.Group(canalCanonico).SendAsync(
+            ChatHubEventos.ListaUsuariosActualizada, store.GetUsuarios(canalCanonico));
 
         return null;
     }
 
     /// <summary>
-    /// Difunde un mensaje del usuario registrado a todos los conectados.
+    /// Mueve al usuario registrado a otro canal, con los avisos propios de
+    /// salida (en el canal viejo) y entrada (en el nuevo).
+    /// </summary>
+    /// <param name="canal">Canal de destino (se valida contra la configuración).</param>
+    /// <returns>null si el cambio fue correcto; el mensaje de error si no.</returns>
+    public async Task<string?> CambiarCanalAsync(string? canal)
+    {
+        var conexion = store.GetConexion(Context.ConnectionId);
+
+        if (conexion is null)
+            return "No estás registrado en el canal, vuelve a conectarte";
+
+        var canalNuevo = Config.EncontrarCanal(canal);
+
+        if (canalNuevo is null)
+        {
+            var errorCanal = Config.ErrorCanalDesconocido(canal?.Trim() ?? string.Empty);
+            logger.LogWarning(
+                "Cambio de canal rechazado ({ConnectionId}): {Error}", Context.ConnectionId, errorCanal);
+
+            return errorCanal;
+        }
+
+        // Ya está en ese canal: no se emite nada (el cliente solo repinta)
+        if (string.Equals(canalNuevo, conexion.Canal, StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        var error = store.CambiarCanal(Context.ConnectionId, canalNuevo);
+
+        if (error is not null)
+        {
+            logger.LogWarning(
+                "Cambio de canal rechazado de {Usuario} ({ConnectionId}): {Error}",
+                conexion.Usuario, Context.ConnectionId, error);
+
+            return error;
+        }
+
+        logger.LogInformation(
+            "Usuario {Usuario} cambia de {CanalViejo} a {CanalNuevo}",
+            conexion.Usuario, conexion.Canal, canalNuevo);
+
+        // Aviso de SALIDA en el canal anterior (para los que se quedan allí)
+        var salida = MensajesSistema.UsuarioSalio(conexion.Usuario);
+        store.AddMensaje(conexion.Canal, salida);
+        await Clients.Group(conexion.Canal).SendAsync(ChatHubEventos.MensajeNuevo, salida);
+        await Clients.Group(conexion.Canal).SendAsync(
+            ChatHubEventos.ListaUsuariosActualizada, store.GetUsuarios(conexion.Canal));
+
+        // Historial del nuevo canal SOLO al que cambia (antes del aviso de
+        // entrada, para que no se pinte dos veces la unión)
+        await Clients.Caller.SendAsync(ChatHubEventos.HistorialRecibido, store.GetHistorial(canalNuevo));
+
+        // Aviso de ENTRADA en el nuevo canal
+        var entrada = MensajesSistema.UsuarioUnido(conexion.Usuario);
+        store.AddMensaje(canalNuevo, entrada);
+        await Clients.Group(canalNuevo).SendAsync(ChatHubEventos.MensajeNuevo, entrada);
+        await Clients.Group(canalNuevo).SendAsync(
+            ChatHubEventos.ListaUsuariosActualizada, store.GetUsuarios(canalNuevo));
+
+        return null;
+    }
+
+    /// <summary>
+    /// Difunde un mensaje del usuario registrado al grupo de SU canal.
     /// </summary>
     /// <param name="texto">Texto escrito (se valida con ChatConfig).</param>
     /// <returns>null si todo fue correcto; el mensaje de error si no.</returns>
     public async Task<string?> SendAsync(string? texto)
     {
-        var usuario = store.GetUsuarioDeConexion(Context.ConnectionId);
+        var conexion = store.GetConexion(Context.ConnectionId);
 
-        if (usuario is null)
+        if (conexion is null)
         {
             logger.LogWarning(
                 "Mensaje rechazado: la conexión {ConnectionId} no está registrada",
@@ -115,52 +203,54 @@ public class ChatHub(IChatStore store, IOptions<ChatConfig> opciones, ILogger<Ch
 
         if (error is not null)
         {
-            logger.LogWarning("Mensaje rechazado de {Usuario}: {Error}", usuario, error);
+            logger.LogWarning("Mensaje rechazado de {Usuario}: {Error}", conexion.Usuario, error);
 
             return error;
         }
 
         var mensaje = new MensajeDto(
-            Guid.NewGuid(), usuario, texto, DateTime.UtcNow, TipoMensaje.Normal);
+            Guid.NewGuid(), conexion.Usuario, texto, DateTime.UtcNow, TipoMensaje.Normal);
 
-        store.AddMensaje(mensaje);
+        store.AddMensaje(conexion.Canal, mensaje);
 
         // Se loguea la longitud, no el contenido: costumbre de buenas prácticas
         // (los logs pueden verse personas no autorizadas)
         logger.LogInformation(
-            "{Usuario} envía mensaje de {Longitud} caracteres", usuario, texto.Length);
+            "{Usuario} envía mensaje de {Longitud} caracteres a {Canal}",
+            conexion.Usuario, texto.Length, conexion.Canal);
 
-        await Clients.All.SendAsync(ChatHubEventos.MensajeNuevo, mensaje);
+        await Clients.Group(conexion.Canal).SendAsync(ChatHubEventos.MensajeNuevo, mensaje);
 
         return null;
     }
 
     /// <summary>
     /// Desconexión: si el usuario ya estaba registrado, se despide en su
-    /// nombre y se actualiza la lista de conectados.
+    /// nombre dentro de SU canal y se actualiza su lista de conectados.
     /// </summary>
     /// <param name="exception">Excepción que causó la caída, si la hubo.</param>
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
-        var usuario = store.RemoveUsuario(Context.ConnectionId);
+        var conexion = store.RemoveUsuario(Context.ConnectionId);
 
-        if (usuario is not null)
+        if (conexion is not null)
         {
             if (exception is not null)
                 logger.LogWarning(exception,
                     "Usuario {Usuario} se desconectó con error ({ConnectionId})",
-                    usuario, Context.ConnectionId);
+                    conexion.Usuario, Context.ConnectionId);
             else
                 logger.LogInformation(
-                    "Usuario {Usuario} desconectado ({ConnectionId})",
-                    usuario, Context.ConnectionId);
+                    "Usuario {Usuario} desconectado de {Canal} ({ConnectionId})",
+                    conexion.Usuario, conexion.Canal, Context.ConnectionId);
 
-            var mensaje = MensajesSistema.UsuarioSalio(usuario);
-            store.AddMensaje(mensaje);
+            var mensaje = MensajesSistema.UsuarioSalio(conexion.Usuario);
+            store.AddMensaje(conexion.Canal, mensaje);
 
-            // Clients.All ya NO incluye al que se fue: el aviso es para el resto
-            await Clients.All.SendAsync(ChatHubEventos.MensajeNuevo, mensaje);
-            await Clients.All.SendAsync(ChatHubEventos.ListaUsuariosActualizada, store.GetUsuarios());
+            // El aviso es solo para los miembros de ese canal
+            await Clients.Group(conexion.Canal).SendAsync(ChatHubEventos.MensajeNuevo, mensaje);
+            await Clients.Group(conexion.Canal).SendAsync(
+                ChatHubEventos.ListaUsuariosActualizada, store.GetUsuarios(conexion.Canal));
         }
         else
         {
