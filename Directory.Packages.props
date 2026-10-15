@@ -13,6 +13,10 @@
     <!-- SignalR: cliente compartido por Terminal y Blazor -->
     <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.2" />
 
+    <!-- Configuración de clientes (appsettings.json de cada proyecto) -->
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Json" Version="10.0.13" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.13" />
+
     <!-- Rx.NET: capa reactiva (mensajes entrantes como IObservable) -->
     <PackageVersion Include="System.Reactive" Version="6.0.1" />
 
