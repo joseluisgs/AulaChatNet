@@ -56,6 +56,38 @@ public class SesionStoreTests
     }
 
     [Test]
+    public void Guardar_CargarConservaLaFechaDeUltimaConexion()
+    {
+        // Arrange
+        var cuando = new DateTime(2026, 10, 14, 18, 30, 0);
+        var original = new SesionTerminal("Ana", "#daw", cuando);
+
+        // Act
+        _store.Guardar(original);
+        var cargada = _store.Cargar();
+
+        // Assert: la fecha alimenta la bienvenida ("... el 14/10/2026 18:30")
+        cargada.Should().Be(original);
+        cargada!.UltimaConexion.Should().Be(cuando);
+    }
+
+    [Test]
+    public void Cargar_FicheroAntiguoSinFecha_LaCargaIgual()
+    {
+        // Arrange: sesión guardada por una versión anterior (sin el campo fecha)
+        Directory.CreateDirectory(_directorio);
+        File.WriteAllText(_ruta, """{ "Nick": "Ana", "Canal": "#general" }""");
+
+        // Act
+        var sesion = _store.Cargar();
+
+        // Assert: se carga igual; solo la bienvenida omite la fecha
+        sesion.Should().NotBeNull();
+        sesion!.Nick.Should().Be("Ana");
+        sesion.UltimaConexion.Should().Be(default);
+    }
+
+    [Test]
     public void Guardar_DosVeces_SobrescribeLaAnterior()
     {
         // Arrange
@@ -96,6 +128,37 @@ public class SesionStoreTests
 
         // Assert: nunca lanza; simplemente no hay sesión y se vuelve a preguntar
         sesion.Should().BeNull();
+
+        // ...y además queda MARCADO para que la bienienda diga
+        // "fichero corrupto" en vez de fingir que es la primera vez
+        _store.SesionCorrupta.Should().BeTrue();
+    }
+
+    [Test]
+    public void Cargar_SinFichero_NoMarcaSesionCorrupta()
+    {
+        // Arrange: no existe ningún sesion.json (caso primera vez)
+
+        // Act
+        var sesion = _store.Cargar();
+
+        // Assert: sin fichero NO es lo mismo que fichero roto
+        sesion.Should().BeNull();
+        _store.SesionCorrupta.Should().BeFalse();
+    }
+
+    [Test]
+    public void Cargar_SesionValida_NoMarcaSesionCorrupta()
+    {
+        // Arrange
+        _store.Guardar(new SesionTerminal("Ana", "#general", new DateTime(2026, 10, 15, 12, 0, 0)));
+
+        // Act
+        var sesion = _store.Cargar();
+
+        // Assert: una carga correcta deja el marcador limpio
+        sesion.Should().NotBeNull();
+        _store.SesionCorrupta.Should().BeFalse();
     }
 
     [Test]

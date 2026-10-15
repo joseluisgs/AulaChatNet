@@ -31,6 +31,14 @@ public class SesionStore(string? rutaFichero = null)
     public string RutaFichero { get; } = rutaFichero ?? RutaPorDefecto();
 
     /// <summary>
+    /// true si la ÚLTIMA <see cref="Cargar"/> encontró un fichero pero no se
+    /// pudo leer (JSON ilegible o disco con errores). false si no había
+    /// fichero o se cargó bien: así la bienienda distingue "primera vez"
+    /// de "se perdió tu sesión" y lo dice con un mensaje distinto.
+    /// </summary>
+    public bool SesionCorrupta { get; private set; }
+
+    /// <summary>
     /// Carga la sesión guardada, si existe y es legible.
     /// </summary>
     /// <returns>
@@ -39,6 +47,9 @@ public class SesionStore(string? rutaFichero = null)
     /// </returns>
     public SesionTerminal? Cargar()
     {
+        // Cada lectura deja el marcador limpio: solo importa la ÚLTIMA
+        SesionCorrupta = false;
+
         try
         {
             if (!File.Exists(RutaFichero))
@@ -51,7 +62,10 @@ public class SesionStore(string? rutaFichero = null)
         catch (Exception ex) when (ex is JsonException or IOException)
         {
             // JSON imposible o disco inaccesible: no hay sesión y se vuelve
-            // a preguntar; el chat sigue funcionando
+            // a preguntar; se marca para que la bienienda LO DIGA en lugar
+            // de fingir que es la primera vez
+            SesionCorrupta = true;
+
             return null;
         }
     }

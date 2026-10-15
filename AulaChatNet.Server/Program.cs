@@ -1,6 +1,8 @@
 using System.Text;
 using AulaChatNet.Server.Infrastructures;
+using AulaChatNet.Server.Services;
 using AulaChatNet.Shared.Configuracion;
+using AulaChatNet.Shared.Constantes;
 using Serilog;
 using Serilog.Events;
 
@@ -66,6 +68,13 @@ app.UseStaticFiles();
 
 // Publicación del hub en la ruta de la config (Chat:HubRuta)
 app.MapChatHub(configuration);
+
+// GET /estadisticas: consulta tipo REST con el total y el reparto por sala.
+// NO sustituye al evento EstadisticasActualizadas (eso es tiempo real):
+// sirve para lo que hay ANTES de que un cliente se conecte al hub, que es
+// cuando la terminal todavía quiere decir "actualmente hay 20 personas".
+app.MapGet(ChatRutas.Estadisticas, (IChatStore store) =>
+    Results.Ok(store.GetEstadisticas()));
 
 PrintStartupInfo(configuration);
 

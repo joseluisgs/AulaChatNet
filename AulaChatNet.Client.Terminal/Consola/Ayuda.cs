@@ -1,4 +1,5 @@
 using Spectre.Console;
+using Spectre.Console.Rendering;
 
 namespace AulaChatNet.Client.Terminal.Consola;
 
@@ -22,13 +23,14 @@ public static class Ayuda
         ("/canales", "Lista los canales disponibles"),
         ("/canal <nombre>", "Cambia de canal (p. ej. /canal daw)"),
         ("/nick <nombre>", "Cambia tu nombre en caliente (p. ej. /nick Ana2)"),
-        ("/usuarios", "Muestra los conectados del canal actual"),
+        ("/usuarios [canal]", "Conectados de tu canal o de otro (p. ej. /usuarios daw)"),
         ("/limpiar", "Limpia la pantalla (el historial lo repinta el servidor)"),
         ("/salir", "Desconectar y cerrar (Ctrl+C hace lo mismo)")
     ];
 
-    /// <summary>Muestra la tabla completa de comandos (al arrancar y con /ayuda).</summary>
-    public static void MostrarGeneral()
+    /// <summary>Tabla completa de comandos (al arrancar y con /ayuda).</summary>
+    /// <returns>La tabla lista para pintar con AnsiConsole.Write o meterla en el lienzo en vivo.</returns>
+    public static IRenderable CrearGeneral()
     {
         var tabla = new Table()
             .Border(TableBorder.Rounded)
@@ -41,22 +43,26 @@ public static class Ayuda
                 $"[{TemaDiscord.Blurple.ToMarkup()}]{Markup.Escape(comando)}[/]",
                 descripcion);
 
-        AnsiConsole.Write(tabla);
+        return tabla;
+    }
+
+    /// <summary>Muestra la tabla completa de comandos (al arrancar y con /ayuda).</summary>
+    public static void MostrarGeneral()
+    {
+        AnsiConsole.Write(CrearGeneral());
         AnsiConsole.WriteLine();
     }
 
     /// <summary>
-    /// Muestra la ayuda de UN comando (p. ej. "/ayuda canal"); si no existe,
-    /// avisa y recuerda la ayuda general.
+    /// Ayuda de UN comando (p. ej. "/ayuda canal"); si no existe, avisa y
+    /// recuerda la ayuda general.
     /// </summary>
     /// <param name="tema">Comando del que se pide ayuda (sin barra o con ella).</param>
-    public static void MostrarTema(string? tema)
+    /// <returns>Contenido listo para pintar con AnsiConsole.Write o meter en el lienzo en vivo.</returns>
+    public static IRenderable CrearTema(string? tema)
     {
         if (tema is null)
-        {
-            MostrarGeneral();
-            return;
-        }
+            return CrearGeneral();
 
         // Se busca ignorando la barra inicial: "/canal" y "canal" son lo mismo
         var buscado = tema.Trim().TrimStart('/');
@@ -66,18 +72,25 @@ public static class Ayuda
 
         if (encontrados.Length == 0)
         {
-            AnsiConsole.MarkupLine(
+            return new Markup(
                 $"[yellow]No hay ayuda para '{Markup.Escape(tema)}'.[/] " +
                 "Escribe [grey]/ayuda[/] para ver todos los comandos.");
-            AnsiConsole.WriteLine();
-
-            return;
         }
 
-        foreach (var (comando, descripcion) in encontrados)
-            AnsiConsole.MarkupLine(
-                $"[{TemaDiscord.Blurple.ToMarkup()}]{Markup.Escape(comando)}[/] — {descripcion}");
+        return new Rows(encontrados
+            .Select(c => new Markup(
+                $"[{TemaDiscord.Blurple.ToMarkup()}]{Markup.Escape(c.Comando)}[/] — {c.Descripcion}"))
+            .ToArray());
+    }
 
+    /// <summary>
+    /// Muestra la ayuda de UN comando (p. ej. "/ayuda canal"); si no existe,
+    /// avisa y recuerda la ayuda general.
+    /// </summary>
+    /// <param name="tema">Comando del que se pide ayuda (sin barra o con ella).</param>
+    public static void MostrarTema(string? tema)
+    {
+        AnsiConsole.Write(CrearTema(tema));
         AnsiConsole.WriteLine();
     }
 }
