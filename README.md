@@ -9,7 +9,7 @@
 
 **Chat en tiempo real para el aula con .NET 10, SignalR y Rx.NET. Clientes para terminal y web (Blazor), con estética de Discord.**
 
-> **Proyecto docente vivo.** Este README se amplía por fases, como en [TiendaDawApi-NetCore](https://github.com/joseluisgs/TiendaDawApi-NetCore). La documentación didáctica vive en [`doc/`](doc/01-arquitectura-del-servidor.md).
+> **Proyecto docente vivo.** Este README se amplía por fases, como en [TiendaDawApi-NetCore](https://github.com/joseluisgs/TiendaDawApi-NetCore). La documentación didáctica vive en [`docs/`](docs/).
 
 ## 🎯 Descripción
 
@@ -41,7 +41,7 @@ AulaChatNet/
 ├── global.json                             # SDK fijado (10.0.401)
 ├── Directory.Build.props                    # LangVersion, Nullable, warnings como errores
 ├── Directory.Packages.props                 # Central Package Management (versiones aquí)
-├── doc/                                    # Documentación didáctica
+├── docs/                                   # Documentación didáctica
 ├── AulaChatNet.Shared/                      # DTOs, constantes del hub, ChatConfig, avatar, operadores Rx
 │   └── AulaChatNet.Shared.Tests/
 ├── AulaChatNet.Server/                      # ASP.NET Core + SignalR
@@ -58,7 +58,7 @@ AulaChatNet/
 
 ## 🏗️ Arquitectura
 
-Capa compartida (`Shared`) como contrato entre servidor y clientes, un hub de SignalR por servidor y estado en memoria separado por canal. Detalle y diagramas en [`doc/01-arquitectura-del-servidor.md`](doc/01-arquitectura-del-servidor.md):
+Capa compartida (`Shared`) como contrato entre servidor y clientes, un hub de SignalR por servidor y estado en memoria separado por canal. Detalle y diagramas en [`docs/01-arquitectura-del-servidor.md`](docs/01-arquitectura-del-servidor.md):
 
 ```mermaid
 flowchart TD
@@ -126,6 +126,14 @@ Todo se configura en `appsettings.json` (con override por entorno en `appsetting
 | **Fase 1 · Blazor** | Layout Discord + store reactiva estilo `NotificationStore` | ⏳ Pendiente |
 | Fase 2 | Persistencia (SQLite + EF Core) | 🔜 Futura |
 | Fase 3 | Extras (moderación, comandos `/`, reacciones) | 🔜 Futura |
+
+## 📚 Documentación
+
+Toda la documentación didáctica vive en [`docs/`](docs/):
+
+- 📖 [`docs/01-arquitectura-del-servidor.md`](docs/01-arquitectura-del-servidor.md) - Arquitectura por capas, ciclo de vida de una conexión de SignalR, estado por canal, grupos, Serilog y dos bugs reales, con diagramas Mermaid
+
+> 💡 **Consejo:** si solo vas a leer un documento, que sea ese: es el mapa del servidor completo.
 
 ## 📝 Licencia
 

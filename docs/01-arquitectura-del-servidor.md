@@ -16,7 +16,7 @@
 - [4. Los canales como grupos de SignalR](#4-los-canales-como-grupos-de-signalr)
   - [4.1. Un canal, un grupo](#41-un-canal-un-grupo)
   - [4.2. Configuración sin hardcodeos](#42-configuración-sin-hardcodeos)
-  - [4.3. Normalización: smr, #smr y #SMR](#43-normalización-smr-smr-y-smr)
+  - [4.3. Normalización: daw, #daw y #DAW](#43-normalización-daw-daw-y-daw)
 - [5. Logging con Serilog desde appsettings](#5-logging-con-serilog-desde-appsettings)
   - [5.1. Consola para ver, fichero para investigar](#51-consola-para-ver-fichero-para-investigar)
   - [5.2. El símbolo doble dos puntos de Serilog](#52-el-símbolo-doble-dos-puntos-de-serilog)
@@ -30,7 +30,7 @@
 
 # 1. La arquitectura del servidor
 
-> 💡 **Punto de partida:** abres Discord y entras al canal #general. En pantalla ves a 40 personas y el mensaje que escribió Marta hace tres minutos. Abres otra pestaña en #smr y ves a otras 12 y su historial, sin mezclarse. Nadie ha recargado nada: todo llega solo. ¿Cómo sabe el servidor quién está en cada canal? ¿Cómo hace para mandarte el historial correcto y no el de otro? ¿Y qué pasa si dos personas se ponen el mismo nombre a la vez?
+> 💡 **Punto de partida:** abres Discord y entras al canal #general. En pantalla ves a 40 personas y el mensaje que escribió Marta hace tres minutos. Abres otra pestaña en #daw y ves a otras 12 y su historial, sin mezclarse. Nadie ha recargado nada: todo llega solo. ¿Cómo sabe el servidor quién está en cada canal? ¿Cómo hace para mandarte el historial correcto y no el de otro? ¿Y qué pasa si dos personas se ponen el mismo nombre a la vez?
 
 En este punto diseñamos por dentro el servidor de AulaChatNet: la arquitectura por capas, el ciclo de vida completo de una conexión de SignalR, las estructuras de datos que sostienen los canales en memoria, por qué cada canal es un "grupo", cómo se configura el logging sin tocar código y, para rematar, los dos bugs reales que enseñó este servidor mientras se construía.
 
@@ -143,27 +143,27 @@ sequenceDiagram
     C->>H: negotiate + WebSocket
     H->>H: OnConnectedAsync (aún sin nombre)
 
-    C->>H: ConnectAsync("Ana", "#smr")
-    H->>H: ChatConfig.EncontrarCanal("#smr")
-    H->>S: AddUsuario("#smr", "Ana", conn-1)
+    C->>H: ConnectAsync("Ana", "#daw")
+    H->>H: ChatConfig.EncontrarCanal("#daw")
+    H->>S: AddUsuario("#daw", "Ana", conn-1)
     S-->>H: null (OK)
     H-->>C: HistorialRecibido (SOLO a Ana)
-    H->>S: AddMensaje("#smr", "Ana se ha unido")
-    H-->>C: MensajeNuevo (al grupo #smr)
-    H-->>C: ListaUsuariosActualizada (al grupo #smr)
+    H->>S: AddMensaje("#daw", "Ana se ha unido")
+    H-->>C: MensajeNuevo (al grupo #daw)
+    H-->>C: ListaUsuariosActualizada (al grupo #daw)
 
     C->>H: SendAsync("Buenas")
-    H->>S: AddMensaje("#smr", mensaje)
-    H-->>C: MensajeNuevo (al grupo #smr)
+    H->>S: AddMensaje("#daw", mensaje)
+    H-->>C: MensajeNuevo (al grupo #daw)
 
     Note over C,H: Ana escribe /canal #general
 
     C->>H: CambiarCanalAsync("#general")
     H->>S: CambiarCanal(conn-1, "#general")
     S-->>H: null (OK)
-    H->>S: AddMensaje("#smr", "Ana ha salido")
-    H-->>C: MensajeNuevo (al grupo #smr)
-    H-->>C: ListaUsuariosActualizada (#smr)
+    H->>S: AddMensaje("#daw", "Ana ha salido")
+    H-->>C: MensajeNuevo (al grupo #daw)
+    H-->>C: ListaUsuariosActualizada (#daw)
     H-->>C: HistorialRecibido (#general, SOLO a Ana)
     H->>S: AddMensaje("#general", "Ana se ha unido")
     H-->>C: MensajeNuevo (al grupo #general)
@@ -256,7 +256,7 @@ var hub = new ChatHub(store, Options.Create(config), logger.Object)
 };
 ```
 
-Los proxies no hacen nada de red: solo guardan en una lista cada `SendCoreAsync`. Así un test puede preguntar: "¿qué recibió el grupo #smr?" y "¿recibió algo el grupo #general?". En `ChatHubTests.cs` tienes el patrón completo, incluida la simulación de varias conexiones.
+Los proxies no hacen nada de red: solo guardan en una lista cada `SendCoreAsync`. Así un test puede preguntar: "¿qué recibió el grupo #daw?" y "¿recibió algo el grupo #general?". En `ChatHubTests.cs` tienes el patrón completo, incluida la simulación de varias conexiones.
 
 ## 3. El estado en memoria: ChatStore
 
@@ -269,14 +269,14 @@ flowchart LR
     subgraph INDICE["_conexiones (índice global, uno solo)"]
         direction TB
         C1["conn-1 → #general · Ana"]
-        C2["conn-2 → #smr · Luis"]
-        C3["conn-3 → #smr · Marta"]
+        C2["conn-2 → #daw · Luis"]
+        C3["conn-3 → #daw · Marta"]
     end
 
     subgraph CANALES["_canales (un EstadoCanal por canal)"]
         direction TB
         G["#general<br/>nombres: Ana<br/>historial: cola"]
-        S["#smr<br/>nombres: Luis, Marta<br/>historial: cola"]
+        S["#daw<br/>nombres: Luis, Marta<br/>historial: cola"]
     end
 
     C1 -.->|"vive en"| G
@@ -307,7 +307,7 @@ if (!estado.UsuariosPorNombre.TryAdd(clave, nuevo))
     return Config.ErrorUsuarioDuplicado;
 ```
 
-📌 **Ejemplo real:** Discord. Si intentas cambiar el nick de tu servidor a un nombre ya usado por otro miembro, te lo rechaza. En nuestro caso la regla es más laxa: la unicidad es **por canal**, así que puede haber una "Ana" en #general y otra distinta en #smr.
+📌 **Ejemplo real:** Discord. Si intentas cambiar el nick de tu servidor a un nombre ya usado por otro miembro, te lo rechaza. En nuestro caso la regla es más laxa: la unicidad es **por canal**, así que puede haber una "Ana" en #general y otra distinta en #daw.
 
 > 📝 **Nota:** las claves se normalizan con `ToUpperInvariant()` antes de comparar, así que "Ana", "ANA" y "ana" son la misma persona. El mismo truco se aplica a los canales (ver sección 4.3).
 
@@ -336,7 +336,7 @@ SignalR tiene un concepto nativo llamado **grupos**: conjuntos de conexiones a l
 
 ```mermaid
 flowchart TD
-    subgraph CANAL_SMR["Canal #smr = grupo de SignalR"]
+    subgraph CANAL_DAW["Canal #daw = grupo de SignalR"]
         T["Terminal<br/>(Ana)"]
         B["Blazor<br/>(Luis)"]
     end
@@ -345,7 +345,7 @@ flowchart TD
         T2["Terminal<br/>(Marta)"]
     end
 
-    H["ChatHub.SendAsync<br/>Clients.Group('#smr')"] -->|"MensajeNuevo"| T
+    H["ChatHub.SendAsync<br/>Clients.Group('#daw')"] -->|"MensajeNuevo"| T
     H -->|"MensajeNuevo"| B
     H -.->|"no llega nada aquí"| T2
 
@@ -353,7 +353,7 @@ flowchart TD
     style T fill:#FF9800,color:#fff
     style B fill:#FF9800,color:#fff
     style T2 fill:#607D8B,color:#fff
-    style CANAL_SMR fill:#4CAF50,color:#fff
+    style CANAL_DAW fill:#4CAF50,color:#fff
     style CANAL_GENERAL fill:#607D8B,color:#fff
 ```
 
@@ -381,11 +381,11 @@ Y en `appsettings.Development.json` se puede sobreescribir para desarrollo:
 
 La configuración se carga en un objeto tipado `ChatConfig` (opciones de .NET) que se inyecta donde haga falta (hub, store...). Añadir el canal "#erli" a un aula es añadir una línea al JSON, sin tocar ni recompilar una línea de C#.
 
-### 4.3. Normalización: smr, #smr y #SMR
+### 4.3. Normalización: daw, #daw y #DAW
 
-Los usuarios escriben a su manera: "smr", "#smr", "#SMR", " #daw ". Para que todo el mundo caiga en el mismo canal, `ChatConfig.NormalizarCanal` recorta espacios, añade la almohadilla si falta y pasa a mayúsculas. Después, `EncontrarCanal` devuelve la forma canónica (la que aparece en la configuración) para usarla como clave interna.
+Los usuarios escriben a su manera: "daw", "#daw", "#DAW", " #daw ". Para que todo el mundo caiga en el mismo canal, `ChatConfig.NormalizarCanal` recorta espacios, añade la almohadilla si falta y pasa a mayúsculas. Después, `EncontrarCanal` devuelve la forma canónica (la que aparece en la configuración) para usarla como clave interna.
 
-> 💡 **Consejo:** cuando el cliente terminal permita escribir `/canal smr`, esta normalización hará que funcione igual que `/canal #smr` o `/canal #SMR`.
+> 💡 **Consejo:** cuando el cliente terminal permita escribir `/canal daw`, esta normalización hará que funcione igual que `/canal #daw` o `/canal #DAW`.
 
 ## 5. Logging con Serilog desde appsettings
 
