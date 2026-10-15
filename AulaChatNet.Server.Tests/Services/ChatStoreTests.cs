@@ -179,6 +179,85 @@ public class ChatStoreTests
 
     #endregion
 
+    #region CambiarNick Tests
+
+    [Test]
+    public void CambiarNick_NombreValido_CambiaElNombreYConservaLaEntrada()
+    {
+        // Arrange
+        _store.AddUsuario(General, "Ana", "conn-1");
+        var antes = _store.GetUsuarios(General)[0];
+
+        // Act
+        var error = _store.CambiarNick("conn-1", "Ana2");
+
+        // Assert
+        error.Should().BeNull();
+        _store.GetConexion("conn-1").Should().Be(new ConexionChat(General, "Ana2"));
+        _store.GetUsuarios(General).Select(u => u.Usuario).Should().Equal("Ana2");
+
+        // La hora de entrada de la sesión NO se pierde al cambiar de nombre
+        _store.GetUsuarios(General)[0].ConectadoDesde.Should().Be(antes.ConectadoDesde);
+    }
+
+    [Test]
+    public void CambiarNick_NombreOcupadoEnElMismoCanal_DevuelveErrorYSeQuedaConElViejo()
+    {
+        // Arrange: Luis ocupa ese nombre en #general
+        _store.AddUsuario(General, "Ana", "conn-1");
+        _store.AddUsuario(General, "Luis", "conn-2");
+
+        // Act
+        var error = _store.CambiarNick("conn-1", "Luis");
+
+        // Assert: rechazado y sin tocar nada
+        error.Should().Be(_config.ErrorUsuarioDuplicado);
+        _store.GetConexion("conn-1").Should().Be(new ConexionChat(General, "Ana"));
+        _store.GetUsuarios(General).Select(u => u.Usuario).Should().BeEquivalentTo("Ana", "Luis");
+    }
+
+    [Test]
+    public void CambiarNick_NombreLibreTrasSalir_PuedeUsarlo()
+    {
+        // Arrange: Luis se va del canal y su nombre queda libre
+        _store.AddUsuario(General, "Ana", "conn-1");
+        _store.AddUsuario(General, "Luis", "conn-2");
+        _store.RemoveUsuario("conn-2");
+
+        // Act
+        var error = _store.CambiarNick("conn-1", "Luis");
+
+        // Assert
+        error.Should().BeNull();
+        _store.GetUsuarios(General).Select(u => u.Usuario).Should().Equal("Luis");
+    }
+
+    [Test]
+    public void CambiarNick_AlMismoNombre_DevuelveNullSinCambios()
+    {
+        // Arrange
+        _store.AddUsuario(General, "Ana", "conn-1");
+
+        // Act: mayúsculas distintas, mismo nombre
+        var error = _store.CambiarNick("conn-1", "ANA");
+
+        // Assert
+        error.Should().BeNull();
+        _store.GetConexion("conn-1").Should().Be(new ConexionChat(General, "Ana"));
+    }
+
+    [Test]
+    public void CambiarNick_ConexionNoRegistrada_DevuelveError()
+    {
+        // Act
+        var error = _store.CambiarNick("conn-fantasma", "Ana2");
+
+        // Assert
+        error.Should().Be("No estás registrado en el canal, vuelve a conectarte");
+    }
+
+    #endregion
+
     #region RemoveUsuario Tests
 
     [Test]

@@ -386,6 +386,119 @@ public class ChatHubTests
 
     #endregion
 
+    #region CambiarNickAsync Tests
+
+    [Test]
+    public async Task CambiarNick_NombreValido_EmiteElAvisoYLaListaEnSuCanal()
+    {
+        // Arrange
+        var (hub, _, porCanal) = CrearHub("conn-1");
+        await hub.ConnectAsync("Ana");
+        ObtenerCanal(porCanal, General).Clear();
+
+        // Act
+        var error = await hub.CambiarNickAsync("Ana2");
+
+        // Assert
+        error.Should().BeNull();
+
+        var avisos = ObtenerCanal(porCanal, General)
+            .Where(e => e.Metodo == ChatHubEventos.MensajeNuevo).ToArray();
+        avisos.Should().ContainSingle();
+        var mensaje = (MensajeDto)avisos[0].Argumentos[0];
+        mensaje.Texto.Should().Be("Ana ahora se llama Ana2");
+        mensaje.Tipo.Should().Be(TipoMensaje.Sistema);
+
+        // El panel de conectados se actualiza con el nombre nuevo
+        var listas = ObtenerCanal(porCanal, General)
+            .Where(e => e.Metodo == ChatHubEventos.ListaUsuariosActualizada).ToArray();
+        listas.Should().ContainSingle();
+
+        var usuarios = (IReadOnlyList<UsuarioConectadoDto>)listas[0].Argumentos[0];
+        usuarios.Should().ContainSingle(u => u.Usuario == "Ana2");
+    }
+
+    [Test]
+    public async Task CambiarNick_EntraEnElHistorialDeSuCanal()
+    {
+        // Arrange
+        var (hub, _, _) = CrearHub("conn-1");
+        await hub.ConnectAsync("Ana");
+
+        // Act
+        await hub.CambiarNickAsync("Ana2");
+
+        // Assert: unión + cambio de nick en #general
+        var historial = _store.GetHistorial(General);
+        historial.Should().HaveCount(2);
+        historial[^1].Texto.Should().Be("Ana ahora se llama Ana2");
+        historial[^1].Tipo.Should().Be(TipoMensaje.Sistema);
+    }
+
+    [Test]
+    public async Task CambiarNick_NombreOcupado_DevuelveErrorYConservaElViejo()
+    {
+        // Arrange: Luis ya está en #general
+        var (primero, _, _) = CrearHub("conn-1");
+        await primero.ConnectAsync("Ana");
+
+        var (segundo, _, _) = CrearHub("conn-2");
+        await segundo.ConnectAsync("Luis");
+
+        // Act: Ana intenta llamarse Luis
+        var error = await primero.CambiarNickAsync("Luis");
+
+        // Assert
+        error.Should().Be(_config.ErrorUsuarioDuplicado);
+        _store.GetConexion("conn-1").Should().Be(new ConexionChat(General, "Ana"));
+    }
+
+    [Test]
+    public async Task CambiarNick_NombreInvalido_DevuelveErrorDeLongitud()
+    {
+        // Arrange
+        var (hub, _, _) = CrearHub("conn-1");
+        await hub.ConnectAsync("Ana");
+
+        // Act
+        var error = await hub.CambiarNickAsync("A");
+
+        // Assert
+        error.Should().Be(_config.ErrorUsuarioLongitud);
+        _store.GetConexion("conn-1").Should().Be(new ConexionChat(General, "Ana"));
+    }
+
+    [Test]
+    public async Task CambiarNick_SinRegistro_DevuelveError()
+    {
+        // Arrange
+        var (hub, _, _) = CrearHub("conn-9");
+
+        // Act
+        var error = await hub.CambiarNickAsync("Ana2");
+
+        // Assert
+        error.Should().Be("No estás registrado en el canal, vuelve a conectarte");
+    }
+
+    [Test]
+    public async Task CambiarNick_AlMismoNombre_DevuelveNullSinEmitirNada()
+    {
+        // Arrange
+        var (hub, _, porCanal) = CrearHub("conn-1");
+        await hub.ConnectAsync("Ana");
+        ObtenerCanal(porCanal, General).Clear();
+
+        // Act: mayúsculas distintas, mismo nombre
+        var error = await hub.CambiarNickAsync("ANA");
+
+        // Assert
+        error.Should().BeNull();
+        ObtenerCanal(porCanal, General).Should().BeEmpty();
+    }
+
+    #endregion
+
     #region SendAsync Tests
 
     [Test]

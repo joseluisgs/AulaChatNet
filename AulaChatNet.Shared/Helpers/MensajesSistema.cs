@@ -29,6 +29,13 @@ public static class MensajesSistema
     public static MensajeDto UsuarioSalio(string usuario) =>
         Crear($"{usuario} ha salido del canal");
 
+    /// <summary>Crea el mensaje "X ahora se llama Y" (cambio de nick en caliente).</summary>
+    /// <param name="usuarioAntiguo">Nombre anterior del usuario.</param>
+    /// <param name="usuarioNuevo">Nuevo nombre elegido por el usuario.</param>
+    /// <returns>Mensaje de sistema listo para emitir.</returns>
+    public static MensajeDto NickCambiado(string usuarioAntiguo, string usuarioNuevo) =>
+        Crear($"{usuarioAntiguo} ahora se llama {usuarioNuevo}");
+
     private static MensajeDto Crear(string texto) =>
         new(Guid.NewGuid(), Autor, texto, DateTime.UtcNow, TipoMensaje.Sistema);
 }

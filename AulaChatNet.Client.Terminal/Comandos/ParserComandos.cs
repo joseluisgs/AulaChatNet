@@ -46,6 +46,7 @@ public static class ParserComandos
             "/ayuda" or "/help" => new Comando.Ayuda(argumento?.ToLowerInvariant()),
             "/canales" => new Comando.Canales(),
             "/canal" => CrearCanal(argumento),
+            "/nick" or "/nickname" => CrearNick(argumento),
             "/usuarios" or "/quienes" => new Comando.Usuarios(),
             "/limpiar" or "/clear" => new Comando.Limpiar(),
             "/salir" or "/exit" or "/quit" => new Comando.Salir(),
@@ -66,4 +67,17 @@ public static class ParserComandos
                 "Falta el nombre del canal",
                 "Usa: /canal <nombre> (p. ej. /canal daw)")
             : new Comando.Canal(argumento);
+
+    /// <summary>
+    /// Construye el comando de cambio de nick; si falta el nombre, devuelve
+    /// un <see cref="Comando.Invalido"/> con el uso correcto.
+    /// </summary>
+    /// <param name="argumento">Nuevo nombre escrito tras /nick (puede ser null).</param>
+    /// <returns>Comando de nick o comando inválido con su uso.</returns>
+    private static Comando CrearNick(string? argumento) =>
+        string.IsNullOrWhiteSpace(argumento)
+            ? new Comando.Invalido(
+                "Falta el nuevo nombre",
+                "Usa: /nick <nombre> (p. ej. /nick Ana)")
+            : new Comando.Nick(argumento);
 }

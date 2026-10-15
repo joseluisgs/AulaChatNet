@@ -15,4 +15,7 @@ public static class ChatHubMetodos
 
     /// <summary>Método para moverse a otro canal: CambiarCanalAsync(canal).</summary>
     public const string CambiarCanal = "CambiarCanalAsync";
+
+    /// <summary>Método para cambiar el nombre en caliente: CambiarNickAsync(nuevoNick).</summary>
+    public const string CambiarNick = "CambiarNickAsync";
 }

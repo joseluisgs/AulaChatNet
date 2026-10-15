@@ -28,6 +28,10 @@ public abstract record Comando
     /// <param name="Nombre">Canal escrito por el usuario (p. ej. "daw" o "#daw").</param>
     public sealed record Canal(string Nombre) : Comando;
 
+    /// <summary>/nick nombre: cambiar el nombre en caliente dentro del canal.</summary>
+    /// <param name="Nombre">Nuevo nombre escrito por el usuario.</param>
+    public sealed record Nick(string Nombre) : Comando;
+
     /// <summary>/usuarios: ver los conectados del canal actual.</summary>
     public sealed record Usuarios : Comando;
 

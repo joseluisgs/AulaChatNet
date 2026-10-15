@@ -46,6 +46,18 @@ public interface IChatStore
     string? CambiarCanal(string connectionId, string canalNuevo);
 
     /// <summary>
+    /// Cambia el nombre de un usuario registrado DENTRO de su canal actual:
+    /// ocupa el nuevo nombre (unicidad del canal) y libera el anterior.
+    /// </summary>
+    /// <param name="connectionId">Identificador de la conexión SignalR.</param>
+    /// <param name="nuevoNick">Nuevo nombre (ya validado y recortado por el hub).</param>
+    /// <returns>
+    /// null si el cambio fue correcto (o el nombre era el mismo); mensaje de
+    /// error si el nombre ya está en uso en su canal o la conexión no está registrada.
+    /// </returns>
+    string? CambiarNick(string connectionId, string nuevoNick);
+
+    /// <summary>
     /// Añade un mensaje al historial del canal; si se supera el límite
     /// configurado, se descarta el más antiguo (cola circular).
     /// </summary>

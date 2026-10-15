@@ -180,6 +180,62 @@ public class ChatHub(IChatStore store, IOptions<ChatConfig> opciones, ILogger<Ch
     }
 
     /// <summary>
+    /// Cambia el nombre del usuario registrado dentro de su canal actual
+    /// (como "Cambiar apodo" de Discord), con el aviso correspondiente.
+    /// </summary>
+    /// <param name="nuevoNick">Nuevo nombre (se recorta y se valida con ChatConfig).</param>
+    /// <returns>null si el cambio fue correcto; el mensaje de error si no.</returns>
+    public async Task<string?> CambiarNickAsync(string? nuevoNick)
+    {
+        var conexion = store.GetConexion(Context.ConnectionId);
+
+        if (conexion is null)
+            return "No estás registrado en el canal, vuelve a conectarte";
+
+        nuevoNick = nuevoNick?.Trim() ?? string.Empty;
+
+        var error = Config.ValidarUsuario(nuevoNick);
+
+        if (error is not null)
+        {
+            logger.LogWarning(
+                "Cambio de nick rechazado ({ConnectionId}): {Error}", Context.ConnectionId, error);
+
+            return error;
+        }
+
+        // Mismo nombre (ignorando mayúsculas): no se emite nada
+        if (string.Equals(conexion.Usuario, nuevoNick, StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        error = store.CambiarNick(Context.ConnectionId, nuevoNick);
+
+        if (error is not null)
+        {
+            logger.LogWarning(
+                "Cambio de nick rechazado de {Usuario} ({ConnectionId}): {Error}",
+                conexion.Usuario, Context.ConnectionId, error);
+
+            return error;
+        }
+
+        logger.LogInformation(
+            "Usuario {UsuarioAntiguo} ahora se llama {UsuarioNuevo} ({ConnectionId})",
+            conexion.Usuario, nuevoNick, Context.ConnectionId);
+
+        // "X ahora se llama Y" a los miembros del canal (también al propio autor)
+        var mensaje = MensajesSistema.NickCambiado(conexion.Usuario, nuevoNick);
+        store.AddMensaje(conexion.Canal, mensaje);
+        await Clients.Group(conexion.Canal).SendAsync(ChatHubEventos.MensajeNuevo, mensaje);
+
+        // Lista actualizada: el nick cambia en el panel de conectados
+        await Clients.Group(conexion.Canal).SendAsync(
+            ChatHubEventos.ListaUsuariosActualizada, store.GetUsuarios(conexion.Canal));
+
+        return null;
+    }
+
+    /// <summary>
     /// Difunde un mensaje del usuario registrado al grupo de SU canal.
     /// </summary>
     /// <param name="texto">Texto escrito (se valida con ChatConfig).</param>

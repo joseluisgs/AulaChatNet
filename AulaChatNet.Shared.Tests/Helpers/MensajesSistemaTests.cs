@@ -62,6 +62,31 @@ public class MensajesSistemaTests
 
     #endregion
 
+    #region NickCambiado Tests
+
+    [Test]
+    public void NickCambiado_NombresDados_TextoEsperado()
+    {
+        // Act
+        var mensaje = MensajesSistema.NickCambiado("Ana", "Ana2");
+
+        // Assert
+        mensaje.Texto.Should().Be("Ana ahora se llama Ana2");
+    }
+
+    [Test]
+    public void NickCambiado_TipoSistema_YAutorSistema()
+    {
+        // Act
+        var mensaje = MensajesSistema.NickCambiado("Ana", "Ana2");
+
+        // Assert
+        mensaje.Tipo.Should().Be(TipoMensaje.Sistema);
+        mensaje.Usuario.Should().Be(MensajesSistema.Autor);
+    }
+
+    #endregion
+
     #region Tests comunes
 
     [Test]

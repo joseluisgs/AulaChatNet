@@ -167,6 +167,36 @@ public class ParserComandosTests
 
     #endregion
 
+    #region Nick Tests
+
+    [Test]
+    [TestCase("/nick Ana2", "Ana2")]
+    [TestCase("/NICK ana2", "ana2")]     // mayúsculas dan igual
+    [TestCase("/nick   Ana2", "Ana2")]   // espacios sobrantes
+    public void Parse_NickConNombre_DevuelveNick(string entrada, string esperado)
+    {
+        // Act
+        var comando = ParserComandos.Parse(entrada);
+
+        // Assert
+        comando.Should().BeOfType<Comando.Nick>()
+            .Which.Nombre.Should().Be(esperado);
+    }
+
+    [Test]
+    public void Parse_NickSinNombre_DevuelveInvalidoConUso()
+    {
+        // Act
+        var comando = ParserComandos.Parse("/nick");
+
+        // Assert
+        var invalido = comando.Should().BeOfType<Comando.Invalido>().Subject;
+        invalido.Motivo.Should().Contain("nombre");
+        invalido.Uso.Should().Contain("/nick");
+    }
+
+    #endregion
+
     #region Errores Tests
 
     [Test]

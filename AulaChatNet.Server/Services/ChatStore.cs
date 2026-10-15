@@ -109,6 +109,46 @@ public class ChatStore(IOptions<ChatConfig> opciones) : IChatStore
     }
 
     /// <inheritdoc />
+    public string? CambiarNick(string connectionId, string nuevoNick)
+    {
+        if (!_conexiones.TryGetValue(connectionId, out var conexion))
+            return ErrorSinRegistro;
+
+        var claveNueva = Normalizar(nuevoNick);
+        var claveVieja = Normalizar(conexion.Datos.Usuario);
+
+        // Mismo nombre (solo cambian mayúsculas/espacios): nada que hacer
+        if (claveNueva == claveVieja)
+            return null;
+
+        // Nuevo nombre visible conservando la hora de entrada de la sesión
+        var nuevo = new UsuarioConectado(nuevoNick, conexion.Datos.ConectadoDesde);
+
+        // Unicidad del NUEVO nombre en SU canal actual
+        if (!conexion.Estado.UsuariosPorNombre.TryAdd(claveNueva, nuevo))
+            return Config.ErrorUsuarioDuplicado;
+
+        // Mover la conexión: conservamos la hora de entrada de la sesión,
+        // solo cambia el nombre visible
+        if (!_conexiones.TryUpdate(
+                connectionId,
+                new Conexion(conexion.Canal, conexion.Estado, nuevo),
+                conexion))
+        {
+            conexion.Estado.UsuariosPorNombre.TryRemove(
+                new KeyValuePair<string, UsuarioConectado>(claveNueva, nuevo));
+
+            return ErrorSinRegistro;
+        }
+
+        // Liberar el nombre viejo (solo si sigue siendo ese registro)
+        conexion.Estado.UsuariosPorNombre.TryRemove(
+            new KeyValuePair<string, UsuarioConectado>(claveVieja, conexion.Datos));
+
+        return null;
+    }
+
+    /// <inheritdoc />
     public void AddMensaje(string canal, MensajeDto mensaje)
     {
         var estado = _canales.GetOrAdd(canal, _ => new EstadoCanal());
