@@ -39,11 +39,30 @@ Banner.Mostrar();
 Ayuda.MostrarGeneral();
 
 // ============================================================================
-// ❓ NICK Y CANAL (con defaults de la sesión; validación LOCAL con ChatConfig)
+// ❓ BIENVENIDA Y ELECCIÓN DE NICK Y CANAL (entradas guiadas)
 // ============================================================================
-// La validación es la misma clase que ejecuta el servidor: si aquí dice que
-// vale, allí no puede fallar por longitud... salvo por el nombre duplicado,
-// que solo puede decidirlo el servidor (lo verás abajo en el reintento).
+// Nada por arte de magia: se dice quién era, en qué canal estaba y qué se
+// puede hacer (Enter = repetir). La validación es la MISMA clase que ejecuta
+// el servidor: si aquí dice que vale, allí no puede fallar por longitud...
+// salvo por el nombre duplicado, que solo puede decidirlo el servidor.
+
+if (sesionGuardada is not null)
+{
+    AnsiConsole.MarkupLine(
+        $"[grey]👋 ¡Hola de nuevo! Tu última sesión fue[/] [bold]{Markup.Escape(sesionGuardada.Nick)}[/] " +
+        $"[grey]en[/] [bold]{Markup.Escape(sesionGuardada.Canal)}[/]");
+    AnsiConsole.MarkupLine("[grey]   Pulsa Enter para repetirla o escribe otra cosa.[/]");
+}
+else if (terminal.RecordarSesion)
+{
+    AnsiConsole.MarkupLine("[grey]🙂 Primera vez por aquí: ¿con qué nick entras?[/]");
+}
+else
+{
+    AnsiConsole.MarkupLine("[grey]¿Con qué nick entras?[/]");
+}
+
+AnsiConsole.WriteLine();
 
 var nick = PedirNick(chat, sesionGuardada);
 
@@ -60,6 +79,11 @@ if (canal is null)
     AnsiConsole.MarkupLine("[grey]Entrada cerrada (EOF) sin datos. Hasta pronto.[/]");
     return;
 }
+
+// Confirmación clara de lo que se va a hacer, antes de tocar el servidor
+AnsiConsole.MarkupLine(
+    $"[grey]→ Entrarás como[/] [bold]{Markup.Escape(nick)}[/] [grey]en[/] [bold]{Markup.Escape(canal)}[/]");
+AnsiConsole.WriteLine();
 
 // ============================================================================
 // 🔌 CONEXIÓN (con reintento si el servidor rechaza el nick)
@@ -82,7 +106,9 @@ do
     AnsiConsole.MarkupLine($"[red]✗ {Markup.Escape(error)}[/]");
 
     // La causa típica es el nick ocupado (dos terminales en el mismo equipo):
-    // se vuelve a preguntar SIN reiniciar el programa
+    // se vuelve a preguntar SIN reiniciar el programa, y se dice DÓNDE
+    AnsiConsole.MarkupLine(
+        $"[grey]No se pudo entrar como ese nick en[/] [bold]{Markup.Escape(canal)}[/][grey].[/]");
     nick = PedirNick(chat, sesion: null);
 
     if (nick is null)
@@ -99,7 +125,8 @@ if (terminal.RecordarSesion)
     storeSesion.Guardar(new SesionTerminal(nick, canal));
 
 AnsiConsole.MarkupLine(
-    $"[green]●[/] Conectado a [bold]{Markup.Escape(canal)}[/] como [bold]{Markup.Escape(nick)}[/]. " +
+    $"[green]●[/] Conectado a [bold]{Markup.Escape(canal)}[/] como [bold]{Markup.Escape(nick)}[/] · " +
+    $"{cliente.VistaUsuarios.Count} en la sala · {cliente.EstadisticasActuales.TotalConectados} en total. " +
     "Escribe [grey]/ayuda[/] para ver los comandos.");
 AnsiConsole.WriteLine();
 
@@ -148,6 +175,10 @@ var salir = false;
 
 while (!salir)
 {
+    // Estado en todo momento: total de conectados y reparto por sala,
+    // justo antes de pedir la siguiente línea
+    PintarEstado(cliente);
+
     var linea = LeerChat();
 
     // EOF: la tubería de entrada se cerró → salida ordenada como /salir
@@ -233,34 +264,43 @@ AnsiConsole.MarkupLine("[grey]Hasta pronto![/]");
 // acepta); con la entrada REDIRIGIDA —tubería de pruebas o `echo Ana | ...`—
 // Spectre no puede leer teclas (ReadKey no existe sin consola), así que se
 // usa Console.ReadLine con el mismo contrato: vacío → defecto, EOF → null.
-static string? PedirTexto(string etiqueta, string defecto)
+// defecto null = hay que escribir algo: el vacío lo valida el llamador con
+// su propio mensaje en español (no dejamos que Spectre responda en inglés).
+static string? PedirTexto(string etiqueta, string? defecto)
 {
     if (!Console.IsInputRedirected)
     {
-        return AnsiConsole.Prompt(
-            new TextPrompt<string>($"[grey]{Markup.Escape(etiqueta)}[/]")
-                .DefaultValue(defecto));
+        var prompt = new TextPrompt<string>($"[grey]{Markup.Escape(etiqueta)}[/]");
+
+        if (defecto is not null)
+            prompt.DefaultValue(defecto);
+        else
+            prompt.AllowEmpty();
+
+        return AnsiConsole.Prompt(prompt);
     }
 
-    AnsiConsole.MarkupLine($"[grey]{Markup.Escape(etiqueta)}[/] ({Markup.Escape(defecto)})");
+    AnsiConsole.MarkupLine(defecto is not null
+        ? $"[grey]{Markup.Escape(etiqueta)}[/] ({Markup.Escape(defecto)})"
+        : $"[grey]{Markup.Escape(etiqueta)}[/]:");
 
     var linea = Console.ReadLine();
 
     if (linea is null)
         return null; // EOF: no hay más entrada
 
-    return string.IsNullOrWhiteSpace(linea) ? defecto : linea.Trim();
+    return string.IsNullOrWhiteSpace(linea) ? defecto ?? string.Empty : linea.Trim();
 }
 
 // Pide el nick en bucle hasta que pase la validación local de ChatConfig.
+// Con sesión guardada, Enter repite el anterior; sin ella, hay que escribir
+// uno (Enter vacío avisa en español y vuelve a preguntar).
 // Devuelve null solo si la entrada se cerró (EOF): no hay con qué preguntar.
 static string? PedirNick(ChatConfig chat, SesionTerminal? sesion)
 {
-    var defecto = sesion?.Nick ?? "alumno";
-
     while (true)
     {
-        var nick = PedirTexto("Nick", defecto);
+        var nick = PedirTexto("Introduce tu nick", sesion?.Nick);
 
         if (nick is null)
             return null;
@@ -275,15 +315,36 @@ static string? PedirNick(ChatConfig chat, SesionTerminal? sesion)
     }
 }
 
-// Pide el canal en bucle hasta que exista en la configuración. Si la sesión
-// guardada apunta a un canal que ya no existe (alguien editó los canales),
-// se cae al canal por defecto: el programa nunca arranca en un callejón.
+// Pide el canal en bucle hasta que exista en la configuración, mostrando
+// SIEMPRE la lista de canales y cuál se repite con Enter (el último de la
+// sesión si existe; si no, el por defecto). Nunca se elige "a ciegas".
 // Devuelve null solo si la entrada se cerró (EOF).
 static string? PedirCanal(ChatConfig chat, SesionTerminal? sesion)
 {
-    var defecto = sesion is not null && chat.EsCanalValido(sesion.Canal)
+    var ultimoValido = sesion is not null && chat.EsCanalValido(sesion.Canal)
         ? sesion.Canal
-        : chat.CanalPorDefecto;
+        : null;
+
+    // Aviso didáctico: si el canal de la sesión ya no está en la
+    // configuración, el programa no se queda sin opciones — cae al default
+    if (sesion is not null && ultimoValido is null)
+        AnsiConsole.MarkupLine(
+            $"[yellow]⚠ Tu último canal ({Markup.Escape(sesion.Canal)}) ya no existe.[/]");
+
+    var defecto = ultimoValido ?? chat.CanalPorDefecto;
+
+    AnsiConsole.MarkupLine(
+        $"[grey]Elige dónde entrar. Enter =[/] [bold]{Markup.Escape(defecto)}[/] " +
+        $"[grey]{(ultimoValido is not null ? "(tu último)" : "(por defecto)")}[/]");
+
+    // Lista completa de canales, con ← marcando el que se repetirá con Enter
+    var hex = TemaDiscord.Blurple.ToMarkup();
+    var lista = string.Join("   ", chat.Canales.Select(c =>
+        c.Equals(defecto, StringComparison.OrdinalIgnoreCase)
+            ? $"[{hex}]{Markup.Escape(c)}[/] ←"
+            : Markup.Escape(c)));
+
+    AnsiConsole.MarkupLine($"[grey]  {lista}[/]");
 
     while (true)
     {
@@ -297,7 +358,7 @@ static string? PedirCanal(ChatConfig chat, SesionTerminal? sesion)
         if (canonico is not null)
             return canonico;
 
-        AnsiConsole.MarkupLine($"[red]✗ {Markup.Escape(chat.ErrorCanalDesconocido(escrito))}[/]");
+        AnsiConsole.MarkupLine($"[red]✗ {Markup.Escape(chat.ErrorCanalDesconocido(escrito.Trim()))}[/]");
     }
 }
 
@@ -335,16 +396,52 @@ static bool EsContinuacion(IReadOnlyList<MensajeDto> nueva, IReadOnlyList<Mensaj
     return true;
 }
 
-// Muestra los canales configurados, marcando el actual con el punto verde.
-static void MostrarCanales(ClienteChat cliente)
+// Línea de estado: total de conectados y reparto por SALA, pintada antes de
+// cada prompt. El ● marca el canal en el que estamos; las salas vacías
+// muestran 0 (el servidor solo emite las que tienen gente).
+static void PintarEstado(ClienteChat cliente)
 {
+    var est = cliente.EstadisticasActuales;
+
+    var porCanal = est.Canales
+        .ToDictionary(c => c.Canal, c => c.Conectados, StringComparer.OrdinalIgnoreCase);
+
+    var partes = new List<string>();
+
     foreach (var canalDisponible in cliente.Canales)
     {
+        porCanal.TryGetValue(canalDisponible, out var conectados);
+        var texto = $"{Markup.Escape(canalDisponible)} [white]{conectados}[/]";
+
+        var esActual = string.Equals(canalDisponible, cliente.Canal, StringComparison.OrdinalIgnoreCase);
+
+        partes.Add(esActual ? $"[green]{texto} ●[/]" : texto);
+    }
+
+    AnsiConsole.MarkupLine(
+        $"[grey]📌 {est.TotalConectados} conectados:[/] {string.Join("[grey] · [/]", partes)}");
+}
+
+// Muestra los canales configurados con sus conteos, marcando el actual
+// con el punto verde.
+static void MostrarCanales(ClienteChat cliente)
+{
+    var est = cliente.EstadisticasActuales;
+
+    var porCanal = est.Canales
+        .ToDictionary(c => c.Canal, c => c.Conectados, StringComparer.OrdinalIgnoreCase);
+
+    AnsiConsole.MarkupLine($"[grey]📌 {est.TotalConectados} conectados en total:[/]");
+
+    foreach (var canalDisponible in cliente.Canales)
+    {
+        porCanal.TryGetValue(canalDisponible, out var conectados);
         var esActual = string.Equals(canalDisponible, cliente.Canal, StringComparison.OrdinalIgnoreCase);
         var marca = esActual ? " [green]● actual[/]" : "";
 
         AnsiConsole.MarkupLine(
-            $"[{TemaDiscord.Blurple.ToMarkup()}]{Markup.Escape(canalDisponible)}[/]{marca}");
+            $"  [{TemaDiscord.Blurple.ToMarkup()}]{Markup.Escape(canalDisponible)}[/] " +
+            $"[white]{conectados}[/]{marca}");
     }
 
     AnsiConsole.WriteLine();
@@ -393,10 +490,14 @@ static async Task<bool> CambiarNickAsync(ClienteChat cliente, ChatConfig chat, s
     return true;
 }
 
-// Muestra los conectados del canal actual con el punto verde de Discord.
+// Muestra los conectados del canal actual con el punto verde de Discord,
+// con su cuenta por si se mira la lista suelta.
 static void MostrarUsuarios(ClienteChat cliente)
 {
     var usuarios = cliente.VistaUsuarios;
+
+    AnsiConsole.MarkupLine(
+        $"[grey]📌 {usuarios.Count} en línea en[/] [bold]{Markup.Escape(cliente.Canal ?? string.Empty)}[/]:");
 
     if (usuarios.Count == 0)
     {

@@ -17,6 +17,8 @@ namespace AulaChatNet.Client.Terminal.Servicios;
 /// <item><see cref="Mensajes"/> → la vista del canal actual: se REEMPLAZA con
 /// el historial al entrar/cambiar de canal y se AÑADE con cada MensajeNuevo.</item>
 /// <item><see cref="Usuarios"/> → conectados del canal actual.</item>
+/// <item><see cref="Estadisticas"/> → total de conectados y reparto por SALA
+/// (evento global: la línea de estado sabe cuánta gente hay y dónde).</item>
 /// <item><see cref="CanalActual"/> → canal canónico en el que estamos.</item>
 /// <item><see cref="Estado"/> → punto de la cabecera (conectado/reconectando/...).</item>
 /// </list>
@@ -36,6 +38,7 @@ public class ClienteChat : IDisposable
 
     private readonly BehaviorSubject<IReadOnlyList<MensajeDto>> _mensajes = new([]);
     private readonly BehaviorSubject<IReadOnlyList<UsuarioConectadoDto>> _usuarios = new([]);
+    private readonly BehaviorSubject<EstadisticasDto> _estadisticas = new(new EstadisticasDto(0, []));
     private readonly BehaviorSubject<string?> _canalActual = new(null);
     private readonly BehaviorSubject<EstadoConexion> _estado = new(EstadoConexion.Desconectado);
 
@@ -65,6 +68,11 @@ public class ClienteChat : IDisposable
 
         _conexion.On<IReadOnlyList<UsuarioConectadoDto>>(
             ChatHubEventos.ListaUsuariosActualizada, lista => _usuarios.OnNext(lista));
+
+        // Estadísticas GLOBALES (total y por sala): llegan a todos los clientes
+        // cada vez que alguien entra, sale o cambia de canal
+        _conexion.On<EstadisticasDto>(
+            ChatHubEventos.EstadisticasActualizadas, est => _estadisticas.OnNext(est));
 
         _conexion.On<IReadOnlyList<MensajeDto>>(ChatHubEventos.HistorialRecibido, historial =>
         {
@@ -100,6 +108,9 @@ public class ClienteChat : IDisposable
     /// <summary>Conectados del canal actual.</summary>
     public IObservable<IReadOnlyList<UsuarioConectadoDto>> Usuarios => _usuarios;
 
+    /// <summary>Total de conectados y reparto por sala (evento global).</summary>
+    public IObservable<EstadisticasDto> Estadisticas => _estadisticas;
+
     /// <summary>Canal canónico en el que estamos (null hasta conectar).</summary>
     public IObservable<string?> CanalActual => _canalActual;
 
@@ -113,6 +124,9 @@ public class ClienteChat : IDisposable
 
     /// <summary>Último valor de la lista de conectados.</summary>
     public IReadOnlyList<UsuarioConectadoDto> VistaUsuarios => _usuarios.Value;
+
+    /// <summary>Último valor de las estadísticas (total y por sala).</summary>
+    public EstadisticasDto EstadisticasActuales => _estadisticas.Value;
 
     /// <summary>Último valor del canal actual.</summary>
     public string? Canal => _canalActual.Value;
@@ -219,6 +233,7 @@ public class ClienteChat : IDisposable
     {
         _mensajes.Dispose();
         _usuarios.Dispose();
+        _estadisticas.Dispose();
         _canalActual.Dispose();
         _estado.Dispose();
 
