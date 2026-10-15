@@ -7,12 +7,15 @@
   - [2.2. Alta: ConnectAsync](#22-alta-connectasync)
   - [2.3. Envío: SendAsync](#23-envío-sendasync)
   - [2.4. Cambio de canal: CambiarCanalAsync](#24-cambio-de-canal-cambiarcanalasync)
-  - [2.5. Desconexión: OnDisconnectedAsync](#25-desconexión-ondisconnectedasync)
-  - [2.6. Cómo se prueba todo esto sin abrir una terminal](#26-cómo-se-prueba-todo-esto-sin-abrir-una-terminal)
+  - [2.5. Cambio de nick en caliente: CambiarNickAsync](#25-cambio-de-nick-en-caliente-cambiar.nickasync)
+  - [2.6. Consulta de usuarios: ObtenerUsuariosAsync](#26-consulta-de-usuarios-obtenerusuariosasync)
+  - [2.7. Desconexión: OnDisconnectedAsync](#27-desconexión-ondisconnectedasync)
+  - [2.8. Cómo se prueba todo esto sin abrir una terminal](#28-cómo-se-prueba-todo-esto-sin-abrir-una-terminal)
 - [3. El estado en memoria: ChatStore](#3-el-estado-en-memoria-chatstore)
   - [3.1. Dos estructuras, dos misiones](#31-dos-estructuras-dos-misiones)
   - [3.2. Unicidad de nombres sin bloqueos](#32-unicidad-de-nombres-sin-bloqueos)
   - [3.3. La cola circular del historial](#33-la-cola-circular-del-historial)
+  - [3.4. Las estadísticas globales y GET /estadisticas](#34-las-estadísticas-globales-y-get-estadisticas)
 - [4. Los canales como grupos de SignalR](#4-los-canales-como-grupos-de-signalr)
   - [4.1. Un canal, un grupo](#41-un-canal-un-grupo)
   - [4.2. Configuración sin hardcodeos](#42-configuración-sin-hardcodeos)
@@ -37,10 +40,11 @@ En este punto diseñamos por dentro el servidor de AulaChatNet: la arquitectura 
 **Objetivos de aprendizaje:**
 
 - Entender la arquitectura por capas Hub → Store → Shared y qué responsabilidad tiene cada una
-- Seguir el ciclo de vida de una conexión SignalR: alta, envío, cambio de canal y desconexión
+- Seguir el ciclo de vida de una conexión SignalR: alta, envío, cambio de canal, cambio de nick y desconexión
 - Comprender por qué el estado vive en `ConcurrentDictionary` y qué es la concurrencia
 - Ver la cola circular del historial y el límite configurable
 - Usar los grupos de SignalR para que cada canal reciba solo lo suyo
+- Sacar provecho de las estadísticas globales: evento `EstadisticasActualizadas` (push) y `GET /estadisticas` (pull)
 - Configurar Serilog entero desde `appsettings.json`, con rotación de 7 días
 - Conocer dos fallos reales: las carreras de concurrencia y el "truco" del ConfigurationBinder
 
@@ -125,7 +129,7 @@ if (error is not null)
 
 El mismo patrón se repite en las validaciones de `ChatConfig`: los métodos `ValidarUsuario` y `ValidarMensaje` devuelven `string?` (null = OK), y en el store (`AddUsuario`, `CambiarCanal`...). **Una sola convención en todo el sistema**: si devuelves texto, hay un problema; si devuelves `null`, sigue adelante.
 
-> 💡 **Consejo:** fíjate en que `ConnectAsync` y `CambiarCanalAsync` **también** devuelven `string?`. La diferencia es semántica: `ConnectAsync` valida el nombre Y lo registra; `CambiarCanalAsync` comprueba que estés registrado antes de moverte.
+> 💡 **Consejo:** fíjate en que `ConnectAsync`, `CambiarCanalAsync` y `CambiarNickAsync` **también** devuelven `string?`. La diferencia es semántica: `ConnectAsync` valida el nombre Y lo registra; `CambiarCanalAsync` y `CambiarNickAsync` comprueban que estés registrado antes de moverte o renombrarte. La única excepción del patrón es `ObtenerUsuariosAsync`, que **devuelve datos** (una lista de conectados, o `null` si el canal no existe): es una consulta, no una mutación.
 
 ## 2. El ciclo de vida de una conexión
 
@@ -151,6 +155,7 @@ sequenceDiagram
     H->>S: AddMensaje("#daw", "Ana se ha unido")
     H-->>C: MensajeNuevo (al grupo #daw)
     H-->>C: ListaUsuariosActualizada (al grupo #daw)
+    H-->>C: EstadisticasActualizadas (a TODOS)
 
     C->>H: SendAsync("Buenas")
     H->>S: AddMensaje("#daw", mensaje)
@@ -168,6 +173,15 @@ sequenceDiagram
     H->>S: AddMensaje("#general", "Ana se ha unido")
     H-->>C: MensajeNuevo (al grupo #general)
     H-->>C: ListaUsuariosActualizada (#general)
+    H-->>C: EstadisticasActualizadas (a TODOS)
+
+    Note over C,H: Ana escribe /nick AnaMaria
+
+    C->>H: CambiarNickAsync("AnaMaria")
+    H->>S: CambiarNick(conn-1, "AnaMaria")
+    S-->>H: null (OK)
+    H-->>C: MensajeNuevo "Ana ahora se llama AnaMaria" (#general)
+    H-->>C: ListaUsuariosActualizada (#general)
 
     Note over C,H: Se cae la conexión
 
@@ -175,9 +189,10 @@ sequenceDiagram
     S-->>H: ConexionChat("#general", "Ana")
     H-->>C: MensajeNuevo "Ana ha salido" (al grupo #general)
     H-->>C: ListaUsuariosActualizada (#general)
+    H-->>C: EstadisticasActualizadas (a TODOS)
 ```
 
-> ⚠️ **Advertencia:** fíjate en el paso 14. Cuando Ana cambia de canal, el historial del nuevo canal se le envía **a ella sola** (`Clients.Caller`), mientras que los mensajes de sistema van al **grupo entero** (`Clients.Group`). Enviar el historial a todo el grupo saturaría a los demás, que no lo piden.
+> ⚠️ **Advertencia:** fíjate en el paso del cambio de canal. Cuando Ana cambia, el historial del nuevo canal se le envía **a ella sola** (`Clients.Caller`), mientras que los mensajes de sistema van al **grupo entero** (`Clients.Group`). Enviar el historial a todo el grupo saturaría a los demás, que no lo piden. Y las estadísticas viajan con `Clients.All`: el total es global, no de un canal.
 
 ### 2.2. Alta: ConnectAsync
 
@@ -219,7 +234,40 @@ Este es el método que hace que Discord "sienta vivo": moverte entre canales sin
 
 Si el nombre ya está ocupado en el destino, el cambio se rechaza con un error y **te quedas donde estabas**.
 
-### 2.5. Desconexión: OnDisconnectedAsync
+### 2.5. Cambio de nick en caliente: CambiarNickAsync
+
+```csharp
+public async Task<string?> CambiarNickAsync(string? nuevoNick)
+```
+
+Discord permite "Cambiar apodo" sin reconectar, y este método hace exactamente eso. Los pasos, en orden:
+
+1. Se comprueba que estés registrado (`GetConexion`)
+2. Se valida el nuevo nombre con `Config.ValidarUsuario` (mismas reglas que al entrar)
+3. Si el nombre es el mismo (ignorando mayúsculas), **no se emite nada**: silencio total
+4. El store aplica el cambio: `TryUpdate` en el índice de nombres por canal (la unicidad del destino se respeta: otro en el canal ya usando ese nombre lo rechaza)
+5. Aviso de sistema "X ahora se llama Y" al grupo y lista de conectados actualizada
+
+Un detalle importante: el nick **no cambia `Context.ConnectionId`** ni la identidad de la conexión; solo cambia el nombre visible y la clave del índice de ese canal. Por eso las estadísticas globales **no** se emiten aquí: el número de conectados no ha variado.
+
+> 📝 **Nota:** el store guarda `Usuario` dentro de `ConexionChat`, y `GetConexion` devuelve copias inmutables; por eso el cambio pasa por `TryUpdate` y no por "tocar el objeto".
+
+### 2.6. Consulta de usuarios: ObtenerUsuariosAsync
+
+```csharp
+public Task<IReadOnlyList<UsuarioConectadoDto>?> ObtenerUsuariosAsync(string? canal)
+```
+
+Es el primer método del hub que **no muta nada ni sigue el patrón `string?`**: devuelve datos. Responde **solo al que pregunta** (`Clients.Caller` implícito, porque no hay `SendAsync` de por medio) y no difunde nada a nadie:
+
+- Si el canal existe → la lista de conectados (DTOs) de ese canal
+- Si no existe → `null` (el cliente lo traduce como "no hay nadie ahí" o error)
+
+📌 **Ejemplo real:** el equivalente a abrir el desplegable de "miembros de #daw" en Discord estando tú en #general: miras otra sala sin moverte. En terminal, `/usuarios daw` hace exactamente esta consulta.
+
+> 💡 **Consejo:** fíjate en la diferencia con `ListaUsuariosActualizada`: ese evento se **difunde** (push, a todo el grupo, sin que nadie lo pida); esta consulta es un **pull bajo demanda**. Los dos son lecturas de `store.GetUsuarios(canal)`, pero con destinatarios y momento distintos.
+
+### 2.7. Desconexión: OnDisconnectedAsync
 
 SignalR llama a `OnDisconnectedAsync` cuando se corta la conexión (el cliente cierra la pestaña, se va el wifi...). El hub elimina al usuario del store y emite el aviso de salida **solo a su canal**:
 
@@ -236,6 +284,10 @@ public override async Task OnDisconnectedAsync(Exception? exception)
         await Clients.Group(conexion.Canal).SendAsync(ChatHubEventos.MensajeNuevo, mensaje);
         await Clients.Group(conexion.Canal).SendAsync(
             ChatHubEventos.ListaUsuariosActualizada, store.GetUsuarios(conexion.Canal));
+
+        // Estadísticas globales a TODOS: uno menos conectado
+        await Clients.All.SendAsync(
+            ChatHubEventos.EstadisticasActualizadas, store.GetEstadisticas());
     }
 
     await base.OnDisconnectedAsync(exception);
@@ -244,7 +296,7 @@ public override async Task OnDisconnectedAsync(Exception? exception)
 
 Si la excepción no es `null`, es que la conexión cayó por un error (se registra como warning con la excepción). Si es `null`, es una desconexión limpia (se registra como información).
 
-### 2.6. Cómo se prueba todo esto sin abrir una terminal
+### 2.8. Cómo se prueba todo esto sin abrir una terminal
 
 La clave está en que **el hub depende de interfaces**: `IChatStore` (el estado) e `IHubCallerClients` (a quién emitir). Con Moq simulamos ambas, y con los *setters* públicos inyectamos el doble de contexto:
 
@@ -328,6 +380,44 @@ while (estado.Historial.Count > Config.HistorialMaximo
 
 📌 **Ejemplo real:** Discord te muestra los últimos 100 mensajes de un canal; más atrás, no hay nada (eso es historial persistido, que nuestra Fase 2 añadirá).
 
+### 3.4. Las estadísticas globales y GET /estadisticas
+
+Además de "quién hay en cada canal", la app necesita "cuánta gente hay en TOTAL" (el contador de arranque de la terminal, por ejemplo). El store lo resuelve con un único barrido de las conexiones vivas:
+
+```csharp
+public EstadisticasDto GetEstadisticas()
+{
+    // Agrupamos las conexiones vivas por su canal: como CADA conexión está
+    // en exactamente UN canal, la suma de los grupos es el total real
+    var conteos = _conexiones.Values
+        .GroupBy(c => c.Canal, StringComparer.OrdinalIgnoreCase)
+        .Select(g => new ConteoCanalDto(g.Key, g.Count()))
+        .OrderByDescending(c => c.Conectados)
+        .ThenBy(c => c.Canal, StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+
+    return new EstadisticasDto(_conexiones.Count, conteos);
+}
+```
+
+Devuelve un `EstadisticasDto` (total + reparto por canal) que llega a los clientes por **dos caminos distintos**, cada uno para su momento:
+
+| Camino | Cuándo | Quién lo recibe | Para qué |
+|--------|--------|-----------------|----------|
+| Evento `EstadisticasActualizadas` | Alta, cambio de canal y desconexión | **Todos** los conectados (`Clients.All`) | La línea de estado se actualiza en tiempo real |
+| `GET /estadisticas` (REST) | Cuando el cliente lo pide | Solo el que pregunta | Contar **antes de registrarse** (entrada guiada del terminal) |
+
+El endpoint es una línea de API mínima en `Program.cs`, usando la constante de `Shared` (nada de rutas escritas dos veces):
+
+```csharp
+app.MapGet(ChatRutas.Estadisticas, (IChatStore store) =>
+    Results.Ok(store.GetEstadisticas()));
+```
+
+> 💡 **Consejo:** el evento y el endpoint **no se pisan, se complementan**: el evento es "push" (el servidor avisa cuando cambia algo), el endpoint es "pull" (pídeme el estado cuando quieras). Es el mismo reparto que ves en casi todas las apps reales: WebSocket para el tiempo real y REST para lo puntual.
+
+📌 **Ejemplo real:** abrir Discord sin iniciar sesión y ver "12.345.678 personas en línea": ese número no viene de una conexión de chat, viene de una consulta rápida como esta.
+
 ## 4. Los canales como grupos de SignalR
 
 ### 4.1. Un canal, un grupo
@@ -365,7 +455,7 @@ Los canales NO están escritos en el código: viven en `appsettings.json`, en la
 
 ```json
 "Chat": {
-  "Canales": [ "#general", "#smr", "#daw", "#asir", "#dam" ],
+  "Canales": [ "#general", "#daw", "#dam", "#asir", "#smr" ],
   "HubRuta": "/hubs/chat",
   "HistorialMaximo": 25
 }
@@ -381,11 +471,13 @@ Y en `appsettings.Development.json` se puede sobreescribir para desarrollo:
 
 La configuración se carga en un objeto tipado `ChatConfig` (opciones de .NET) que se inyecta donde haga falta (hub, store...). Añadir el canal "#erli" a un aula es añadir una línea al JSON, sin tocar ni recompilar una línea de C#.
 
+> 📝 **Nota:** **el orden del array importa**: es el orden en que se pintan los canales en el selector de los clientes, y el primero (`#general`) es además el `CanalPorDefecto` al que se entra sin escribir nada.
+
 ### 4.3. Normalización: daw, #daw y #DAW
 
 Los usuarios escriben a su manera: "daw", "#daw", "#DAW", " #daw ". Para que todo el mundo caiga en el mismo canal, `ChatConfig.NormalizarCanal` recorta espacios, añade la almohadilla si falta y pasa a mayúsculas. Después, `EncontrarCanal` devuelve la forma canónica (la que aparece en la configuración) para usarla como clave interna.
 
-> 💡 **Consejo:** cuando el cliente terminal permita escribir `/canal daw`, esta normalización hará que funcione igual que `/canal #daw` o `/canal #DAW`.
+> 💡 **Consejo:** el cliente terminal aprovecha esto: escribir `/canal daw` funciona igual que `/canal #daw` o `/canal #DAW`, porque la normalización ocurre en `ChatConfig`, compartida por ambos lados.
 
 ## 5. Logging con Serilog desde appsettings
 
@@ -474,13 +566,16 @@ public List<string> Canales { get; set; } = [];
 | Concepto | Qué retener |
 |----------|-------------|
 | Arquitectura | Hub (transporte) → Store (estado) → Shared (contrato compartido) |
-| Errores | `Task<string?>`: `null` = OK, texto = mensaje para el cliente |
+| Errores | `Task<string?>`: `null` = OK, texto = mensaje para el cliente (`ObtenerUsuariosAsync` devuelve datos) |
 | Ciclo de vida | Conectar → alta → historial (solo al caller) → mensajes al grupo → salida |
+| Nick | `CambiarNickAsync` cambia el nombre en caliente, con aviso "X ahora se llama Y" al canal |
+| Consultas | `ObtenerUsuariosAsync` mira cualquier canal sin cambiar de él y sin avisar a nadie |
 | Estado | `_conexiones` global + un `EstadoCanal` (nombres + historial) por canal |
 | Unicidad | `TryAdd` atómico por canal, con claves normalizadas |
 | Historial | `ConcurrentQueue` circular, límite `HistorialMaximo` configurable |
-| Canales | Cada canal es un grupo de SignalR; lista en `appsettings.json` |
+| Canales | Cada canal es un grupo de SignalR; lista en `appsettings.json`, **el orden del array es el orden de pantalla** |
+| Estadísticas | `GetEstadisticas` → evento `EstadisticasActualizadas` (push a todos) + `GET /estadisticas` (pull, antes de registrarse) |
 | Logging | Serilog desde `appsettings.json`; consola Information, fichero Error con rolling de 7 días |
 | Bugs reales | Carreras de concurrencia y el ConfigurationBinder que duplica listas |
 
-En el siguiente punto pasamos a los clientes: primero el terminal con Spectre.Console y capa reactiva con Rx, y después la web con Blazor WebAssembly y su estética de Discord.
+En el siguiente punto vamos al primer cliente: el [terminal con Spectre.Console, su vista en vivo y su capa reactiva con Rx](02-cliente-terminal.md). Después vendrá la web con Blazor WebAssembly y su estética de Discord.
