@@ -45,10 +45,14 @@ public class ChatStore : IChatStore
     // reutiliza para volver a darse de alta sin volver a preguntar al usuario
     private string? _usuarioActual;
 
-    // true mientras CERRAMOS la conexión a propósito (salida ordenada con el
-    // botón Salir o registro rechazado): el evento Closed salta también en
-    // esos casos y no queremos un aviso de "conexión perdida" cuando la
-    // perdimos nosotros
+    // true mientras la conexión se cierra A PROPÓSITO (botón Salir o
+    // registro rechazado): el evento Closed salta también en esos casos y
+    // no queremos un aviso de "conexión perdida" cuando la perdimos nosotros.
+    // Ojo: SignalR invoca Closed de forma ASÍNCRONA, a veces DESPUÉS de que
+    // StopAsync devuelva, así que el flag NO se resetea al cerrar — solo lo
+    // hace ConectarAsync/ReconectarAsync al empezar la siguiente conexión.
+    // Si no, el cierre tardío se encontraría el flag ya en false (un warning
+    // de log justo después de un rechazo de nick).
     private bool _cierreIntencionado;
 
     /// <summary>Error devuelto al invocar el hub con la conexión caída.</summary>
@@ -169,6 +173,9 @@ public class ChatStore : IChatStore
     {
         try
         {
+            // Aquí se "despierta" el flag de cierre intencionado: el Closed
+            // tardío de un intento anterior (rechazo o salida) ya no debe
+            // confundirse con una caída inesperada de ESTA conexión
             _cierreIntencionado = false;
             _estado.OnNext(EstadoConexion.Conectando);
             await _conexion.StartAsync();
@@ -194,12 +201,14 @@ public class ChatStore : IChatStore
         {
             // El servidor respondió y rechazó el alta (p. ej. nombre en uso):
             // cerramos para no dejar estados colgados. El cierre es NUESTRO,
-            // así que Closed no lanza ningún aviso
+            // así que Closed no lanza ningún aviso — y como ese evento puede
+            // llegar DESPUÉS de que StopAsync devuelva, el flag NO se
+            // resetea aquí (lo hará la próxima ConectarAsync): así no hay
+            // aviso ni warning fantasma tras un rechazo.
             _log.LogWarning("El hub rechazó a {Usuario} en {Canal}: {Error}", usuario, canal, error);
             _estado.OnNext(EstadoConexion.Desconectado);
             _cierreIntencionado = true;
             await _conexion.StopAsync();
-            _cierreIntencionado = false;
 
             return new ResultadoConexion(error, HayServidor: true);
         }
@@ -325,9 +334,11 @@ public class ChatStore : IChatStore
     {
         try
         {
-            _cierreIntencionado = true; // cierre pedido: Closed no avisa
+            // Cierre pedido: Closed no avisa. El flag NO se resetea al
+            // terminar (SignalR puede entregar Closed tardío); lo hará la
+            // próxima ConectarAsync, al empezar la siguiente conexión.
+            _cierreIntencionado = true;
             await _conexion.StopAsync();
-            _cierreIntencionado = false;
         }
         catch
         {
