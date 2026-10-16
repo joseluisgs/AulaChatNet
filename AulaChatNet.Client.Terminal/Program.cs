@@ -1,6 +1,6 @@
 using System.Text;
 using System.Text.Json;
-using AulaChatNet.Client.Terminal.Comandos;
+using AulaChatNet.Shared.Comandos;
 using AulaChatNet.Client.Terminal.Configuracion;
 using AulaChatNet.Client.Terminal.Consola;
 using AulaChatNet.Client.Terminal.Servicios;
