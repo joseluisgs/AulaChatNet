@@ -17,6 +17,12 @@
     <!-- Configuración: lee wwwroot/appsettings.json (sección Chat, AvatarBaseUrl) -->
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Binder" />
+
+    <!-- Logging: Serilog a la consola del navegador (BrowserConsole, vía JS;
+         el sink de consola normal no sirve en WASM) -->
+    <PackageReference Include="Serilog" />
+    <PackageReference Include="Serilog.Sinks.BrowserConsole" />
+    <PackageReference Include="Serilog.Extensions.Logging" />
   </ItemGroup>
 
   <ItemGroup>

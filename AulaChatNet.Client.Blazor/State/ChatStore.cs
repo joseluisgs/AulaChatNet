@@ -4,6 +4,8 @@ using AulaChatNet.Shared.Constantes;
 using AulaChatNet.Shared.Dtos;
 using AulaChatNet.Shared.Helpers;
 using Microsoft.AspNetCore.SignalR.Client;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace AulaChatNet.Client.Blazor.State;
 
@@ -24,6 +26,12 @@ public class ChatStore : IChatStore
 {
     private readonly HubConnection _conexion;
     private readonly ChatConfig _config;
+
+    // URL del hub y logger: dos detalles que solo interesan para DIAGNÓSTICO
+    // (¿a dónde intentaba conectarse? ¿qué falló?) — en pantalla nunca salen,
+    // en la consola del navegador sí
+    private readonly string _urlHub;
+    private readonly ILogger<ChatStore> _log;
 
     private readonly BehaviorSubject<IReadOnlyList<MensajeDto>> _mensajes = new([]);
     private readonly BehaviorSubject<IReadOnlyList<UsuarioConectadoDto>> _usuarios = new([]);
@@ -53,9 +61,16 @@ public class ChatStore : IChatStore
     /// </summary>
     /// <param name="urlHub">URL completa del hub (p. ej. http://localhost:5030/hubs/chat).</param>
     /// <param name="config">ChatConfig compartido (canales y límites).</param>
-    public ChatStore(string urlHub, ChatConfig config)
+    /// <param name="logger">
+    /// Logger opcional (la app registra Serilog → consola del navegador). Si
+    /// no llega (tests que la construyen sin DI), se usa NullLogger: el chat
+    /// nunca debe dejar de arranque por un logger.
+    /// </param>
+    public ChatStore(string urlHub, ChatConfig config, ILogger<ChatStore>? logger = null)
     {
         _config = config;
+        _urlHub = urlHub;
+        _log = logger ?? NullLogger<ChatStore>.Instance;
 
         _conexion = new HubConnectionBuilder()
             .WithUrl(urlHub)
@@ -104,7 +119,10 @@ public class ChatStore : IChatStore
             // Aviso solo cuando la caída NO la pedimos nosotros: así un
             // cierre ordenado (Salir) no suelta un aviso fantasma
             if (!_cierreIntencionado)
+            {
                 Aviso("Se perdió la conexión con el servidor.");
+                _log.LogWarning("Conexión perdida de forma inesperada con {UrlHub}", _urlHub);
+            }
 
             return Task.CompletedTask;
         };
@@ -149,6 +167,10 @@ public class ChatStore : IChatStore
             // mensaje se traduce a palabras de usuario (nunca "HttpRequestException")
             _estado.OnNext(EstadoConexion.Desconectado);
 
+            // En pantalla, palabras de usuario; en el log, el detalle completo
+            // (excepción y URL intentada) para poder diagnosticar
+            _log.LogError(ex, "No se pudo conectar con {UrlHub}: {Motivo}", _urlHub, ex.Message);
+
             return new ResultadoConexion(
                 $"No se pudo conectar con el servidor: {MensajesError.DescripcionDe(ex)}",
                 HayServidor: false);
@@ -161,6 +183,7 @@ public class ChatStore : IChatStore
             // El servidor respondió y rechazó el alta (p. ej. nombre en uso):
             // cerramos para no dejar estados colgados. El cierre es NUESTRO,
             // así que Closed no lanza ningún aviso
+            _log.LogWarning("El hub rechazó a {Usuario} en {Canal}: {Error}", usuario, canal, error);
             _estado.OnNext(EstadoConexion.Desconectado);
             _cierreIntencionado = true;
             await _conexion.StopAsync();
@@ -264,6 +287,7 @@ public class ChatStore : IChatStore
 
             // Mismo traductor que la terminal: en pantalla, palabras de
             // usuario — jamás el tipo de la excepción
+            _log.LogWarning(ex, "No se pudo reconectar con {UrlHub}: {Motivo}", _urlHub, ex.Message);
             return $"No se pudo reconectar: {MensajesError.DescripcionDe(ex)}";
         }
     }
@@ -331,10 +355,11 @@ public class ChatStore : IChatStore
                 ? $"Reconectado: vuelto a entrar en {_canalActual.Value} como {_usuarioActual}."
                 : $"No pude volver a registrar la sesión: {error}");
         }
-        catch (Exception)
+        catch (Exception ex)
         {
             // Se cayó otra vez mientras re-registrábamos: el bucle de la
             // conexión ya se encarga de reconectar (Reconnecting/Reconnected)
+            _log.LogWarning(ex, "Conexión caída al reenviar el alta con {UrlHub}", _urlHub);
         }
     }
 

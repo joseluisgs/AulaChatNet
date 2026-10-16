@@ -9,6 +9,7 @@ using AulaChatNet.Shared.Configuracion;
 using AulaChatNet.Shared.Constantes;
 using AulaChatNet.Shared.Dtos;
 using Microsoft.Extensions.Configuration;
+using Serilog;
 using Spectre.Console;
 using Spectre.Console.Rendering;
 
@@ -29,6 +30,14 @@ var chat = configuracion.GetSection(ChatConfig.Seccion).Get<ChatConfig>() ?? new
 // Sección Terminal: URL del servidor y si se recuerda la sesión
 var terminal = configuracion.GetSection(TerminalConfig.Seccion).Get<TerminalConfig>()
                ?? new TerminalConfig();
+
+// 🔍 Logging con Serilog (mismo motor que el servidor): SOLO fichero, porque
+// el sink de consola rompería el lienzo en vivo de Spectre (ver SerilogConfig).
+// ProcessExit cubre TODAS las salidas (EOF, Ctrl+C, Environment.Exit...).
+Log.Logger = SerilogConfig.Crear();
+AppDomain.CurrentDomain.ProcessExit += (_, _) => Log.CloseAndFlush();
+Log.Information("Terminal arrancada. Servidor: {UrlServidor}; canales: {Canales}",
+    terminal.UrlServidor, string.Join(", ", chat.Canales));
 
 // Última sesión guardada en %APPDATA% (nick, canal y cuándo fue)
 var storeSesion = new SesionStore();
@@ -91,6 +100,8 @@ else if (storeSesion.SesionCorrupta)
     // Había sesión pero el fichero no se pudo leer: NO se dice "primera vez"
     AnsiConsole.MarkupLine(
         "[yellow]⚠ No pude leer tu sesión guardada (fichero corrupto): empezamos de cero.[/]");
+
+    Log.Warning("Sesión guardada ilegible (fichero corrupto): empezamos de cero");
 }
 else if (sesionGuardada is not null)
 {
@@ -160,6 +171,10 @@ do
         AnsiConsole.MarkupLine(
             "[yellow]⚠ El servidor no está accesible: el problema no es tu nick ni tu canal.[/]");
 
+        // El detalle técnico NO se muestra en pantalla (regla de la casa),
+        // pero SÍ va al fichero de log: ahí está para diagnosticar
+        Log.Error("El servidor no responde en {UrlHub}: {Motivo}", urlHub, resultado.Error);
+
         AnsiConsole.MarkupLine(
             $"[grey]Se reintentará como[/] [bold]{Markup.Escape(nick)}[/] " +
             $"[grey]en[/] [bold]{Markup.Escape(canal)}[/][grey]. Pulsa Enter para reintentar.[/]");
@@ -179,6 +194,10 @@ do
     // el programa, y se dice DÓNDE
     AnsiConsole.MarkupLine(
         $"[grey]No se pudo entrar como ese nick en[/] [bold]{Markup.Escape(canal)}[/][grey].[/]");
+
+    // Es el caso típico de "dos con el mismo nick": aviso, no error de red
+    Log.Warning("El servidor rechazó el alta de {Nick} en {Canal}: {Motivo}",
+        nick, canal, resultado.Error);
     nick = PedirNick(chat, sesion: null);
 
     if (nick is null)
@@ -242,6 +261,8 @@ Console.CancelKeyPress += (_, args) =>
 
     AnsiConsole.WriteLine();
     AnsiConsole.MarkupLine("[grey]Saliendo... (Ctrl+C)[/]");
+
+    Log.Information("Saliendo del chat (Ctrl+C)");
     Environment.Exit(0);
 };
 
@@ -296,6 +317,8 @@ if (terminal.RecordarSesion && !sesionOlvidada)
 
 await cliente.CerrarAsync();
 AnsiConsole.MarkupLine("[grey]Hasta pronto![/]");
+
+Log.Information("Saliendo del chat (modo {Modo})", enVivo ? "vivo" : "tubería");
 return;
 
 
@@ -760,7 +783,9 @@ static async Task PintarConectadosInicialesAsync(string urlServidor, ChatConfig 
     catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
     {
         AnsiConsole.MarkupLine(
-            "[yellow]⚠ No pude consultar cuántos hay conectados (¿está el servidor arrancado?)[/]");
+            "[yellow]⚠ No pude consultar cuántos hay conectados (¿está el servidor arrancado? Revisa Terminal:UrlServidor)[/]");
+        Log.Warning("No se pudo consultar {Ruta} en {Url}: {Motivo}",
+            ChatRutas.Estadisticas, urlServidor, ex.Message);
     }
 }
 

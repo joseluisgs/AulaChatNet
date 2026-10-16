@@ -1,4 +1,6 @@
 using AulaChatNet.Client.Blazor.Services.Storage;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.JSInterop;
 
 namespace AulaChatNet.Client.Blazor.State;
@@ -14,10 +16,19 @@ namespace AulaChatNet.Client.Blazor.State;
 /// responden "no hay sesión" en vez de lanzar excepciones al usuario.
 /// </remarks>
 /// <param name="almacenamiento">Almacenamiento local del navegador.</param>
-public class SesionStore(ILocalStorageService almacenamiento) : ISesionStore
+/// <param name="logger">
+/// Logger opcional (la app registra Serilog → consola del navegador). Sin él
+/// (tests sin DI) se usa NullLogger: registrar un fallo de localStorage nunca
+/// debe ser motivo para que reviente la store.
+/// </param>
+public class SesionStore(ILocalStorageService almacenamiento, ILogger<SesionStore>? logger = null)
+    : ISesionStore
 {
     /// <summary>Clave del elemento en localStorage (una por aplicación).</summary>
     private const string Clave = "aulachat.sesion";
+
+    /// <summary>Logger efectivo (Serilog en la app, NullLogger en los tests).</summary>
+    private readonly ILogger<SesionStore> _log = logger ?? NullLogger<SesionStore>.Instance;
 
     /// <inheritdoc />
     public async Task<SesionGuardada?> CargarAsync()
@@ -26,10 +37,13 @@ public class SesionStore(ILocalStorageService almacenamiento) : ISesionStore
         {
             return await almacenamiento.GetItemAsync<SesionGuardada>(Clave);
         }
-        catch (JSException)
+        catch (JSException ex)
         {
             // Navegador en modo privado o almacenamiento bloqueado:
-            // no hay sesión y volvemos a preguntar
+            // no hay sesión y volvemos a preguntar. En pantalla se ignora
+            // (es política de la store); el log sí lo registra
+            _log.LogWarning("No se pudo leer la sesión de localStorage (¿bloqueado?): {Motivo}",
+                ex.Message);
             return null;
         }
     }
@@ -41,10 +55,11 @@ public class SesionStore(ILocalStorageService almacenamiento) : ISesionStore
         {
             await almacenamiento.SetItemAsync(Clave, sesion);
         }
-        catch (JSException)
+        catch (JSException ex)
         {
             // Sin permiso de escritura (modo incógnito): la app sigue,
             // solo no recordará nada para la próxima
+            _log.LogWarning("No se pudo guardar la sesión en localStorage: {Motivo}", ex.Message);
         }
     }
 
@@ -62,8 +77,9 @@ public class SesionStore(ILocalStorageService almacenamiento) : ISesionStore
 
             return true;
         }
-        catch (JSException)
+        catch (JSException ex)
         {
+            _log.LogWarning("No se pudo borrar la sesión de localStorage: {Motivo}", ex.Message);
             return false;
         }
     }

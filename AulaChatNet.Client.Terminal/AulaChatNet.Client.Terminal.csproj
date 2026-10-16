@@ -17,6 +17,11 @@
     <!-- Configuración: lee su appsettings.json (sección Chat) -->
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Binder" />
+
+    <!-- Logging: Serilog SOLO a fichero (ver SerilogConfig: el sink de consola
+         lucharía con el lienzo en vivo de Spectre) -->
+    <PackageReference Include="Serilog" />
+    <PackageReference Include="Serilog.Sinks.File" />
   </ItemGroup>
 
   <ItemGroup>

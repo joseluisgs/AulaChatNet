@@ -5,6 +5,9 @@ using AulaChatNet.Shared.Configuracion;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Serilog;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 
@@ -24,6 +27,27 @@ var web = builder.Configuration
 
 builder.Services.AddSingleton(chat);
 builder.Services.AddSingleton(web);
+
+// 🔍 Serilog como ÚNICO destino de logging (mismo criterio que el servidor):
+// un SOLO logger que ataca por DOS vías — Log.Logger para llamadas estáticas
+// y provider de ILogger<T> para las stores (AddLogging garantiza ILogger<> en
+// DI, que el host WASM no trae siempre). En WASM no hay disco para ficheros:
+// el sink es la CONSOLA del navegador (pestaña "Console" de las herramientas
+// de desarrollo), que es donde de verdad se mira el diagnóstico web.
+builder.Services.AddLogging();
+builder.Logging.ClearProviders();
+
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Information()
+    .WriteTo.BrowserConsole()
+    .CreateLogger();
+
+builder.Logging.AddSerilog(Log.Logger, dispose: true);
+
+// Aviso de arranque: la primera línea que se ve en la pestaña Console
+// (igual que el "Terminal arrancada" de la cliente de consola)
+Log.Information("AulaChatNet web arrancada (entorno {Entorno})",
+    builder.HostEnvironment.Environment);
 
 // URL base del servidor. Por defecto (UrlServidor vacío) se usa el MISMO
 // ORIGEN desde el que se sirve la app: el servidor aloja el WASM, con lo que

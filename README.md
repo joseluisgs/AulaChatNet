@@ -29,7 +29,7 @@ AulaChatNet es un proyecto educativo de ejemplo para el módulo **Desarrollo Web
 - **Rx.NET (System.Reactive)** - Programación reactiva en los clientes
 - **Blazor WebAssembly** - Cliente web
 - **Spectre.Console** - Cliente de terminal
-- **Serilog** - Logging configurable desde `appsettings.json`
+- **Serilog** - Logging en los tres clientes: servidor (consola + fichero), terminal (fichero) y web (consola del navegador)
 - **DiceBear API** - Avatares deterministas por nombre de usuario
 - **NUnit + FluentAssertions** - Tests por proyecto
 
@@ -120,15 +120,15 @@ La ruta vive en `Shared` (`ChatRutas.Estadisticas`), sin rutas escritas dos vece
 
 ## ⚙️ Configuración
 
-Todo se configura en `appsettings.json` (con override por entorno en `appsettings.Development.json`), sin hardcodeos:
+La configuración vive en `appsettings.json` (con override por entorno en `appsettings.Development.json`), sin hardcodeos. Los destinos de Serilog de los dos clientes se fijan en código, porque dependen del medio donde corren (fichero en disco / consola del navegador):
 
 | Sección | Qué controla |
 |---------|--------------|
 | `Chat` | Canales, ruta del hub, límites de usuario/mensaje, historial máximo, URL de avatares |
-| `Serilog` | Consola (Information, con color) + fichero de errores (`logs/aulachat-YYYY-MM-DD.log`, rolling y retención de 7 días) |
+| `Serilog` | **Servidor**: consola (Information, con color) + fichero de errores (`logs/aulachat-YYYY-MM-DD.log`, rolling y retención de 7 días). **Terminal**: solo fichero en `%LOCALAPPDATA%\AulaChatNet\logs\terminal-YYYY-MM-DD.log` (config en `SerilogConfig.cs`; sin consola para no romper el lienzo Live). **Web**: consola del navegador (sink `BrowserConsole`, config en `Program.cs`) |
 | `Cors` | Orígenes permitidos para el cliente Blazor en desarrollo |
 | `Terminal` | Sección del cliente terminal: `UrlServidor` y `RecordarSesion` |
-| `Web` | Cliente Blazor: `UrlServidor` (vacío = mismo origen) y `RecordarSesion` (sesión en localStorage) |
+| `Web` | Cliente Blazor: `UrlServidor` (vacío = mismo origen) y `RecordarSesion` (sesión en localStorage). En desarrollo, `appsettings.Development.json` + `launchSettings.json` permiten ejecutar el cliente por separado: DevServer en el `5031` apuntando al servidor del `5030` |
 
 ## ✅ Estado por fases
 
@@ -137,8 +137,8 @@ Todo se configura en `appsettings.json` (con override por entorno en `appsetting
 | Entorno | `.slnx`, Central Package Management, GitFlow | ✅ Hecho |
 | **Fase 1 · Shared** | DTOs, `ChatConfig`, avatar, operadores Rx | ✅ Hecho — 66 tests |
 | **Fase 1 · Server** | `ChatHub`, `ChatStore` en memoria, canales, estadísticas, Serilog | ✅ Hecho — 71 tests |
-| **Fase 1 · Terminal** | Spectre.Console, vista en vivo, entrada guiada, comandos y sesión | ✅ Hecho — 90 tests |
-| **Fase 1 · Blazor** | Layout Discord + store reactiva estilo `NotificationStore` | ✅ Hecho — 66 tests |
+| **Fase 1 · Terminal** | Spectre.Console, vista en vivo, entrada guiada, comandos, sesión y Serilog a fichero | ✅ Hecho — 90 tests |
+| **Fase 1 · Blazor** | Layout Discord + store reactiva estilo `NotificationStore` + Serilog a consola del navegador | ✅ Hecho — 66 tests |
 | Fase 2 | Persistencia (SQLite + EF Core) | 🔜 Futura |
 | Fase 3 | Extras (moderación, comandos `/`, reacciones) | 🔜 Futura |
 
