@@ -52,7 +52,7 @@ AulaChatNet/
 │   └── AulaChatNet.Server.Tests/
 ├── AulaChatNet.Client.Terminal/             # Consola con Spectre.Console (TUI estilo Discord)
 │   └── AulaChatNet.Client.Terminal.Tests/
-└── AulaChatNet.Client.Blazor/               # ⏳ Blazor WebAssembly
+└── AulaChatNet.Client.Blazor/               # Blazor WebAssembly (alojado por el servidor)
     └── AulaChatNet.Client.Blazor.Tests/
 ```
 
@@ -128,16 +128,17 @@ Todo se configura en `appsettings.json` (con override por entorno en `appsetting
 | `Serilog` | Consola (Information, con color) + fichero de errores (`logs/aulachat-YYYY-MM-DD.log`, rolling y retención de 7 días) |
 | `Cors` | Orígenes permitidos para el cliente Blazor en desarrollo |
 | `Terminal` | Sección del cliente terminal: `UrlServidor` y `RecordarSesion` |
+| `Web` | Cliente Blazor: `UrlServidor` (vacío = mismo origen) y `RecordarSesion` (sesión en localStorage) |
 
 ## ✅ Estado por fases
 
 | Fase | Contenido | Estado |
 |------|-----------|--------|
 | Entorno | `.slnx`, Central Package Management, GitFlow | ✅ Hecho |
-| **Fase 1 · Shared** | DTOs, `ChatConfig`, avatar, operadores Rx | ✅ Hecho — 60 tests |
+| **Fase 1 · Shared** | DTOs, `ChatConfig`, avatar, operadores Rx | ✅ Hecho — 66 tests |
 | **Fase 1 · Server** | `ChatHub`, `ChatStore` en memoria, canales, estadísticas, Serilog | ✅ Hecho — 71 tests |
-| **Fase 1 · Terminal** | Spectre.Console, vista en vivo, entrada guiada, comandos y sesión | ✅ Hecho — 96 tests |
-| **Fase 1 · Blazor** | Layout Discord + store reactiva estilo `NotificationStore` | ⏳ Pendiente |
+| **Fase 1 · Terminal** | Spectre.Console, vista en vivo, entrada guiada, comandos y sesión | ✅ Hecho — 90 tests |
+| **Fase 1 · Blazor** | Layout Discord + store reactiva estilo `NotificationStore` | ✅ Hecho — 66 tests |
 | Fase 2 | Persistencia (SQLite + EF Core) | 🔜 Futura |
 | Fase 3 | Extras (moderación, comandos `/`, reacciones) | 🔜 Futura |
 
