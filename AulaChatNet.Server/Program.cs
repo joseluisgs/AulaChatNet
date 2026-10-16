@@ -61,6 +61,24 @@ app.UseSerilogRequestLogging(opciones =>
 
 app.UseCorsPolicy();
 
+// En DESARROLLO, ninguna respuesta se cachea en el navegador: los assets
+// del cliente Blazor cambian con cada rebuild, y una caché vieja (o un 404
+// que el navegador guardó mientras el manifiesto estaba desactualizado)
+// deja la página en blanco sin ningún error en el servidor.
+if (app.Environment.IsDevelopment())
+{
+    app.Use((contexto, siguiente) =>
+    {
+        contexto.Response.OnStarting(() =>
+        {
+            contexto.Response.Headers.CacheControl = "no-cache";
+            return Task.CompletedTask;
+        });
+
+        return siguiente();
+    });
+}
+
 // El servidor aloja el cliente Blazor WASM: los archivos del proyecto
 // Blazor (index.html, el runtime _framework y el css) se sirven desde la
 // misma URL que el hub — así no hay CORS en el camino. El fallback hace
