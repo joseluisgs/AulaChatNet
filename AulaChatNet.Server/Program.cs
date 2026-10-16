@@ -61,9 +61,11 @@ app.UseSerilogRequestLogging(opciones =>
 
 app.UseCorsPolicy();
 
-// El servidor alojará también el cliente Blazor (archivos estáticos en
-// wwwroot): en la Fase 1 esa carpeta aún está vacía y esto no hace nada.
-app.UseDefaultFiles();
+// El servidor aloja el cliente Blazor WASM: los archivos del proyecto
+// Blazor (index.html, el runtime _framework y el css) se sirven desde la
+// misma URL que el hub — así no hay CORS en el camino. El fallback hace
+// que cualquier ruta (la raíz "/") devuelva index.html, que es una SPA.
+app.UseBlazorFrameworkFiles();
 app.UseStaticFiles();
 
 // Publicación del hub en la ruta de la config (Chat:HubRuta)
@@ -75,6 +77,11 @@ app.MapChatHub(configuration);
 // cuando la terminal todavía quiere decir "actualmente hay 20 personas".
 app.MapGet(ChatRutas.Estadisticas, (IChatStore store) =>
     Results.Ok(store.GetEstadisticas()));
+
+// SPA fallback: la raíz "/" y cualquier ruta sin extensión sirven el
+// index.html del cliente Blazor (DESPUÉS de mapear hub y endpoints, o
+// se los comería).
+app.MapFallbackToFile("index.html");
 
 PrintStartupInfo(configuration);
 

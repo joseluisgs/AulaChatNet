@@ -12,10 +12,18 @@
     <PackageReference Include="Serilog.AspNetCore" />
     <PackageReference Include="Serilog.Sinks.Console" />
     <PackageReference Include="Serilog.Sinks.File" />
+
+    <!-- Alojamiento del cliente Blazor WASM: UseBlazorFrameworkFiles sirve
+         el runtime _framework (wasm, dll, brotli) que genera el proyecto cliente -->
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\AulaChatNet.Shared\AulaChatNet.Shared.csproj" />
+
+    <!-- El servidor ALOJA el cliente Blazor WASM: sirve su wwwroot (index.html,
+         el runtime _framework y el css) desde la misma URL que el hub, sin CORS -->
+    <ProjectReference Include="..\AulaChatNet.Client.Blazor\AulaChatNet.Client.Blazor.csproj" />
   </ItemGroup>
 
 </Project>
