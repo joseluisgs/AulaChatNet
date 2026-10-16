@@ -520,7 +520,13 @@ async Task ProcesarLinea(string linea)
             break;
 
         case Comando.Limpiar:
-            AnsiConsole.Clear();
+            // Clear() le pide el cursor a la consola: si la salida está
+            // redirigida (tubería de pruebas, `> fichero`) no hay búfer y
+            // revienta con IOException — en ese modo no hay pantalla que
+            // limpiar, así que solo se limpia el estado local
+            if (!Console.IsOutputRedirected)
+                AnsiConsole.Clear();
+
             salidas.Clear();
             mostrarDesde = cliente.VistaMensajes.Count; // solo lo que llegue después
             break;
