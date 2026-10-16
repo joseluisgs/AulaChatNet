@@ -1,0 +1,15 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="AulaChatNet.Client.Blazor.Tests/AulaChatNet.Client.Blazor.Tests.csproj" />
+  <Project Path="AulaChatNet.Client.Blazor/AulaChatNet.Client.Blazor.csproj" />
+  <Project Path="AulaChatNet.Client.Terminal.Tests/AulaChatNet.Client.Terminal.Tests.csproj" />
+  <Project Path="AulaChatNet.Client.Terminal/AulaChatNet.Client.Terminal.csproj" />
+  <Project Path="AulaChatNet.Server.Tests/AulaChatNet.Server.Tests.csproj" />
+  <Project Path="AulaChatNet.Server/AulaChatNet.Server.csproj" />
+  <Project Path="AulaChatNet.Shared.Tests/AulaChatNet.Shared.Tests.csproj" />
+  <Project Path="AulaChatNet.Shared/AulaChatNet.Shared.csproj" />
+</Solution>

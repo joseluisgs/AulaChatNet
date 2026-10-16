@@ -9,15 +9,16 @@
 
 **Chat en tiempo real para el aula con .NET 10, SignalR y Rx.NET. Clientes para terminal y web (Blazor), con estética de Discord.**
 
-> **README inicial.** Este documento recoge la idea y la arquitectura de referencia del proyecto. La documentación completa se irá añadiendo por fases, como en [TiendaDawApi-NetCore](https://github.com/joseluisgs/TiendaDawApi-NetCore).
+> **Proyecto docente vivo.** Este README se amplía por fases, como en [TiendaDawApi-NetCore](https://github.com/joseluisgs/TiendaDawApi-NetCore). La documentación didáctica vive en [`docs/`](docs/).
 
 ## 🎯 Descripción
 
 AulaChatNet es un proyecto educativo de ejemplo para el módulo **Desarrollo Web en Servidor** (ciclos 2DAW y DAM). El objetivo docente es que el alumnado entienda cómo **SignalR** (transporte en tiempo real) y **Rx.NET** (composición de flujos) se complementan en una arquitectura .NET moderna, y cómo diseñar una solución con **múltiples clientes** sobre el mismo hub.
 
-- 📡 **SignalR**: un único `ChatHub` en el servidor; mensajes, entradas y salidas en tiempo real
+- 📡 **SignalR**: un único `ChatHub` en el servidor; mensajes, entradas, salidas y cambio de nick en tiempo real
+- 🗂️ **Canales por aula**: `#general`, `#daw`, `#dam`, `#asir` y `#smr` (grupos de SignalR, configurables en `appsettings.json`); historial y lista de conectados por canal, con cambio en vivo
 - 🔄 **Rx.NET**: los mensajes entrantes se exponen como `IObservable<MensajeDto>`; la UI se suscribe aplicando operadores reactivos (filtrar, agrupar, formatear)
-- 💻 **Múltiples clientes**: consola con Spectre.Console y web con Blazor WebAssembly, ambos sobre el mismo hub
+- 💻 **Múltiples clientes**: consola con Spectre.Console (vista en vivo con cabecera y pie fijos, editor de línea con cursor y reconexión con re-alta) y web con Blazor WebAssembly, ambos sobre el mismo hub
 - 🎨 **Estética Discord**: layout de dos columnas, avatares (DiceBear) y paleta oscura
 - 🗄️ **Fase 1 en memoria**: estado en `ConcurrentDictionary`, sin base de datos
 
@@ -28,6 +29,7 @@ AulaChatNet es un proyecto educativo de ejemplo para el módulo **Desarrollo Web
 - **Rx.NET (System.Reactive)** - Programación reactiva en los clientes
 - **Blazor WebAssembly** - Cliente web
 - **Spectre.Console** - Cliente de terminal
+- **Serilog** - Logging configurable desde `appsettings.json`
 - **DiceBear API** - Avatares deterministas por nombre de usuario
 - **NUnit + FluentAssertions** - Tests por proyecto
 
@@ -35,14 +37,118 @@ AulaChatNet es un proyecto educativo de ejemplo para el módulo **Desarrollo Web
 
 ```
 AulaChatNet/
-├── AulaChatNet.Shared/             # DTOs, constantes del hub, avatar, operadores Rx
-├── AulaChatNet.Server/             # ASP.NET Core + SignalR (ChatHub)
-├── AulaChatNet.Client.Terminal/    # Consola con Spectre.Console
-├── AulaChatNet.Client.Blazor/      # Blazor WebAssembly
-└── Xxx.Tests/                      # Tests hermanos de cada proyecto
+├── AulaChatNet.slnx                        # Solución (.slnx, formato .NET 10)
+├── global.json                             # SDK fijado (10.0.401)
+├── Directory.Build.props                    # LangVersion, Nullable, warnings como errores
+├── Directory.Packages.props                 # Central Package Management (versiones aquí)
+├── docs/                                   # Documentación didáctica
+├── AulaChatNet.Shared/                      # DTOs, constantes del hub, ChatConfig, avatar, operadores Rx
+│   └── AulaChatNet.Shared.Tests/
+├── AulaChatNet.Server/                      # ASP.NET Core + SignalR
+│   ├── Hubs/                                # ChatHub (alta, mensajes, canales, nick, estadísticas)
+│   ├── Services/                            # IChatStore / ChatStore (en memoria)
+│   ├── Models/                              # EstadoCanal, ConexionChat
+│   ├── Infrastructures/                     # Extensiones de arranque (servicios, CORS, hub)
+│   └── AulaChatNet.Server.Tests/
+├── AulaChatNet.Client.Terminal/             # Consola con Spectre.Console (TUI estilo Discord)
+│   └── AulaChatNet.Client.Terminal.Tests/
+└── AulaChatNet.Client.Blazor/               # ⏳ Blazor WebAssembly
+    └── AulaChatNet.Client.Blazor.Tests/
 ```
 
-> **En construcción.** Fase 1 (MVP en memoria) en desarrollo. Cada fase ampliará este README con arquitectura, endpoints y capturas.
+## 🏗️ Arquitectura
+
+Capa compartida (`Shared`) como contrato entre servidor y clientes, un hub de SignalR por servidor y estado en memoria separado por canal. Detalle y diagramas en [`docs/01-arquitectura-del-servidor.md`](docs/01-arquitectura-del-servidor.md):
+
+```mermaid
+flowchart TD
+    subgraph Clientes["Clientes"]
+        T["Terminal<br/>Spectre.Console + Rx"]
+        B["Blazor WASM<br/>estética Discord + Rx"]
+    end
+
+    S["AulaChatNet.Server<br/>ChatHub (/hubs/chat) + ChatStore en memoria"]
+
+    SH["AulaChatNet.Shared<br/>DTOs · constantes · ChatConfig · operadores Rx"]
+
+    T <-->|"SignalR (WebSocket)"| S
+    B <-->|"SignalR (WebSocket)"| S
+    T -.-> SH
+    B -.-> SH
+    S -.-> SH
+
+    style T fill:#FF9800,color:#fff
+    style B fill:#FF9800,color:#fff
+    style S fill:#2196F3,color:#fff
+    style SH fill:#9C27B0,color:#fff
+```
+
+## 📡 Hub del chat
+
+Ruta: `/hubs/chat` (configurable en `Chat:HubRuta`). Los métodos y eventos se referencian por constantes en `Shared/Constantes` (`ChatHubMetodos` y `ChatHubEventos`).
+
+**Cliente → servidor** (casi todos devuelven `string?`: `null` = OK, texto = error; la excepción es `ObtenerUsuariosAsync`, que devuelve datos):
+
+| Método | Argumentos | Qué hace |
+|--------|-----------|----------|
+| `ConnectAsync` | `usuario`, `canal?` | Alta en un canal (si no se indica, el por defecto); envía el historial SOLO al que entra |
+| `SendAsync` | `texto` | Difunde el mensaje al grupo de SU canal |
+| `CambiarCanalAsync` | `canal` | Mueve al usuario: aviso de salida en el viejo, historial del nuevo solo a él, aviso de entrada |
+| `CambiarNickAsync` | `nuevoNick` | Cambia el nombre en caliente, con aviso "X ahora se llama Y" al canal |
+| `ObtenerUsuariosAsync` | `canal` | Devuelve los conectados de CUALQUIER canal; responde SOLO al que pregunta (para `/usuarios <canal>`) |
+
+**Servidor → cliente**:
+
+| Evento | Argumento | Destino |
+|--------|-----------|---------|
+| `MensajeNuevo` | `MensajeDto` | Grupo del canal (mensajes normales y de sistema) |
+| `ListaUsuariosActualizada` | `IReadOnlyList<UsuarioConectadoDto>` | Grupo del canal |
+| `HistorialRecibido` | `IReadOnlyList<MensajeDto>` | SOLO al cliente que se conecta o cambia de canal |
+| `EstadisticasActualizadas` | `EstadisticasDto` | A TODOS (total + reparto por canal) |
+
+**Canales**: `#general`, `#daw`, `#dam`, `#asir`, `#smr`. Nombre único por canal, historial de 25 mensajes por canal (50 en Development) y rechazo con lista de válidos si el canal no existe. El orden del array del `appsettings.json` es el orden de pantalla en los clientes, y el primero es el canal por defecto.
+
+## 🌐 Endpoints REST
+
+Además del hub SignalR, el servidor expone una pequeña API para consultas puntuales (lo típico: contar gente **antes** de registrarse, como hace la entrada guiada del terminal):
+
+| Método | Ruta | Qué devuelve |
+|--------|------|--------------|
+| `GET` | `/estadisticas` | `EstadisticasDto`: total de conectados + reparto por canal |
+
+La ruta vive en `Shared` (`ChatRutas.Estadisticas`), sin rutas escritas dos veces. No sustituye al evento `EstadisticasActualizadas`: este es push en tiempo real y el endpoint es pull bajo demanda.
+
+## ⚙️ Configuración
+
+Todo se configura en `appsettings.json` (con override por entorno en `appsettings.Development.json`), sin hardcodeos:
+
+| Sección | Qué controla |
+|---------|--------------|
+| `Chat` | Canales, ruta del hub, límites de usuario/mensaje, historial máximo, URL de avatares |
+| `Serilog` | Consola (Information, con color) + fichero de errores (`logs/aulachat-YYYY-MM-DD.log`, rolling y retención de 7 días) |
+| `Cors` | Orígenes permitidos para el cliente Blazor en desarrollo |
+| `Terminal` | Sección del cliente terminal: `UrlServidor` y `RecordarSesion` |
+
+## ✅ Estado por fases
+
+| Fase | Contenido | Estado |
+|------|-----------|--------|
+| Entorno | `.slnx`, Central Package Management, GitFlow | ✅ Hecho |
+| **Fase 1 · Shared** | DTOs, `ChatConfig`, avatar, operadores Rx | ✅ Hecho — 60 tests |
+| **Fase 1 · Server** | `ChatHub`, `ChatStore` en memoria, canales, estadísticas, Serilog | ✅ Hecho — 71 tests |
+| **Fase 1 · Terminal** | Spectre.Console, vista en vivo, entrada guiada, comandos y sesión | ✅ Hecho — 96 tests |
+| **Fase 1 · Blazor** | Layout Discord + store reactiva estilo `NotificationStore` | ⏳ Pendiente |
+| Fase 2 | Persistencia (SQLite + EF Core) | 🔜 Futura |
+| Fase 3 | Extras (moderación, comandos `/`, reacciones) | 🔜 Futura |
+
+## 📚 Documentación
+
+Toda la documentación didáctica vive en [`docs/`](docs/):
+
+- 📖 [`docs/01-arquitectura-del-servidor.md`](docs/01-arquitectura-del-servidor.md) - Arquitectura por capas, ciclo de vida de una conexión de SignalR, estado por canal, grupos, estadísticas, Serilog y dos bugs reales, con diagramas Mermaid
+- 💻 [`docs/02-cliente-terminal.md`](docs/02-cliente-terminal.md) - **Manual de uso** con capturas reales en ASCII (arranque, vista en vivo, comandos y sus salidas, reconexión y sesión) y su arquitectura interna: Spectre.Console, capa reactiva con Rx, modo doble (consola/tubería) y tests
+
+> 💡 **Consejo:** si solo vas a leer un documento, empieza por el del servidor: es el mapa completo sobre el que se apoyan los dos clientes.
 
 ## 📝 Licencia
 
