@@ -32,6 +32,10 @@
     --dc-hora: #72767d;         /* timestamps */
     --dc-hover: rgba(79, 84, 92, 0.3);
     --dc-borde: #202225;
+    --dc-gris-medio: #4f545c;        /* grises medios: separador, bordes de boton */
+    --dc-gris: #b9bbbe;              /* gris claro: punto "conectando" */
+    --dc-blurple-oscuro: #4752c4;    /* blurple al pasar el raton */
+    --dc-opacidad-inactiva: 0.55;    /* opacidad comun de los botones desactivados */
 }
 
 * {
@@ -207,8 +211,10 @@ body {
     margin: 14px 0 6px;
 }
 
-.entrada-campo input,
-.entrada-campo select {
+/* El label y su campo son HERMANOS (label[for] + input): el combinador "+"
+   apunta al input/select que viene justo detras del label */
+.entrada-campo + input,
+.entrada-campo + select {
     width: 100%;
     background: var(--dc-oscuro);
     border: 1px solid var(--dc-borde);
@@ -219,8 +225,8 @@ body {
     outline: none;
 }
 
-.entrada-campo input:focus,
-.entrada-campo select:focus {
+.entrada-campo + input:focus,
+.entrada-campo + select:focus {
     border-color: var(--dc-blurple);
 }
 
@@ -269,8 +275,13 @@ body {
     color: var(--dc-texto);
 }
 
+.barra-estado {
+    color: var(--dc-suave);
+    font-size: 13px;
+}
+
 .barra-separador {
-    color: #4f545c;
+    color: var(--dc-gris-medio);
 }
 
 .barra-contador {
@@ -373,6 +384,8 @@ body {
 
 .mensaje {
     display: flex;
+    /* hora, avatar y texto centrados verticalmente entre sí */
+    align-items: center;
     gap: 12px;
     padding: 4px 8px;
     margin: 0 -8px;
@@ -389,7 +402,6 @@ body {
     text-align: right;
     color: var(--dc-hora);
     font-size: 11px;
-    padding-top: 4px;
 }
 
 .mensaje-espaciador {
@@ -463,8 +475,12 @@ body {
     flex-shrink: 0;
 }
 
+.caja-boton:hover:not(:disabled) {
+    background: var(--dc-blurple-oscuro);
+}
+
 .caja-boton:disabled {
-    opacity: 0.45;
+    opacity: var(--dc-opacidad-inactiva);
     cursor: not-allowed;
 }
 
@@ -531,12 +547,13 @@ body {
     height: 10px;
     border-radius: 50%;
     flex-shrink: 0;
-    box-shadow: 0 0 0 3px currentColor inset; /* hueco tipo Discord */
-    background: currentColor;
+    /* hueco tipo Discord: el disco lo dibuja la sombra interior de 3px */
+    box-shadow: inset 0 0 0 3px currentColor;
+    background: transparent;
 }
 
 .punto.conectado { color: var(--dc-verde); }
-.punto.conectando { color: #b9bbbe; }
+.punto.conectando { color: var(--dc-gris); }
 .punto.reconectando { color: var(--dc-naranja); }
 .punto.desconectado { color: var(--dc-rojo); }
 
@@ -573,17 +590,17 @@ body {
 }
 
 .boton:hover {
-    background: #4752c4;
+    background: var(--dc-blurple-oscuro);
 }
 
 .boton:disabled {
-    opacity: 0.55;
+    opacity: var(--dc-opacidad-inactiva);
     cursor: not-allowed;
 }
 
 .boton-secundario {
     background: transparent;
-    border: 1px solid #4f545c;
+    border: 1px solid var(--dc-gris-medio);
     color: var(--dc-suave);
     border-radius: 4px;
     font-size: 13px;
@@ -595,6 +612,20 @@ body {
 .boton-secundario:hover {
     border-color: var(--dc-texto);
     color: var(--dc-texto);
+}
+
+/* Foco visible y coherente para todo lo que se puede pulsar (teclado) */
+.boton:focus-visible,
+.boton-secundario:focus-visible,
+.caja-boton:focus-visible,
+.pildora:focus-visible {
+    outline: 2px solid var(--dc-blurple);
+    outline-offset: 2px;
+}
+
+/* La caja de texto no tiene borde: su foco se anuncia con un anillo en el marco */
+.caja:focus-within {
+    box-shadow: 0 0 0 2px var(--dc-blurple);
 }
 
 .error {
