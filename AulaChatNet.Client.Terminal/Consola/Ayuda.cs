@@ -24,6 +24,8 @@ public static class Ayuda
         ("/canal <nombre>", "Cambia de canal (p. ej. /canal daw)"),
         ("/nick <nombre>", "Cambia tu nombre en caliente (p. ej. /nick Ana2)"),
         ("/usuarios [canal]", "Conectados de tu canal o de otro (p. ej. /usuarios daw)"),
+        ("/reconectar", "Vuelve a entrar si se perdió la conexión (en vivo, también la tecla R)"),
+        ("/sesion [borrar]", "Ver la sesión guardada o borrarla (útil en aulas compartidas)"),
         ("/limpiar", "Limpia la pantalla (el historial lo repinta el servidor)"),
         ("/salir", "Desconectar y cerrar (Ctrl+C hace lo mismo)")
     ];

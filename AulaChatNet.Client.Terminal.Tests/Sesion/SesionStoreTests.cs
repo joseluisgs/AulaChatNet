@@ -171,4 +171,47 @@ public class SesionStoreTests
         storePorDefecto.RutaFichero.Should().Contain("AulaChatNet")
             .And.EndWith("sesion.json");
     }
+
+    [Test]
+    public void Borrar_ConSesionGuardada_EliminaElFichero()
+    {
+        // Arrange
+        _store.Guardar(new SesionTerminal("Ana", "#general"));
+
+        // Act
+        var borrado = _store.Borrar();
+
+        // Assert: devolvió true y ya no queda nada (la próxima vez se pregunta)
+        borrado.Should().BeTrue();
+        File.Exists(_ruta).Should().BeFalse();
+        _store.Cargar().Should().BeNull();
+        _store.SesionCorrupta.Should().BeFalse();
+    }
+
+    [Test]
+    public void Borrar_SinFichero_DevuelveFalseSinLanzar()
+    {
+        // Act: borrar algo que no existe NO es un error (comando /sesion borrar)
+        var borrado = _store.Borrar();
+
+        // Assert
+        borrado.Should().BeFalse();
+    }
+
+    [Test]
+    public void Borrar_FicheroCorrupto_LoBorraYDejaTodoLimpio()
+    {
+        // Arrange: sesión ilegible que ya no quiere nadie
+        Directory.CreateDirectory(_directorio);
+        File.WriteAllText(_ruta, "no es json {{{");
+        _store.Cargar(); // deja SesionCorrupta = true
+
+        // Act
+        var borrado = _store.Borrar();
+
+        // Assert: fuera el fichero roto y la marca de corrupto con él
+        borrado.Should().BeTrue();
+        File.Exists(_ruta).Should().BeFalse();
+        _store.SesionCorrupta.Should().BeFalse();
+    }
 }

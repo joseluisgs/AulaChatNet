@@ -221,6 +221,61 @@ public class ParserComandosTests
 
     #endregion
 
+    #region Reconexión y sesión Tests
+
+    [Test]
+    [TestCase("/reconectar")]
+    [TestCase("/reconnect")]     // alias en inglés
+    [TestCase("/RECONECTAR")]     // mayúsculas dan igual
+    public void Parse_Reconectar_DevuelveReconectar(string entrada)
+    {
+        // Act: la tecla R de la vista en vivo usa exactamente este comando
+        var comando = ParserComandos.Parse(entrada);
+
+        // Assert
+        comando.Should().BeOfType<Comando.Reconectar>();
+    }
+
+    [Test]
+    public void Parse_SesionSinArgumento_PideVerLaSesion()
+    {
+        // Act: sin argumento = ver qué hay guardado en el perfil
+        var comando = ParserComandos.Parse("/sesion");
+
+        // Assert
+        comando.Should().BeOfType<Comando.Sesion>()
+            .Which.Accion.Should().Be(AccionSesion.Ver);
+    }
+
+    [Test]
+    [TestCase("/sesion borrar")]
+    [TestCase("/sesion eliminar")]   // sinónimos aceptados
+    [TestCase("/sesion olvidar")]
+    [TestCase("/SESION BORRAR")]     // mayúsculas dan igual
+    public void Parse_SesionConBorrar_PideBorrarLaSesion(string entrada)
+    {
+        // Act
+        var comando = ParserComandos.Parse(entrada);
+
+        // Assert
+        comando.Should().BeOfType<Comando.Sesion>()
+            .Which.Accion.Should().Be(AccionSesion.Borrar);
+    }
+
+    [Test]
+    public void Parse_SesionConAccionDesconocida_DevuelveInvalidoConUso()
+    {
+        // Act
+        var comando = ParserComandos.Parse("/sesion magia");
+
+        // Assert
+        var invalido = comando.Should().BeOfType<Comando.Invalido>().Subject;
+        invalido.Motivo.Should().Contain("sesion");
+        invalido.Uso.Should().Contain("/sesion borrar");
+    }
+
+    #endregion
+
     #region Errores Tests
 
     [Test]

@@ -36,6 +36,13 @@ public abstract record Comando
     /// <param name="NombreCanal">Canal a consultar (null = el canal actual).</param>
     public sealed record Usuarios(string? NombreCanal = null) : Comando;
 
+    /// <summary>/reconectar: volver a entrar si la conexión se perdió (en la vista en vivo, la tecla R hace lo mismo).</summary>
+    public sealed record Reconectar : Comando;
+
+    /// <summary>/sesion [borrar]: ver la sesión guardada o borrarla.</summary>
+    /// <param name="Accion">Ver lo guardado (por defecto) o borrarlo.</param>
+    public sealed record Sesion(AccionSesion Accion) : Comando;
+
     /// <summary>/limpiar: limpiar la vista y repintar desde el búfer local.</summary>
     public sealed record Limpiar : Comando;
 
@@ -50,4 +57,14 @@ public abstract record Comando
     /// <param name="Motivo">Explicación breve del problema.</param>
     /// <param name="Uso">Ejemplo de uso correcto para enseñarlo al usuario.</param>
     public sealed record Invalido(string Motivo, string Uso) : Comando;
+}
+
+/// <summary>Acciones que admite el comando /sesion.</summary>
+public enum AccionSesion
+{
+    /// <summary>Ver qué hay guardado en el perfil del usuario.</summary>
+    Ver,
+
+    /// <summary>Borrar la sesión guardada (y no volver a guardarla al salir).</summary>
+    Borrar
 }

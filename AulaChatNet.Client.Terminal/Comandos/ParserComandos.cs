@@ -48,6 +48,8 @@ public static class ParserComandos
             "/canal" => CrearCanal(argumento),
             "/nick" or "/nickname" => CrearNick(argumento),
             "/usuarios" or "/quienes" => new Comando.Usuarios(argumento),
+            "/reconectar" or "/reconnect" => new Comando.Reconectar(),
+            "/sesion" => CrearSesion(argumento),
             "/limpiar" or "/clear" => new Comando.Limpiar(),
             "/salir" or "/exit" or "/quit" => new Comando.Salir(),
             _ => new Comando.Desconocido(partes[0])
@@ -80,4 +82,21 @@ public static class ParserComandos
                 "Falta el nuevo nombre",
                 "Usa: /nick <nombre> (p. ej. /nick Ana)")
             : new Comando.Nick(argumento);
+
+    /// <summary>
+    /// Construye el comando de sesión: sin argumento se ve lo guardado,
+    /// "borrar" lo elimina (con sinónimos habituales); cualquier otra cosa
+    /// devuelve el uso correcto en lugar de fallar en silencio.
+    /// </summary>
+    /// <param name="argumento">Acción escrita tras /sesion (puede ser null).</param>
+    /// <returns>Comando de sesión o comando inválido con su uso.</returns>
+    private static Comando CrearSesion(string? argumento) =>
+        argumento?.ToLowerInvariant() switch
+        {
+            null or "" => new Comando.Sesion(AccionSesion.Ver),
+            "borrar" or "eliminar" or "olvidar" => new Comando.Sesion(AccionSesion.Borrar),
+            _ => new Comando.Invalido(
+                $"No conozco la acción '{argumento}' de /sesion",
+                "Usa: /sesion (ver lo guardado) o /sesion borrar")
+        };
 }

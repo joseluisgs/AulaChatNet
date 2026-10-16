@@ -86,6 +86,32 @@ public class SesionStore(string? rutaFichero = null)
     }
 
     /// <summary>
+    /// Borra la sesión guardada, si la hay (útil en aulas compartidas, para
+    /// no heredar el nick del compañero). No falla nunca: borrar algo que no
+    /// existe no es un error, y una salida jamás debe romperse.
+    /// </summary>
+    /// <returns>true si había un fichero y se borró; false si no había nada.</returns>
+    public bool Borrar()
+    {
+        try
+        {
+            if (!File.Exists(RutaFichero))
+                return false;
+
+            File.Delete(RutaFichero);
+
+            // Ya no hay nada guardado: tampoco cuenta como corrupto
+            SesionCorrupta = false;
+
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Ruta por defecto en el perfil del usuario: %APPDATA%\AulaChatNet\sesion.json
     /// en Windows, o el equivalente (XDG) en Linux y macOS.
     /// </summary>

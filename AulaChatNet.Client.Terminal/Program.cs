@@ -34,6 +34,10 @@ var terminal = configuracion.GetSection(TerminalConfig.Seccion).Get<TerminalConf
 var storeSesion = new SesionStore();
 var sesionGuardada = terminal.RecordarSesion ? storeSesion.Cargar() : null;
 
+// true si el usuario mandó borrarla con /sesion borrar: en ese caso la
+// salida ordenada NO vuelve a guardar nada (se borraría para nada)
+var sesionOlvidada = false;
+
 // ============================================================================
 // 🖼️ PANTALLA DE ENTRADA: banner + ayuda
 // ============================================================================
@@ -205,7 +209,7 @@ Console.CancelKeyPress += (_, args) =>
 {
     args.Cancel = true; // no matamos el proceso mientras escribe algo
 
-    if (terminal.RecordarSesion)
+    if (terminal.RecordarSesion && !sesionOlvidada)
         storeSesion.Guardar(new SesionTerminal(nickActual, canalActual, DateTime.Now));
 
     AnsiConsole.WriteLine();
@@ -259,7 +263,7 @@ else
 // 🏁 SALIDA ORDENADA
 // ============================================================================
 
-if (terminal.RecordarSesion)
+if (terminal.RecordarSesion && !sesionOlvidada)
     storeSesion.Guardar(new SesionTerminal(nickActual, canalActual, DateTime.Now));
 
 await cliente.CerrarAsync();
@@ -370,12 +374,9 @@ async Task BucleEnVivo()
                              && tecla.Key == ConsoleKey.R
                              && editor.Longitud == 0)
                     {
-                        // Solo con la línea vacía: si no, la "r" es texto
-                        var errorRecon = await cliente.ReconectarAsync();
-
-                        PublicarLinea(errorRecon is null
-                            ? "[green]●[/] Reconectado: sesión recuperada."
-                            : $"[red]✗ {Markup.Escape(errorRecon)}[/]");
+                        // Solo con la línea vacía: si no, la "r" es texto.
+                        // El camino es el MISMO que /reconectar: una sola ruta
+                        await ProcesarLinea("/reconectar");
                     }
                     else if (!char.IsControl(tecla.KeyChar))
                     {
@@ -441,6 +442,32 @@ async Task ProcesarLinea(string linea)
             PublicarContenido(await CrearContenidoUsuariosAsync(cliente, chat, canalConsulta));
             break;
 
+        case Comando.Reconectar:
+            // Solo tiene sentido con la conexión caída: si la reconexión
+            // automática aún va en marcha o ya estamos dentro, se avisa
+            if (cliente.EstadoValor == EstadoConexion.Desconectado)
+            {
+                error = await cliente.ReconectarAsync();
+
+                PublicarLinea(error is null
+                    ? "[green]●[/] Reconectado: sesión recuperada."
+                    : $"[red]✗ {Markup.Escape(error)}[/]");
+            }
+            else if (cliente.EstadoValor == EstadoConexion.Conectado)
+            {
+                PublicarLinea("[grey]● Ya estás conectado: no hace falta reconectar.[/]");
+            }
+            else
+            {
+                PublicarLinea("[grey]⏳ La reconexión automática sigue en marcha: espera unos segundos.[/]");
+            }
+
+            break;
+
+        case Comando.Sesion { Accion: var accion }:
+            ProcesarSesion(accion);
+            break;
+
         case Comando.Limpiar:
             AnsiConsole.Clear();
             salidas.Clear();
@@ -463,6 +490,57 @@ async Task ProcesarLinea(string linea)
                 $"[grey]{Markup.Escape(invalido.Uso)}[/]");
             break;
     }
+}
+
+// /sesion [borrar]: ver qué hay guardado en el perfil o borrarlo (en aulas
+// compartidas, para no heredar el nick del compañero). Tras "borrar" se
+// marca la sesión como olvidada: la salida NO vuelve a guardar nada esta
+// vez, o se borraría para nada. La vista relee del disco (la memoria
+// puede estar desactualizada).
+void ProcesarSesion(AccionSesion accion)
+{
+    if (accion == AccionSesion.Borrar)
+    {
+        var borrado = storeSesion.Borrar();
+        sesionOlvidada = true;
+
+        PublicarLineas(borrado
+            ? "[green]🗑️[/] Sesión borrada: la próxima vez se preguntará de cero " +
+              "[grey](y esta vez no se guardará nada al salir).[/]"
+            : "[grey]🗑️ No había ninguna sesión guardada que borrar.[/]");
+
+        return;
+    }
+
+    var guardada = storeSesion.Cargar();
+    var ruta = Markup.Escape(storeSesion.RutaFichero);
+
+    if (storeSesion.SesionCorrupta)
+    {
+        PublicarLineas(
+            "[yellow]⚠ Hay una sesión guardada pero no se pudo leer (fichero corrupto).[/]",
+            $"[grey]Fichero:[/] {ruta}");
+
+        return;
+    }
+
+    if (guardada is null || string.IsNullOrWhiteSpace(guardada.Nick))
+    {
+        PublicarLinea("[grey]No hay sesión guardada: la próxima vez se preguntará el nick.[/]");
+        return;
+    }
+
+    var cuando = guardada.UltimaConexion > DateTime.MinValue
+        ? $"[grey]el[/] [bold]{guardada.UltimaConexion:dd/MM/yyyy HH:mm}[/]"
+        : "[grey](sin fecha guardada)[/]";
+
+    PublicarLineas(
+        $"[grey]📌[/] Sesión guardada: [bold]{Markup.Escape(guardada.Nick)}[/] " +
+        $"[grey]en[/] [bold]{Markup.Escape(guardada.Canal)}[/] {cuando}",
+        $"[grey]Se ofrecerá al arrancar y se guardará al salir. Fichero:[/] {ruta}",
+        terminal.RecordarSesion
+            ? "[grey]Bórrala con /sesion borrar (útil si compartes el equipo).[/]"
+            : "[yellow]Nota:[/] Terminal:RecordarSesion = false — no se guardará nada al salir.");
 }
 
 // Publica la salida de un comando en el destino del modo actual.
@@ -698,19 +776,23 @@ static string EstadoComoMarkup(ClienteChat cliente)
 }
 
 // Una línea de mensaje como markup (la MISMA fórmula en los dos modos):
-// sistema en gris cursiva; normal con hora, iniciales entre corchetes y
-// nombre con su color derivado. El servidor marca en UTC (la regla de oro:
-// guardar UTC, convertir SOLO al presentar), así que aquí se pasa a la
-// hora local del que mira — sin esto, la terminal enseñaría otra hora.
+// sistema con hora y en gris cursiva; normal con hora, iniciales entre
+// corchetes y nombre con su color derivado. El servidor marca en UTC (la
+// regla de oro: guardar UTC, convertir SOLO al presentar), así que aquí se
+// pasa a la hora local del que mira — sin esto, la terminal enseñaría otra
+// hora. Los mensajes de sistema TAMBIÉN llevan hora: en un aula se quiere
+// saber cuándo se fue alguien (Discord y Slack lo hacen igual).
 static string LineaMensajeMarkup(MensajeDto mensaje)
 {
+    var hora = $"{mensaje.Timestamp.ToLocalTime():HH:mm}";
+
     if (mensaje.Tipo == TipoMensaje.Sistema)
-        return $"[grey italic]{Markup.Escape(mensaje.Texto)}[/]";
+        return $"[grey]{hora}[/] [grey italic]· {Markup.Escape(mensaje.Texto)}[/]";
 
     var hex = TemaDiscord.ColorDe(mensaje.Usuario).ToMarkup();
     var iniciales = TemaDiscord.Iniciales(mensaje.Usuario);
 
-    return $"[grey]{mensaje.Timestamp.ToLocalTime():HH:mm}[/] " +
+    return $"[grey]{hora}[/] " +
            $"[{hex}][[{iniciales}]][/] " +
            $"[{hex}]{Markup.Escape(mensaje.Usuario)}[/]: {Markup.Escape(mensaje.Texto)}";
 }
