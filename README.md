@@ -168,6 +168,7 @@ Toda la documentación didáctica vive en [`docs/`](docs/):
 
 - 📖 [`docs/01-arquitectura-del-servidor.md`](docs/01-arquitectura-del-servidor.md) - Arquitectura por capas, ciclo de vida de una conexión de SignalR, estado por canal, grupos, estadísticas, Serilog y dos bugs reales, con diagramas Mermaid
 - 💻 [`docs/02-cliente-terminal.md`](docs/02-cliente-terminal.md) - **Manual de uso** con capturas reales en ASCII (arranque, vista en vivo, comandos y sus salidas, reconexión y sesión) y su arquitectura interna: Spectre.Console, capa reactiva con Rx, modo doble (consola/tubería) y tests
+- 🌐 [`docs/03-cliente-blazor.md`](docs/03-cliente-blazor.md) - **El cliente web**: Blazor WebAssembly alojado por el servidor, la estética de Discord en CSS propio, la store central y la capa reactiva con suscripciones en los componentes, los comandos `/` reutilizando el parser de `Shared`, la sesión en `localStorage`, el desarrollo con `dotnet watch` y **dos bugs reales** (el `Closed` fantasma y el manifiesto de assets caducado), con sus arreglos y tests
 - 🖼️ [`docs/boceto-vistas.html`](docs/boceto-vistas.html) - **Boceto visual de las dos vistas de la web** con los mismos estilos y elementos que la app: [vista 1 · panel de entrada](docs/boceto-vistas.html#vista-1) y [vista 2 · vista de canal](docs/boceto-vistas.html#vista-2)
 
 > 💡 **Consejo:** si solo vas a leer un documento, empieza por el del servidor: es el mapa completo sobre el que se apoyan los dos clientes.
