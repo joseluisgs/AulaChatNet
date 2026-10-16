@@ -118,7 +118,7 @@ flowchart TB
 
 **Las teclas se leen sin bloquear**: el bucle usa `Console.KeyAvailable` + una pausa corta de 50 ms; si no hay tecla, se repinta y se vuelve a mirar. Así el repintado sigue vivo mientras tecleas. El editor aprovecha `Enter` (envía), `Retroceso` (borra atrás), `Supr` (borra delante), las flechas `←` `→` (mueven el cursor), `Inicio`/`Fin` (saltos), `Escape` (borra todo lo escrito) y `Ctrl+C` (salida ordenada).
 
-**Y la reconexión no te deja tirado**: SignalR reintenta solo (0, 2, 10 y 30 s), pero al reconectar el transporte **no basta**: el servidor ya te dio de baja y tu conexión nueva tiene otro `ConnectionId` que no está en ningún grupo. Por eso, al volver (`Reconnected`), el cliente **vuelve a invocar `ConnectAsync`** con el nick y el canal recordados — si no, quedarías de escayola: la cabecera diría "conectado" pero nadie te vería. Si los reintentos automáticos se agotan (`Closed`), el pie se convierte en instrucción: *"pulsa R para reconectar"*, y con `R` se reabre la conexión y se vuelve a entrar sin reiniciar el programa.
+**Y la reconexión no te deja tirado**: SignalR reintenta solo (0, 2, 10 y 30 s), pero al reconectar el transporte **no basta**: el servidor ya te dio de baja y tu conexión nueva tiene otro `ConnectionId` que no está en ningún grupo. Por eso, al volver (`Reconnected`), el cliente **vuelve a invocar `ConnectAsync`** con el nick y el canal recordados — si no, quedarías de escayola: la cabecera diría "conectado" pero nadie te vería. Si los reintentos automáticos se agotan (`Closed`), el pie se convierte en instrucción: *"pulsa R para reconectar"* — o escribe `/reconectar`, que hace exactamente lo mismo y funciona también en modo tubería—, y se reabre la conexión sin reiniciar el programa.
 
 > ⚠️ **Advertencia:** debajo se usa `Console.ReadKey`, el mismo que usan los prompts de Spectre, así que las teclas muertas y los acentos se comportan igual que en el resto del programa. Y un detalle que costó un lunes: **cada etiqueta de markup debe estar cerrada y sin `]` sueltos** — un `[bold]#5865f2]` con un corchete de más hacía estallar el primer repintado con `Encountered unescaped ']' token`.
 
@@ -175,6 +175,8 @@ La idea bonita de todo esto: **el bucle de la vista en vivo no procesa eventos, 
 | `/canal <nombre>` | — | Cambia de sala (`/canal daw` = `/canal #daw`) |
 | `/nick <nombre>` | `/nickname` | Cambia el nombre en caliente |
 | `/usuarios [canal]` | `/quienes` | Conectados de tu sala; con argumento, consulta **otra sala sin cambiar** (método `ObtenerUsuariosAsync` del hub, que responde solo al que pregunta) |
+| `/reconectar` | `/reconnect` | Vuelve a entrar si se perdió la conexión (la tecla `R` de la vista en vivo hace lo mismo; el cliente re-invoca `ConnectAsync` al volver) |
+| `/sesion [borrar]` | — | Ve la sesión guardada en el perfil o la borra (`/sesion borrar`, útil en aulas compartidas para no heredar el nick del compañero) |
 | `/limpiar` | `/clear` | Limpia la pantalla; en la vista en vivo, deja viendo solo lo que llegue después |
 | `/salir` | `/exit`, `/quit` | Desconectar y cerrar (Ctrl+C hace lo mismo) |
 
@@ -189,6 +191,7 @@ Al salir (o con Ctrl+C) se guarda `nick`, `canal` y `UltimaConexion` en el perfi
 - **Por qué ahí y no en `appsettings.json`**: el JSON del repositorio es configuración común; esto es **estado personal** de cada alumno, así que vive en su perfil y no se commitea.
 - **Si `Terminal:RecordarSesion` es `false`**, no se guarda ni se ofrece nada.
 - **La fecha** permite decir en la bienvenida cuándo fue la última vez; los ficheros antiguos sin ese campo se leen igual (queda `default` y simplemente no se muestra).
+- **`/sesion`** enseña qué hay guardado (releyendo del disco) y **`/sesion borrar`** elimina el fichero — y además marca la sesión como olvidada para que la salida **no vuelva a guardar nada** esta vez: si no, se borraría para nada. En aulas compartidas es la forma de no heredar el nick del compañero.
 
 Los tests de `SesionStoreTests` usan una carpeta temporal por test, así que el fichero real del equipo nunca se toca.
 
