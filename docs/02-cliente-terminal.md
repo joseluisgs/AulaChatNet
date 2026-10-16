@@ -36,7 +36,7 @@ El cliente es una aplicación de consola normal (no usa `WebApplication` ni host
 | `Program.cs` | Pantalla de entrada, bucle de chat y pintado | Entrada guiada, `BucleEnVivo` |
 | `Comandos/` | Parser puro y tipos de comando | `ParserComandos`, `Comando` |
 | `Consola/` | Todo lo que se escribe en pantalla | `Banner`, `Ayuda`, `EditorLinea`, `Conectados`, `TemaDiscord` |
-| `Servicios/` | La conexión a SignalR y las stores reactivas | `ClienteChat` |
+| `Servicios/` | La conexión a SignalR, las stores reactivas y los mensajes de error | `ClienteChat`, `ResultadoConexion`, `MensajesError` |
 | `Sesion/` | Último nick/canal del usuario | `SesionStore`, `SesionTerminal` |
 | `Configuracion/` | Sección `Terminal` del appsettings | `TerminalConfig` |
 
@@ -112,7 +112,11 @@ Vale la pena detenerse en tres decisiones de diseño:
 | Sesión antigua sin fecha | `👋 ... fue Ana en el canal #general (sin fecha guardada)` |
 | Sesión completa | `👋 ... fue Ana en el canal #general el 16/10/2026 10:07` |
 
-3. **La validación ocurre ANTES de tocar el servidor**, con la MISMA clase (`ChatConfig`) que usa el servidor. Lo único que solo puede decidirlo el servidor es **el nombre duplicado en ese canal**, y por eso el bucle de conexión tiene reintento: si el servidor dice "ya hay un Ana", se vuelve a preguntar el nick **sin reiniciar el programa**.
+3. **La validación ocurre ANTES de tocar el servidor**, con la MISMA clase (`ChatConfig`) que usa el servidor. Lo único que solo puede decidirlo el servidor es **el nombre duplicado en ese canal**, y por eso el bucle de conexión distingue **qué** falló (`ResultadoConexion.HayServidor`):
+   - **El servidor respondió y rechazó el alta** (p. ej. dos terminales con el mismo nick) → se vuelve a preguntar **solo el nick**, sin reiniciar el programa, y se dice dónde.
+   - **El servidor ni se alcanza** (apagado, otra URL) → el nick **no tiene la culpa**: no se vuelve a preguntar nada, se conservan nick y canal y se ofrece **reintentar con Enter** (o salir si se cierra la entrada).
+
+   Y una regla de higiene de la interfaz: los fallos se traducen a **palabras de usuario** (`MensajesError`), nunca a tipos de excepción — "HttpRequestException" no le dice nada a quien solo quiere entrar al aula; el detalle técnico se queda fuera de la pantalla (y, cuando haya logging en Fase 2, en el log).
 
 Y este es el viaje completo por dentro — desde que se abre la conexión hasta que te vas:
 
@@ -346,6 +350,8 @@ La idea bonita de todo esto: **el bucle de la vista en vivo no procesa eventos, 
 | `ConectadosTests` | Fórmulas de "cuánta gente hay": singular/plural, orden de config, `●` del canal actual |
 | `EditorLineaTests` | Cursor de la línea de entrada: insertar en medio, borrar, mover, límites y pintado |
 | `TemaDiscordTests` | Paleta, colores derivados del nombre e iniciales |
+| `MensajesErrorTests` | Traducción de excepciones a mensajes de usuario (sin tipos en pantalla) |
+| `ClienteChatTests` | Conexión sin servidor: el fallo de red viaja tipado (`HayServidor`) y con mensaje amigable |
 
 Además, el **smoke E2E** arranca el servidor real y el terminal con `stdin`/`stdout` acoplados a ficheros, y comprueba por marcadores de texto que salen la bienvenida, la cuenta de conectados, el prompt guiado, el mensaje ecoado y la salida ordenada. Ese es precisamente el valor del **dual-mode**: la misma app, probada sin consola — y la misma técnica con la que se recabaron las capturas de este manual.
 
