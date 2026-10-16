@@ -1,0 +1,53 @@
+@* Historial del canal: lo pinta la store (mensajes en vivo) y hace scroll
+   automático abajo cuando algo nuevo entra — incluido el reemplazo del
+   historial al cambiar de canal. *@
+@implements IDisposable
+@inject IChatStore Store
+@inject IJSRuntime JS
+
+<div class="mensajes" id="lista-mensajes">
+    @foreach (var mensaje in _mensajes)
+    {
+        <MensajeItem Mensaje="mensaje" @key="mensaje.Id" />
+    }
+
+    @if (_mensajes.Count == 0)
+    {
+        <p class="mensajes-vacio">
+            Todavía no hay mensajes en este canal. ¡Sé el primero en saludar! 👋
+        </p>
+    }
+</div>
+
+@code {
+    private IReadOnlyList<MensajeDto> _mensajes = [];
+    private IDisposable? _suscripcion;
+
+    // Marcador: "hay que bajar el scroll" — se consume en OnAfterRender
+    // (el DOM solo ya está listo a partir de AHÍ, antes no)
+    private bool _pendienteBajar;
+
+    /// <summary>Suscripción al flujo de mensajes de la store.</summary>
+    protected override void OnInitialized()
+    {
+        _suscripcion = Store.Mensajes.Subscribe(mensajes =>
+        {
+            _mensajes = mensajes;
+            _pendienteBajar = true;
+            _ = InvokeAsync(StateHasChanged);
+        });
+    }
+
+    /// <summary>Tras repintar, baja el scroll si había algo nuevo.</summary>
+    protected override async Task OnAfterRenderAsync(bool primero)
+    {
+        if (!_pendienteBajar)
+            return;
+
+        _pendienteBajar = false;
+        await JS.InvokeVoidAsync("aulachat.abajo", "lista-mensajes");
+    }
+
+    /// <summary>Libera la suscripción cuando el componente se destruye.</summary>
+    public void Dispose() => _suscripcion?.Dispose();
+}

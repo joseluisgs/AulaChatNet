@@ -1,0 +1,622 @@
+/* ==========================================================================
+   AulaChatNet — tema Discord (clásico) con CSS propio, sin librerías
+   --------------------------------------------------------------------------
+   Regla de la casa: CSS propio y sin dependencias pesadas de estilos.
+   TODOS los colores viven en variables CSS (:root): si un día hay que
+   cambiar la paleta, se toca un solo sitio. Paleta Discord clásica.
+
+   Mapa de la interfaz (dos columnas, la regla del proyecto):
+
+   ┌──────────────────────────────────────────────────────────┐
+   │  barra          (logo · nick · canal · ● estado · gente) │
+   ├────────────┬─────────────────────────────────────────────┤
+   │  usuarios  │  píldoras (#general 2 · #daw 3 ...)         │
+   │  (sidebar) ├─────────────────────────────────────────────┤
+   │            │  mensajes (scroll, sin burbujas)            │
+   │            ├─────────────────────────────────────────────┤
+   │            │  caja de texto (input fijo abajo)           │
+   └────────────┴─────────────────────────────────────────────┘
+   ========================================================================== */
+
+:root {
+    --dc-fondo: #36393f;        /* fondo principal: zona de mensajes */
+    --dc-sidebar: #2f3136;      /* columna lateral: lista de usuarios */
+    --dc-oscuro: #202225;       /* cabeceras, barra superior */
+    --dc-input: #40444b;        /* cajas de texto */
+    --dc-texto: #dcddde;        /* texto principal */
+    --dc-suave: #8e9297;        /* texto secundario */
+    --dc-blurple: #5865f2;      /* acento (blurple) */
+    --dc-verde: #43b581;        /* en línea */
+    --dc-naranja: #faa61a;      /* reconectando / avisos */
+    --dc-rojo: #f04747;         /* errores / caído */
+    --dc-hora: #72767d;         /* timestamps */
+    --dc-hover: rgba(79, 84, 92, 0.3);
+    --dc-borde: #202225;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html,
+body {
+    height: 100%;
+}
+
+body {
+    background: var(--dc-fondo);
+    color: var(--dc-texto);
+    font-family: "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-size: 15px;
+    overflow: hidden; /* la app gestiona sus propios scrolls internos */
+}
+
+#app {
+    height: 100%;
+}
+
+/* ==========================================================================
+   1. Pantalla de carga (splash) y aviso de error del runtime
+   ========================================================================== */
+
+.carga {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+}
+
+.carga-logo {
+    color: var(--dc-blurple);
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: 1px;
+}
+
+.carga-texto {
+    color: var(--dc-suave);
+}
+
+.carga-barra {
+    width: 220px;
+    height: 4px;
+    background: var(--dc-input);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.carga-barra span {
+    display: block;
+    width: 40%;
+    height: 100%;
+    background: var(--dc-blurple);
+    border-radius: 2px;
+    animation: carga-avance 1.2s ease-in-out infinite;
+}
+
+@keyframes carga-avance {
+    0% { margin-left: -40%; }
+    100% { margin-left: 100%; }
+}
+
+#blazor-error-ui {
+    display: none;
+    position: fixed;
+    bottom: 0;
+    width: 100%;
+    z-index: 1000;
+    background: var(--dc-rojo);
+    color: #fff;
+    padding: 12px 16px;
+}
+
+#blazor-error-ui .reload {
+    color: #fff;
+    margin-left: 12px;
+    font-weight: 600;
+}
+
+#blazor-error-ui .dismiss {
+    float: right;
+    background: transparent;
+    border: 0;
+    color: #fff;
+    font-size: 16px;
+    cursor: pointer;
+}
+
+/* ==========================================================================
+   2. Panel de entrada (antes de conectar: nick + canal + gente conectada)
+   ========================================================================== */
+
+.entrada {
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background:
+        radial-gradient(circle at 20% 20%, rgba(88, 101, 242, 0.18), transparent 45%),
+        var(--dc-oscuro);
+    padding: 16px;
+}
+
+.entrada-tarjeta {
+    width: 100%;
+    max-width: 430px;
+    background: var(--dc-fondo);
+    border-radius: 8px;
+    padding: 32px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.45);
+}
+
+.entrada-logo {
+    color: var(--dc-blurple);
+    font-size: 26px;
+    font-weight: 700;
+    text-align: center;
+}
+
+.entrada-sub {
+    color: var(--dc-suave);
+    text-align: center;
+    font-size: 14px;
+    margin: 6px 0 20px;
+}
+
+.entrada-stats {
+    background: var(--dc-oscuro);
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 13px;
+    color: var(--dc-suave);
+    margin-bottom: 18px;
+    line-height: 1.5;
+}
+
+.entrada-sesion {
+    font-size: 13px;
+    color: var(--dc-suave);
+    margin-bottom: 18px;
+}
+
+.entrada-sesion b {
+    color: var(--dc-texto);
+}
+
+.entrada-sesion a {
+    color: var(--dc-blurple);
+    cursor: pointer;
+    text-decoration: none;
+}
+
+.entrada-sesion a:hover {
+    text-decoration: underline;
+}
+
+.entrada-campo {
+    display: block;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--dc-suave);
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    margin: 14px 0 6px;
+}
+
+.entrada-campo input,
+.entrada-campo select {
+    width: 100%;
+    background: var(--dc-oscuro);
+    border: 1px solid var(--dc-borde);
+    border-radius: 4px;
+    color: var(--dc-texto);
+    font-size: 15px;
+    padding: 10px;
+    outline: none;
+}
+
+.entrada-campo input:focus,
+.entrada-campo select:focus {
+    border-color: var(--dc-blurple);
+}
+
+.entrada-pie {
+    color: var(--dc-suave);
+    font-size: 12px;
+    text-align: center;
+    margin-top: 14px;
+}
+
+.entrada-tarjeta .error {
+    margin-top: 12px;
+}
+
+/* ==========================================================================
+   3. Barra superior (identidad + estado de la conexión + gente)
+   ========================================================================== */
+
+.aplicacion {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+.barra {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 48px;
+    padding: 0 16px;
+    background: var(--dc-oscuro);
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
+    flex-shrink: 0;
+}
+
+.barra-logo {
+    color: var(--dc-blurple);
+    font-weight: 700;
+}
+
+.barra-nick {
+    font-weight: 600;
+}
+
+.barra-canal {
+    color: var(--dc-texto);
+}
+
+.barra-separador {
+    color: #4f545c;
+}
+
+.barra-contador {
+    margin-left: auto;
+    color: var(--dc-suave);
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.barra-error {
+    color: var(--dc-rojo);
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+/* ==========================================================================
+   4. Estructura de dos columnas
+   ========================================================================== */
+
+.contenido {
+    display: flex;
+    flex: 1;
+    min-height: 0; /* clave para que las columnas hagan scroll de verdad */
+}
+
+.zona-canal {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+}
+
+/* ==========================================================================
+   5. Píldoras de canal (cabecera de la zona de mensajes)
+   ========================================================================== */
+
+.pildoras {
+    display: flex;
+    gap: 8px;
+    padding: 10px 16px;
+    background: var(--dc-fondo);
+    border-bottom: 1px solid var(--dc-borde);
+    overflow-x: auto;
+    flex-shrink: 0;
+}
+
+.pildora {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--dc-input);
+    color: var(--dc-suave);
+    border: 0;
+    border-radius: 14px;
+    padding: 5px 12px;
+    font-size: 14px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.pildora:hover {
+    color: var(--dc-texto);
+    background: var(--dc-hover);
+}
+
+.pildora.activa {
+    background: var(--dc-blurple);
+    color: #fff;
+    font-weight: 600;
+}
+
+.pildora-contador {
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: 9px;
+    font-size: 11px;
+    min-width: 18px;
+    text-align: center;
+    padding: 1px 5px;
+}
+
+/* ==========================================================================
+   6. Lista de mensajes (avatar circular + nombre en color + hora;
+      NUNCA burbujas: Discord y Slack son "filas", no chat de móvil)
+   ========================================================================== */
+
+.mensajes {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 8px;
+}
+
+.mensajes-vacio {
+    color: var(--dc-suave);
+    text-align: center;
+    margin-top: 40px;
+    font-size: 14px;
+}
+
+.mensaje {
+    display: flex;
+    gap: 12px;
+    padding: 4px 8px;
+    margin: 0 -8px;
+    border-radius: 4px;
+}
+
+.mensaje:hover {
+    background: rgba(0, 0, 0, 0.07);
+}
+
+.mensaje-hora {
+    flex-shrink: 0;
+    width: 44px;
+    text-align: right;
+    color: var(--dc-hora);
+    font-size: 11px;
+    padding-top: 4px;
+}
+
+.mensaje-espaciador {
+    flex-shrink: 0;
+    width: 40px; /* el hueco del avatar: alinea los mensajes de sistema */
+}
+
+.mensaje-cuerpo {
+    min-width: 0;
+}
+
+.mensaje-nombre {
+    font-weight: 600;
+    margin-right: 6px;
+}
+
+.mensaje-texto {
+    color: var(--dc-texto);
+    word-break: break-word;
+    white-space: pre-wrap;
+}
+
+.mensaje.sistema .mensaje-texto {
+    color: var(--dc-suave);
+    font-style: italic;
+    font-size: 13px;
+}
+
+/* ==========================================================================
+   7. Caja de texto (fija abajo, placeholder "Escribe un mensaje...")
+   ========================================================================== */
+
+.caja-envoltura {
+    flex-shrink: 0;
+    padding: 0 16px 16px;
+}
+
+.caja {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--dc-input);
+    border-radius: 8px;
+    padding: 8px 12px;
+}
+
+.caja-entrada {
+    flex: 1;
+    background: transparent;
+    border: 0;
+    outline: none;
+    color: var(--dc-texto);
+    font-size: 15px;
+    font-family: inherit;
+    padding: 6px 0;
+}
+
+.caja-entrada::placeholder {
+    color: var(--dc-suave);
+}
+
+.caja-boton {
+    background: var(--dc-blurple);
+    color: #fff;
+    border: 0;
+    border-radius: 6px;
+    width: 34px;
+    height: 30px;
+    font-size: 15px;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.caja-boton:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.caja-aviso {
+    color: var(--dc-rojo);
+    font-size: 12px;
+    padding: 6px 4px 0;
+}
+
+/* ==========================================================================
+   8. Columna de usuarios (conectados del canal actual)
+   ========================================================================== */
+
+.lista-usuarios {
+    width: 240px;
+    flex-shrink: 0;
+    background: var(--dc-sidebar);
+    overflow-y: auto;
+    padding: 16px 8px;
+}
+
+.lista-titulo {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    color: var(--dc-suave);
+    padding: 0 8px 10px;
+}
+
+.usuario {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 8px;
+    border-radius: 4px;
+    color: var(--dc-suave);
+}
+
+.usuario:hover {
+    background: var(--dc-hover);
+    color: var(--dc-texto);
+}
+
+.usuario-nombre {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.lista-vacio {
+    color: var(--dc-suave);
+    font-size: 13px;
+    padding: 0 8px;
+}
+
+/* ==========================================================================
+   9. Utilidades: punto de estado, avatares y botones
+   ========================================================================== */
+
+.punto {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    box-shadow: 0 0 0 3px currentColor inset; /* hueco tipo Discord */
+    background: currentColor;
+}
+
+.punto.conectado { color: var(--dc-verde); }
+.punto.conectando { color: #b9bbbe; }
+.punto.reconectando { color: var(--dc-naranja); }
+.punto.desconectado { color: var(--dc-rojo); }
+
+.avatar {
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: var(--dc-input);
+    object-fit: cover;
+}
+
+.avatar-iniciales {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    color: #fff;
+    font-weight: 700;
+    flex-shrink: 0;
+    /* el tamaño lo pone el componente con estilo inline (40px, 24px...) */
+}
+
+.boton {
+    display: block;
+    width: 100%;
+    background: var(--dc-blurple);
+    color: #fff;
+    border: 0;
+    border-radius: 4px;
+    font-size: 15px;
+    font-weight: 600;
+    padding: 11px;
+    margin-top: 20px;
+    cursor: pointer;
+}
+
+.boton:hover {
+    background: #4752c4;
+}
+
+.boton:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.boton-secundario {
+    background: transparent;
+    border: 1px solid #4f545c;
+    color: var(--dc-suave);
+    border-radius: 4px;
+    font-size: 13px;
+    padding: 5px 12px;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.boton-secundario:hover {
+    border-color: var(--dc-texto);
+    color: var(--dc-texto);
+}
+
+.error {
+    color: var(--dc-rojo);
+    font-size: 13px;
+}
+
+.aviso {
+    color: var(--dc-naranja);
+    font-size: 13px;
+}
+
+/* ==========================================================================
+   10. Adaptaciones para pantallas estrechas (móvil / ventana pequeña)
+   ========================================================================== */
+
+@media (max-width: 720px) {
+    .lista-usuarios {
+        display: none; /* en móvil la lista estorba: el canal manda */
+    }
+
+    .barra-contador {
+        display: none;
+    }
+}

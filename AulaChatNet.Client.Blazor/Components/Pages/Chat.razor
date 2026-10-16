@@ -1,0 +1,49 @@
+@page "/"
+@implements IDisposable
+@inject IChatStore Store
+
+@* Página única del chat. Su única decisión es de DÓNDE viene: si la store
+   dice que no hay sesión (EnSesion = false) pinta el panel de entrada; en
+   cuanto ConectarAsync triunfa, la store pone EnSesion a true y aquí solta
+   la vista de canal. Un solo sitio manda: la store central. *@
+
+@if (!_enSesion)
+{
+    <PanelEntrada />
+}
+else
+{
+    <BarraConexion />
+
+    <div class="contenido">
+        <ListaUsuarios />
+
+        <section class="zona-canal">
+            <ListaCanales />
+            <ListaMensajes />
+            <CajaMensaje />
+        </section>
+    </div>
+}
+
+@code {
+    private bool _enSesion;
+    private IDisposable? _suscripcion;
+
+    /// <summary>
+    /// Se suscribe al estado de sesión: la store avisa (reactivamente) y la
+    /// página repinta. Al init, BehaviorSubject entrega el valor actual
+    /// (false) y se queda esperando cambios.
+    /// </summary>
+    protected override void OnInitialized()
+    {
+        _suscripcion = Store.EnSesion.Subscribe(valor =>
+        {
+            _enSesion = valor;
+            _ = InvokeAsync(StateHasChanged);
+        });
+    }
+
+    /// <summary>Libera la suscripción cuando la página se destruye.</summary>
+    public void Dispose() => _suscripcion?.Dispose();
+}

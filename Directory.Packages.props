@@ -48,5 +48,8 @@
     <PackageVersion Include="Moq" Version="4.21.0" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
     <PackageVersion Include="coverlet.collector" Version="10.0.1" />
+
+    <!-- bUnit: pruebas de componentes Blazor (los stores se prueban con NUnit solo) -->
+    <PackageVersion Include="bunit" Version="2.11.3" />
   </ItemGroup>
 </Project>

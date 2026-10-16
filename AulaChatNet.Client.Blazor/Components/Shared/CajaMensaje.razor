@@ -1,0 +1,92 @@
+@* Caja de texto fija abajo con el placeholder "Escribe un mensaje...".
+   Enter o botón envían; la validación local (misma regla que el servidor)
+   se pinta AQUÍ, junto al campo. Si lo que falla es la conexión, el aviso
+   va al flujo de mensajes (regla de la casa). *@
+@implements IDisposable
+@inject IChatStore Store
+@inject ChatConfig Config
+@inject IJSRuntime JS
+
+<div class="caja-envoltura">
+    <form class="caja" @onsubmit="EnviarAsync" @onsubmit:preventDefault>
+        <input id="caja-texto"
+               class="caja-entrada"
+               placeholder="Escribe un mensaje..."
+               maxlength="@Config.MensajeLongitudMaxima"
+               autocomplete="off"
+               @bind="_texto"
+               @bind:event="oninput" />
+
+        <button type="submit"
+                class="caja-boton"
+                disabled="@string.IsNullOrWhiteSpace(_texto)"
+                title="Enviar mensaje">➤</button>
+    </form>
+
+    @if (_error is not null)
+    {
+        <p class="caja-aviso">@_error</p>
+    }
+</div>
+
+@code {
+    private string? _texto;
+    private string? _error;
+    private IDisposable? _suscripcion;
+
+    // Marcador para recuperar el foco tras enviar (se consume en OnAfterRender)
+    private bool _focoPendiente;
+
+    /// <summary>Al cambiar de canal se limpia cualquier aviso de campo viejo.</summary>
+    protected override void OnInitialized()
+    {
+        _suscripcion = Store.CanalActual.Subscribe(nuevoCanal =>
+        {
+            _error = null;
+            _ = InvokeAsync(StateHasChanged);
+        });
+    }
+
+    /// <summary>Valida, envía y limpia el campo (Enter o botón ➤).</summary>
+    private async Task EnviarAsync()
+    {
+        _error = null;
+
+        var texto = _texto?.Trim() ?? string.Empty;
+
+        // Validación local ANTES de tocar la red: mismo criterio que el
+        // servidor, para no gastar una ida y vuelta por algo evidente
+        var fallo = Config.ValidarMensaje(texto);
+        if (fallo is not null)
+        {
+            _error = fallo;
+            return;
+        }
+
+        var error = await Store.EnviarAsync(texto);
+
+        if (error is not null)
+        {
+            // Error de CONEXIÓN → al flujo de mensajes (no es un problema
+            // del campo: el campo está perfecto)
+            Store.Aviso(error);
+            return;
+        }
+
+        _texto = "";
+        _focoPendiente = true;
+    }
+
+    /// <summary>Tras repintar, devuelve el foco al cuadro (para seguir escribiendo).</summary>
+    protected override async Task OnAfterRenderAsync(bool primero)
+    {
+        if (!_focoPendiente)
+            return;
+
+        _focoPendiente = false;
+        await JS.InvokeVoidAsync("aulachat.enfocar", "caja-texto");
+    }
+
+    /// <summary>Libera la suscripción cuando el componente se destruye.</summary>
+    public void Dispose() => _suscripcion?.Dispose();
+}

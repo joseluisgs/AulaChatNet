@@ -1,0 +1,201 @@
+@* Panel de entrada: lo que se ve ANTES de estar dentro. Aquí aún no existe
+   "tu canal", así que se muestra lo GLOBAL (GET /estadisticas): total de
+   gente y reparto por sala, para decidir a dónde entrar — la misma cifra de
+   bienvenida que la terminal.
+
+   Casos diferenciados (cada uno con su mensaje):
+     · primera vez sin sesión → solo el formulario;
+     · sesión recordada → "Hola de nuevo, ..." con enlace para borrarla;
+     · servidor consultado → 📌 total y reparto por sala;
+     · servidor caído/ sin red → aviso naranja (la cifra no corta el arranque);
+     · rechazo del servidor (nick en uso) → error rojo y se corrige el nombre;
+     · fallo de red al conectar → se CONSERVA todo y el botón pasa a
+       "Reintentar" (no tiene sentido volver a preguntar el nick).
+   *@
+@inject IChatStore Store
+@inject ISesionStore Sesion
+@inject ChatConfig Config
+@inject WebConfig Web
+@inject HttpClient Http
+
+<div class="entrada">
+    <div class="entrada-tarjeta">
+        <div class="entrada-logo"># AulaChatNet</div>
+        <p class="entrada-sub">Chat del aula en tiempo real con SignalR y Rx.NET</p>
+
+        @if (_estadisticas is not null)
+        {
+            <p class="entrada-stats">📌 @DescripcionGente()</p>
+        }
+        else if (_statsFallaron)
+        {
+            <p class="entrada-stats aviso">⚠ No pude consultar cuántos hay conectados (¿está el servidor arrancado?)</p>
+        }
+
+        @if (_sesion is not null)
+        {
+            <p class="entrada-sesion">
+                Hola de nuevo, <b>@_sesion.Nick</b>.
+                <a href="#" @onclick="OlvidarSesionAsync" @onclick:preventDefault>¿No eres tú? Borrar sesión</a>
+            </p>
+        }
+
+        <form @onsubmit="EntrarAsync" @onsubmit:preventDefault>
+            <label class="entrada-campo" for="nick">Nombre</label>
+            <input id="nick"
+                   maxlength="@Config.UsuarioLongitudMaxima"
+                   placeholder="Tu nombre"
+                   autocomplete="off"
+                   @bind="_nick"
+                   @bind:event="oninput" />
+
+            <label class="entrada-campo" for="canal">Canal</label>
+            <select id="canal" @bind="_canal">
+                @foreach (var canal in Config.Canales)
+                {
+                    <option value="@canal">@canal</option>
+                }
+            </select>
+
+            @if (_error is not null)
+            {
+                <p class="error">✗ @_error</p>
+            }
+
+            <button type="submit" class="boton" disabled="@_conectando">
+                @(_conectando ? "Conectando…" : _reintentando ? "Reintentar" : "Entrar")
+            </button>
+        </form>
+
+        <p class="entrada-pie">Al entrar se guarda tu sesión en este navegador para la próxima vez.</p>
+    </div>
+</div>
+
+@code {
+    private string _nick = string.Empty;
+    private string _canal = string.Empty;
+    private string? _error;
+    private bool _conectando;
+    private bool _reintentando;
+    private EstadisticasDto? _estadisticas;
+    private bool _statsFallaron;
+    private SesionGuardada? _sesion;
+
+    /// <summary>
+    /// Sesión recordada (si la hay) + consulta de gente conectada ANTES de
+    /// registrarse. Un fallo de red o de JSON aquí NO corta el arranque:
+    /// luego ya se verá al conectar.
+    /// </summary>
+    protected override async Task OnInitializedAsync()
+    {
+        // 1) Recordar quién vino la última vez (nick y canal)
+        _sesion = Web.RecordarSesion ? await Sesion.CargarAsync() : null;
+
+        if (_sesion is not null)
+            _nick = _sesion.Nick;
+
+        _canal = _sesion?.Canal is not null && Config.EsCanalValido(_sesion.Canal)
+            ? Config.EncontrarCanal(_sesion.Canal)!
+            : Config.CanalPorDefecto;
+
+        // 2) GET /estadisticas: solo para decir cuánta gente hay
+        try
+        {
+            var json = await Http.GetStringAsync(ChatRutas.Estadisticas);
+
+            // El servidor serializa en camelCase (default de las minimal
+            // APIs); con CaseInsensitive llega a los parámetros del record
+            _estadisticas = JsonSerializer.Deserialize<EstadisticasDto>(
+                json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            _statsFallaron = true;
+        }
+    }
+
+    /// <summary>
+    /// Valida en local y abre la conexión. ÉXITO: la store pone EnSesion y la
+    /// página cambia de vista. FALLO: el mensaje va en rojo bajo el botón y
+    /// se decide si se reintenta conservando el nick o se corrige el nombre.
+    /// </summary>
+    private async Task EntrarAsync()
+    {
+        _error = null;
+
+        var nick = _nick.Trim();
+
+        // Misma validación que el servidor, para no gastar la ida y vuelta
+        _error = Config.ValidarUsuario(nick)
+            ?? (Config.EsCanalValido(_canal) ? null : Config.ErrorCanalDesconocido(_canal));
+
+        if (_error is not null)
+            return;
+
+        _conectando = true;
+        var resultado = await Store.ConectarAsync(nick, Config.EncontrarCanal(_canal)!);
+        _conectando = false;
+
+        if (resultado.Exitoso)
+        {
+            if (Web.RecordarSesion)
+                await Sesion.GuardarAsync(new SesionGuardada(nick, _canal));
+
+            return;
+        }
+
+        // HayServidor=false → el servidor ni se pudo alcanzar: se conserva
+        // todo y solo se reintenta. HayServidor=true → el servidor respondió
+        // y rechazó (p. ej. nombre en uso): hay que corregir el nombre.
+        _error = resultado.Error;
+        _reintentando = !resultado.HayServidor;
+    }
+
+    /// <summary>Olvida la sesión recordada (equipos compartidos de aula).</summary>
+    private async Task OlvidarSesionAsync()
+    {
+        if (await Sesion.BorrarAsync())
+        {
+            _sesion = null;
+            _nick = string.Empty;
+        }
+    }
+
+    /// <summary>
+    /// Frase de bienvenida con el total de personas y el reparto por SALA en
+    /// el orden de la configuración (las vacías salen con 0: el servidor solo
+    /// emite las que tienen gente). Es la misma fórmula que
+    /// <c>Conectados.DescripcionArranque</c> de la terminal, aquí en texto plano.
+    /// </summary>
+    private string DescripcionGente()
+    {
+        var total = _estadisticas!.TotalConectados;
+
+        if (total == 0)
+            return "Actualmente no hay nadie conectado todavía.";
+
+        // Singular y plural: "1 persona conectada" / "20 personas conectadas"
+        var personas = total == 1
+            ? "1 persona conectada"
+            : $"{total} personas conectadas";
+
+        return $"Actualmente hay {personas}: {ConteosPorSala()}";
+    }
+
+    /// <summary>Reparto por sala: "#general 2 · #daw 0 · ...".</summary>
+    private string ConteosPorSala()
+    {
+        var porCanal = _estadisticas!.Canales
+            .ToDictionary(c => c.Canal, c => c.Conectados, StringComparer.OrdinalIgnoreCase);
+
+        var partes = new List<string>();
+
+        foreach (var canal in Config.Canales)
+        {
+            porCanal.TryGetValue(canal, out var conectados);
+            partes.Add($"{canal} {conectados}");
+        }
+
+        return string.Join(" · ", partes);
+    }
+}

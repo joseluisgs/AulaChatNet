@@ -1,0 +1,72 @@
+@* Cabecera de la zona de canal: los canales como PÍLDORAS en el orden de
+   la configuración, con el conteo de gente de CADA sala (evento global) y
+   la píldora activa resaltada. Al pulsar una, se cambia el grupo de SignalR:
+   el historial de la sala nueva llega después y reemplaza la lista. *@
+@implements IDisposable
+@inject IChatStore Store
+
+<nav class="pildoras" aria-label="Canales">
+    @foreach (var canal in Store.Canales)
+    {
+        <button type="button"
+                class="pildora @(EsActual(canal) ? "activa" : "")"
+                @key="canal"
+                title="Entrar en @canal"
+                @onclick="() => CambiarAsync(canal)">
+            <span>@canal</span>
+            <span class="pildora-contador">@Conteo(canal)</span>
+        </button>
+    }
+</nav>
+
+@code {
+    private string? _actual;
+    private EstadisticasDto _estadisticas = new(0, []);
+    private readonly CompositeDisposable _suscripciones = new();
+
+    /// <summary>Se suscribe a canal actual y a las estadísticas globales.</summary>
+    protected override void OnInitialized()
+    {
+        _suscripciones.Add(Store.CanalActual.Subscribe(canal =>
+        {
+            _actual = canal;
+            _ = InvokeAsync(StateHasChanged);
+        }));
+
+        _suscripciones.Add(Store.Estadisticas.Subscribe(est =>
+        {
+            _estadisticas = est;
+            _ = InvokeAsync(StateHasChanged);
+        }));
+    }
+
+    /// <summary>Indica si esa píldora es el canal en el que estamos.</summary>
+    private bool EsActual(string canal) =>
+        string.Equals(canal, _actual, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Gente conectada EN ESA SALA. Las salas vacías salen con 0: el servidor
+    /// solo emite las que tienen gente dentro.
+    /// </summary>
+    private int Conteo(string canal) =>
+        _estadisticas.Canales
+            .FirstOrDefault(c => string.Equals(c.Canal, canal, StringComparison.OrdinalIgnoreCase))
+            ?.Conectados ?? 0;
+
+    /// <summary>Cambia a la píldora pulsada.</summary>
+    private async Task CambiarAsync(string canal)
+    {
+        if (EsActual(canal))
+            return;
+
+        var error = await Store.CambiarCanalAsync(canal);
+
+        // Regla de la casa: los fallos de conexión NO se esconden ni se
+        // pegan en la píldora — van al flujo de mensajes como aviso de sistema
+        if (error is not null)
+            Store.Aviso(error);
+    }
+
+    /// <summary>Libera las suscripciones cuando el componente se destruye.</summary>
+    public void Dispose() => _suscripciones.Dispose();
+}

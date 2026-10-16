@@ -5,9 +5,44 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AulaChatNet</title>
     <base href="/" />
+    <link rel="stylesheet" href="css/app.css" />
 </head>
 <body>
-    <div id="app">Cargando AulaChatNet...</div>
+    <!--
+      Pantalla de carga (splash): se ve mientras el navegador descarga el
+      runtime de WebAssembly (unos MB la primera vez). Blazor vacía este
+      div en cuanto arranca y pinta la app encima.
+    -->
+    <div id="app">
+        <div class="carga">
+            <div class="carga-logo"># AulaChatNet</div>
+            <div class="carga-texto">Cargando el chat&hellip;</div>
+            <div class="carga-barra"><span></span></div>
+        </div>
+    </div>
+
+    <!-- Aviso de error irrecuperable (runtime de Blazor caído en mitad de la sesión) -->
+    <div id="blazor-error-ui">
+        Se ha producido un error inesperado. Recarga la página para continuar.
+        <a href="" class="reload">Recargar</a>
+        <button type="button" class="dismiss" aria-label="Cerrar">✕</button>
+    </div>
+
     <script src="_framework/blazor.webassembly.js"></script>
+    <script>
+        // Utilidades mínimas de la UI en JavaScript puro (sin librerías):
+        // el scroll de la lista de mensajes y el foco del cuadro de texto.
+        // Blazor las llama con JSInterop desde los componentes.
+        window.aulachat = {
+            abajo: function (id) {
+                var lista = document.getElementById(id);
+                if (lista) lista.scrollTop = lista.scrollHeight;
+            },
+            enfocar: function (id) {
+                var campo = document.getElementById(id);
+                if (campo) campo.focus();
+            }
+        };
+    </script>
 </body>
 </html>

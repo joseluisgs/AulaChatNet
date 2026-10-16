@@ -1,0 +1,41 @@
+@* Columna izquierda: los conectados del canal ACTUAL, con el punto verde
+   de Discord. Este listado viene del evento de GRUPO (solo llega a tu sala);
+   el total GLOBAL vive en la barra superior, en formato de cifra. *@
+@implements IDisposable
+@inject IChatStore Store
+
+<aside class="lista-usuarios">
+    <div class="lista-titulo">Conectados — @_usuarios.Count</div>
+
+    @foreach (var usuario in _usuarios)
+    {
+        <div class="usuario" @key="usuario.Usuario">
+            <Avatar Usuario="@usuario.Usuario" Tamano="24" />
+            <span class="usuario-nombre">@usuario.Usuario</span>
+            <span class="punto conectado" title="en línea"></span>
+        </div>
+    }
+
+    @if (_usuarios.Count == 0)
+    {
+        <p class="lista-vacio">Solo estás tú por ahora (de momento).</p>
+    }
+</aside>
+
+@code {
+    private IReadOnlyList<UsuarioConectadoDto> _usuarios = [];
+    private IDisposable? _suscripcion;
+
+    /// <summary>Suscripción a los conectados de tu canal.</summary>
+    protected override void OnInitialized()
+    {
+        _suscripcion = Store.Usuarios.Subscribe(lista =>
+        {
+            _usuarios = lista;
+            _ = InvokeAsync(StateHasChanged);
+        });
+    }
+
+    /// <summary>Libera la suscripción cuando el componente se destruye.</summary>
+    public void Dispose() => _suscripcion?.Dispose();
+}
