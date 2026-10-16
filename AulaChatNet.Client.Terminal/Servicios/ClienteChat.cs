@@ -161,8 +161,13 @@ public class ClienteChat : IDisposable
     /// </summary>
     /// <param name="usuario">Nombre (ya validado localmente por el llamador).</param>
     /// <param name="canal">Canal (ya validado localmente por el llamador).</param>
-    /// <returns>null si todo fue correcto; el error del servidor o de red si no.</returns>
-    public async Task<string?> ConectarAsync(string usuario, string canal)
+    /// <returns>
+    /// <see cref="ResultadoConexion"/>: sin error si todo fue bien; con el error
+    /// traducido para el usuario y la distinción de si el servidor respondió
+    /// (rechazo) o ni se pudo alcanzar (fallo de red) — de ahí depende que se
+    /// repregunte el nick o no.
+    /// </returns>
+    public async Task<ResultadoConexion> ConectarAsync(string usuario, string canal)
     {
         try
         {
@@ -172,25 +177,28 @@ public class ClienteChat : IDisposable
         }
         catch (Exception ex)
         {
-            // No hay servidor, hay un firewall... el mensaje es para el alumno
+            // No hay servidor, hay un firewall... el ALTA ni se intenta, y el
+            // mensaje se traduce a palabras de usuario (nunca "HttpRequestException")
             _estado.OnNext(EstadoConexion.Desconectado);
 
-            return $"No se pudo conectar con el servidor ({ex.GetType().Name}). ¿Está arrancado?";
+            return new ResultadoConexion(
+                $"No se pudo conectar con el servidor: {MensajesError.DescripcionDe(ex)}",
+                HayServidor: false);
         }
 
         var error = await _conexion.InvokeAsync<string?>(ChatHubMetodos.Conectar, usuario, canal);
 
         if (error is not null)
         {
-            // Registro rechazado (p. ej. nombre en uso): cerramos para que
-            // el llamador pueda preguntar de nuevo sin estados colgados.
-            // El cierre es NUESTRO, así que Closed no debe avisar de nada
+            // El servidor respondió y rechazó el alta (p. ej. nombre en uso):
+            // cerramos para que el llamador pueda preguntar de nuevo sin
+            // estados colgados. El cierre es NUESTRO, así que Closed no avisa
             _estado.OnNext(EstadoConexion.Desconectado);
             _cierreIntencionado = true;
             await _conexion.StopAsync();
             _cierreIntencionado = false;
 
-            return error;
+            return new ResultadoConexion(error, HayServidor: true);
         }
 
         // Identidad de cara a la reconexión: con estos dos valores basta
@@ -199,7 +207,7 @@ public class ClienteChat : IDisposable
         _canalActual.OnNext(_config.EncontrarCanal(canal));
         _estado.OnNext(EstadoConexion.Conectado);
 
-        return null;
+        return new ResultadoConexion(null, HayServidor: true);
     }
 
     /// <summary>
@@ -355,7 +363,9 @@ public class ClienteChat : IDisposable
         {
             _estado.OnNext(EstadoConexion.Desconectado);
 
-            return $"No se pudo reconectar ({ex.GetType().Name}). ¿Sigue el servidor arrancado?";
+            // Mismo traductor: en pantalla, palabras de usuario — jamás el
+            // tipo de la excepción
+            return $"No se pudo reconectar: {MensajesError.DescripcionDe(ex)}";
         }
     }
 

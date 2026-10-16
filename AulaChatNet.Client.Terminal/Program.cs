@@ -132,27 +132,51 @@ AnsiConsole.MarkupLine(
 AnsiConsole.WriteLine();
 
 // ============================================================================
-// 🔌 CONEXIÓN (con reintento si el servidor rechaza el nick)
+// 🔌 CONEXIÓN (dos reintentos distintos según QUÉ falle)
 // ============================================================================
 
 var urlHub = $"{terminal.UrlServidor.TrimEnd('/')}{chat.HubRuta}";
 using var cliente = new ClienteChat(urlHub, chat);
 
-string? error = null;
+ResultadoConexion resultado;
 
 do
 {
-    error = await AnsiConsole.Status()
+    resultado = await AnsiConsole.Status()
         .Spinner(Spinner.Known.Dots)
         .StartAsync($"Conectando a {urlHub}...", _ => cliente.ConectarAsync(nick, canal));
 
-    if (error is null)
+    if (resultado.Exitoso)
         break;
 
-    AnsiConsole.MarkupLine($"[red]✗ {Markup.Escape(error)}[/]");
+    AnsiConsole.MarkupLine($"[red]✗ {Markup.Escape(resultado.Error!)}[/]");
 
-    // La causa típica es el nick ocupado (dos terminales en el mismo equipo):
-    // se vuelve a preguntar SIN reiniciar el programa, y se dice DÓNDE
+    if (!resultado.HayServidor)
+    {
+        // FALLÓ LA RED: el servidor ni se alcanza. El nick y el canal NO
+        // tienen la culpa, así que no se vuelve a preguntar nada — se
+        // conservan y se ofrece reintentar (causa típica: arrancar el
+        // cliente antes que el servidor)
+        AnsiConsole.MarkupLine(
+            "[yellow]⚠ El servidor no está accesible: el problema no es tu nick ni tu canal.[/]");
+
+        AnsiConsole.MarkupLine(
+            $"[grey]Se reintentará como[/] [bold]{Markup.Escape(nick)}[/] " +
+            $"[grey]en[/] [bold]{Markup.Escape(canal)}[/][grey]. Pulsa Enter para reintentar.[/]");
+
+        if (Console.ReadLine() is null)
+        {
+            // EOF (modo tubería): no queda entrada por la que esperar
+            AnsiConsole.MarkupLine("[grey]Entrada cerrada sin servidor. Hasta pronto.[/]");
+            return;
+        }
+
+        continue;
+    }
+
+    // EL SERVIDOR RESPONDIÓ y rechazó el alta (causa típica: dos terminales
+    // con el mismo nick): ahora sí se repregunta SOLO el nick, sin reiniciar
+    // el programa, y se dice DÓNDE
     AnsiConsole.MarkupLine(
         $"[grey]No se pudo entrar como ese nick en[/] [bold]{Markup.Escape(canal)}[/][grey].[/]");
     nick = PedirNick(chat, sesion: null);
@@ -201,6 +225,10 @@ var canalActual = canal;
 // se queda en el scroll; en vivo vive en la zona de mensajes hasta el
 // siguiente comando (que la reemplaza) o hasta /limpiar
 var salidas = new List<IRenderable>();
+
+// Error del último intento de comando (null = bien): lo comparten
+// ProcesarLinea y sus helpers para pintarlo en rojo donde se pidió
+string? error = null;
 
 // Índice del primer mensaje visible tras /limpiar en la vista en vivo
 var mostrarDesde = 0;
