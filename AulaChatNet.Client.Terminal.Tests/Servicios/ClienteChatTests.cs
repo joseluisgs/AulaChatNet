@@ -38,4 +38,30 @@ public class ClienteChatTests
     }
 
     #endregion
+
+    #region Conexión con rechazo del servidor Tests
+
+    [Test]
+    public async Task ConectarAsync_ServidorRechazaElNick_DevuelveRechazoConServidor()
+    {
+        // Arrange: servidor de prueba mínimo que siempre rechaza el alta
+        await using var servidor = await ServidorDePrueba.CrearAsync();
+        var chat = new ChatConfig { Canales = ["#general"] };
+        using var cliente = new ClienteChat($"{servidor.Url}/hubs/chat", chat);
+
+        // Act
+        var resultado = await cliente.ConectarAsync("Ana", "#general");
+
+        // Assert: el servidor RESPONDIÓ → HayServidor = true (aquí sí toca
+        // repreguntar el nick, que es justo lo contrario que en el test anterior)
+        resultado.Exitoso.Should().BeFalse();
+        resultado.HayServidor.Should().BeTrue();
+
+        // El texto del servidor se traslada tal cual (eso sí, ya sin excepciones)
+        resultado.Error.Should().Be("Ya hay un Ana en #general");
+
+        cliente.EstadoValor.Should().Be(EstadoConexion.Desconectado);
+    }
+
+    #endregion
 }
