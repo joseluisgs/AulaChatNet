@@ -18,7 +18,7 @@ AulaChatNet es un proyecto educativo de ejemplo para el módulo **Desarrollo Web
 - 📡 **SignalR**: un único `ChatHub` en el servidor; mensajes, entradas, salidas y cambio de nick en tiempo real
 - 🗂️ **Canales por aula**: `#general`, `#daw`, `#dam`, `#asir` y `#smr` (grupos de SignalR, configurables en `appsettings.json`); historial y lista de conectados por canal, con cambio en vivo
 - 🔄 **Rx.NET**: los mensajes entrantes se exponen como `IObservable<MensajeDto>`; la UI se suscribe aplicando operadores reactivos (filtrar, agrupar, formatear)
-- 💻 **Múltiples clientes**: consola con Spectre.Console (vista en vivo con cabecera y pie fijos, editor de línea con cursor y reconexión con re-alta) y web con Blazor WebAssembly, ambos sobre el mismo hub
+- 💻 **Múltiples clientes**: consola con Spectre.Console (vista en vivo con cabecera y pie fijos, editor de línea con cursor y reconexión con re-alta) y web con Blazor WebAssembly, ambos sobre el mismo hub y con los **mismos comandos `/`** (el parser vive en `Shared` y lo usan los dos clientes)
 - 🎨 **Estética Discord**: layout de dos columnas, avatares (DiceBear) y paleta oscura
 - 🗄️ **Fase 1 en memoria**: estado en `ConcurrentDictionary`, sin base de datos
 
@@ -42,7 +42,7 @@ AulaChatNet/
 ├── Directory.Build.props                    # LangVersion, Nullable, warnings como errores
 ├── Directory.Packages.props                 # Central Package Management (versiones aquí)
 ├── docs/                                   # Documentación didáctica
-├── AulaChatNet.Shared/                      # DTOs, constantes del hub, ChatConfig, avatar, operadores Rx
+├── AulaChatNet.Shared/                      # DTOs, constantes del hub, ChatConfig, avatar, operadores Rx, comandos (parser + ayuda)
 │   └── AulaChatNet.Shared.Tests/
 ├── AulaChatNet.Server/                      # ASP.NET Core + SignalR
 │   ├── Hubs/                                # ChatHub (alta, mensajes, canales, nick, estadísticas)
@@ -82,6 +82,26 @@ flowchart TD
     style S fill:#2196F3,color:#fff
     style SH fill:#9C27B0,color:#fff
 ```
+
+## 🏃‍♂️ Inicio rápido
+
+```bash
+# Compilar y arrancar el servidor (sirve la web en http://localhost:5030)
+dotnet run --project AulaChatNet.Server
+
+# En desarrollo de la web, mejor con watch: reconstruye el cliente y
+# relanza el servidor solo (el manifiesto de assets de Blazor se lee al
+# arrancar, así que sin watch los cambios del cliente no llegan)
+dotnet watch --project AulaChatNet.Server
+
+# Cliente terminal en otra consola (por defecto, el 5030)
+dotnet run --project AulaChatNet.Client.Terminal
+
+# Tests de todos los proyectos
+dotnet test
+```
+
+En desarrollo, el servidor añade `Cache-Control: no-cache` a `index.html` y a `/_framework/*`, para que el navegador pida siempre la última versión del manifiesto.
 
 ## 📡 Hub del chat
 
@@ -135,12 +155,12 @@ La configuración vive en `appsettings.json` (con override por entorno en `appse
 | Fase | Contenido | Estado |
 |------|-----------|--------|
 | Entorno | `.slnx`, Central Package Management, GitFlow | ✅ Hecho |
-| **Fase 1 · Shared** | DTOs, `ChatConfig`, avatar, operadores Rx | ✅ Hecho — 66 tests |
+| **Fase 1 · Shared** | DTOs, `ChatConfig`, avatar, operadores Rx, parser de comandos `/` y catálogo de ayuda | ✅ Hecho — 111 tests |
 | **Fase 1 · Server** | `ChatHub`, `ChatStore` en memoria, canales, estadísticas, Serilog | ✅ Hecho — 71 tests |
-| **Fase 1 · Terminal** | Spectre.Console, vista en vivo, entrada guiada, comandos, sesión y Serilog a fichero | ✅ Hecho — 90 tests |
-| **Fase 1 · Blazor** | Layout Discord + store reactiva estilo `NotificationStore` + Serilog a consola del navegador | ✅ Hecho — 66 tests |
+| **Fase 1 · Terminal** | Spectre.Console, vista en vivo, entrada guiada, comandos, sesión y Serilog a fichero | ✅ Hecho — 45 tests |
+| **Fase 1 · Blazor** | Layout Discord + store reactiva estilo `NotificationStore` + comandos `/` (parser compartido) + Serilog a consola del navegador | ✅ Hecho — 93 tests |
 | Fase 2 | Persistencia (SQLite + EF Core) | 🔜 Futura |
-| Fase 3 | Extras (moderación, comandos `/`, reacciones) | 🔜 Futura |
+| Fase 3 | Extras (moderación, reacciones) | 🔜 Futura |
 
 ## 📚 Documentación
 
