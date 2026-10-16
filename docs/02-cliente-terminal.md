@@ -351,7 +351,10 @@ La idea bonita de todo esto: **el bucle de la vista en vivo no procesa eventos, 
 | `EditorLineaTests` | Cursor de la línea de entrada: insertar en medio, borrar, mover, límites y pintado |
 | `TemaDiscordTests` | Paleta, colores derivados del nombre e iniciales |
 | `MensajesErrorTests` | Traducción de excepciones a mensajes de usuario (sin tipos en pantalla) |
-| `ClienteChatTests` | Conexión sin servidor: el fallo de red viaja tipado (`HayServidor`) y con mensaje amigable |
+| `ResultadoConexionTests` | La regla `Exitoso` que usa el bucle del arranque para decidir si sigue dentro |
+| `ClienteChatTests` | Los dos caminos de conexión: sin servidor (fallo de red tipado) y con `ServidorDePrueba` — un hub mínimo de mentira en Kestrel con puerto aleatorio que rechaza el alta, como el servidor real |
+
+> 💡 **Consejo:** el truco de `ServidorDePrueba` merece atención: no vale el *TestServer* de ASP.NET (su transporte es en memoria y un cliente SignalR necesita HTTP de verdad), así que se levanta **Kestrel real en un puerto 0** (el sistema elija uno libre) con un hub de dos líneas. Es la forma barata de probar el rechazo del servidor sin arrancar AulaChatNet.Server.
 
 Además, el **smoke E2E** arranca el servidor real y el terminal con `stdin`/`stdout` acoplados a ficheros, y comprueba por marcadores de texto que salen la bienvenida, la cuenta de conectados, el prompt guiado, el mensaje ecoado y la salida ordenada. Ese es precisamente el valor del **dual-mode**: la misma app, probada sin consola — y la misma técnica con la que se recabaron las capturas de este manual.
 
