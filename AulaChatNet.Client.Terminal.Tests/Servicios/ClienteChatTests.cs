@@ -1,5 +1,6 @@
 using AulaChatNet.Client.Terminal.Servicios;
 using AulaChatNet.Shared.Configuracion;
+using AulaChatNet.Shared.Dtos;
 using FluentAssertions;
 
 namespace AulaChatNet.Client.Terminal.Tests.Servicios;

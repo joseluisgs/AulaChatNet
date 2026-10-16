@@ -1,7 +1,7 @@
 using System.Net.Sockets;
 using System.Text.Json;
 
-namespace AulaChatNet.Client.Terminal.Servicios;
+namespace AulaChatNet.Shared.Helpers;
 
 /// <summary>
 /// Traduce excepciones técnicas a mensajes que ENTienda quien usa el chat.
