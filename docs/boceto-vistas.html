@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Boceto de vistas — AulaChatNet</title>
+
+    <!-- Estilos de la app: NO es una copia — este documento enlaza el MISMO
+         wwwroot/css/app.css que usa el cliente Blazor. Si cambia la app,
+         cambia también este boceto. -->
+    <link rel="stylesheet" href="../AulaChatNet.Client.Blazor/wwwroot/css/app.css">
+
+    <style>
+        /* ==========================================================================
+           Solo del boceto (la app no usa estas reglas): marco del documento.
+           Se coloca DESPUÉS del app.css para poder sobrescribir lo que la app
+           fija a pantalla completa (body overflow, height:100vh...).
+           ========================================================================== */
+        html, body {
+            height: auto;
+        }
+
+        body {
+            overflow: auto; /* la app bloquea el scroll: el documento sí lo necesita */
+            background: var(--dc-oscuro);
+            scroll-behavior: smooth;
+        }
+
+        .doc {
+            max-width: 1120px;
+            margin: 0 auto;
+            padding: 28px 20px 60px;
+        }
+
+        .doc-cabecera h1 {
+            font-size: 26px;
+            color: var(--dc-texto);
+            margin-bottom: 8px;
+        }
+
+        .doc-cabecera h1 b {
+            color: var(--dc-blurple);
+        }
+
+        .doc-cabecera p {
+            color: var(--dc-suave);
+            max-width: 820px;
+            line-height: 1.6;
+            margin-bottom: 14px;
+        }
+
+        .doc-cabecera p code,
+        .doc-nota code {
+            background: var(--dc-input);
+            padding: 1px 6px;
+            border-radius: 4px;
+            font-size: 13px;
+            color: var(--dc-texto);
+        }
+
+        .doc-nav a {
+            display: inline-block;
+            margin-right: 10px;
+            padding: 6px 14px;
+            background: var(--dc-input);
+            color: var(--dc-texto);
+            border-radius: 14px;
+            text-decoration: none;
+            font-size: 14px;
+        }
+
+        .doc-nav a:hover {
+            background: var(--dc-hover);
+            color: #fff;
+        }
+
+        .doc-seccion {
+            margin-top: 36px;
+        }
+
+        .doc-titulo {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--dc-texto);
+            margin-bottom: 8px;
+        }
+
+        .doc-titulo span {
+            color: var(--dc-suave);
+            font-weight: 400;
+            font-size: 14px;
+            margin-left: 8px;
+        }
+
+        /* El marco redondeado que simula "la ventana del navegador" */
+        .doc-marco {
+            border: 1px solid var(--dc-borde);
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+        }
+
+        /* En la app, estas vistas ocupan toda la pantalla (100vh); dentro del
+           boceto se les da una altura fija para convivir en la misma página */
+        .doc-marco .entrada,
+        .doc-marco .aplicacion {
+            height: 620px;
+        }
+
+        .doc-nota {
+            color: var(--dc-suave);
+            font-size: 13.5px;
+            line-height: 1.65;
+            margin-top: 12px;
+            max-width: 900px;
+        }
+
+        .doc-nota b {
+            color: var(--dc-texto);
+        }
+
+        .doc-pie {
+            margin-top: 44px;
+            border-top: 1px solid var(--dc-borde);
+            padding-top: 16px;
+            color: var(--dc-suave);
+            font-size: 13px;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+<div class="doc">
+
+    <header class="doc-cabecera">
+        <h1><b>#</b> AulaChatNet — Boceto de vistas</h1>
+        <p>
+            Maqueta <b>estática</b> de las dos vistas de la aplicación web: el <b>panel de entrada</b>
+            (antes de conectar) y la <b>vista de canal</b> (ya dentro). No es una captura: los elementos
+            replican el marcado real de los componentes (<code>PanelEntrada</code>, <code>BarraConexion</code>,
+            <code>ListaUsuarios</code>, <code>ListaCanales</code>, <code>ListaMensajes</code>,
+            <code>CajaMensaje</code>) y los estilos son los MISMOS de la app — este documento enlaza
+            <code>wwwroot/css/app.css</code> directamente. Las personas, los mensajes y las horas están
+            simulados: aquí no hay SignalR ni Rx.NET, solo la maqueta visual.
+        </p>
+        <nav class="doc-nav">
+            <a href="#vista-1">1 · Panel de entrada</a>
+            <a href="#vista-2">2 · Vista de canal</a>
+        </nav>
+    </header>
+
+    <!-- ======================================================================
+         VISTA 1 — Panel de entrada (PanelEntrada.razor)
+         ====================================================================== -->
+    <section class="doc-seccion" id="vista-1">
+        <h2 class="doc-titulo">Vista 1 — Panel de entrada <span>lo que se ve antes de estar dentro</span></h2>
+
+        <div class="doc-marco">
+            <div class="entrada">
+                <div class="entrada-tarjeta">
+                    <div class="entrada-logo"># AulaChatNet</div>
+                    <p class="entrada-sub">Chat del aula en tiempo real con SignalR y Rx.NET</p>
+
+                    <p class="entrada-stats">📌 Actualmente hay 3 personas conectadas: #general 2 · #daw 1 · #dam 0 · #asir 0 · #smr 0</p>
+
+                    <p class="entrada-sesion">
+                        Hola de nuevo, <b>Ana</b>.
+                        <a href="#" onclick="return false">¿No eres tú? Borrar sesión</a>
+                    </p>
+
+                    <form onsubmit="return false">
+                        <label class="entrada-campo" for="nick">Nombre</label>
+                        <input id="nick"
+                               maxlength="20"
+                               placeholder="Tu nombre"
+                               autocomplete="off"
+                               value="Ana">
+
+                        <label class="entrada-campo" for="canal">Canal</label>
+                        <select id="canal">
+                            <option value="#general" selected>#general</option>
+                            <option value="#daw">#daw</option>
+                            <option value="#dam">#dam</option>
+                            <option value="#asir">#asir</option>
+                            <option value="#smr">#smr</option>
+                        </select>
+
+                        <button type="button" class="boton">Entrar</button>
+                    </form>
+
+                    <p class="entrada-pie">Al entrar se guarda tu sesión en este navegador para la próxima vez.</p>
+                </div>
+            </div>
+        </div>
+
+        <p class="doc-nota">
+            <b>Estados no mostrados</b> (todos con su propio mensaje, diferenciados por caso):
+            ⚠ si las estadísticas no se pueden consultar, la línea de arriba sale en naranja pero no corta
+            el arranque; <code>✗ error</code> en rojo justo bajo el botón cuando la validación falla (p. ej.
+            nombre de 1 letra); el botón pasa a <b>“Conectando…”</b> mientras abre la conexión y a
+            <b>“Reintentar”</b> si no hay red — conservando el nick escrito para no volver a preguntar.
+        </p>
+    </section>
+
+    <!-- ======================================================================
+         VISTA 2 — Vista de canal (Chat.razor + BarraConexion + ListaUsuarios
+                   + ListaCanales + ListaMensajes + CajaMensaje)
+         ====================================================================== -->
+    <section class="doc-seccion" id="vista-2">
+        <h2 class="doc-titulo">Vista 2 — Vista de canal <span>ya dentro: dos columnas, sin burbujas</span></h2>
+
+        <div class="doc-marco">
+            <div class="aplicacion">
+
+                <!-- Barra superior: identidad + estado + gente + Salir -->
+                <header class="barra">
+                    <span class="barra-logo"># AulaChatNet</span>
+                    <span class="barra-separador">·</span>
+                    <span class="barra-nick">Ana</span>
+                    <span class="barra-separador">·</span>
+                    <span class="barra-canal">#general</span>
+                    <span class="punto conectado" title="conectado"></span>
+                    <span class="barra-estado">conectado</span>
+
+                    <span class="barra-contador">3 en la sala · 4 en total</span>
+
+                    <button type="button" class="boton-secundario">Salir</button>
+                </header>
+
+                <div class="contenido">
+                    <!-- Columna izquierda: conectados del canal ACTUAL -->
+                    <aside class="lista-usuarios">
+                        <div class="lista-titulo">Conectados — 3</div>
+
+                        <div class="usuario">
+                            <img class="avatar"
+                                 src="https://api.dicebear.com/10.x/lorelei/svg?seed=Ana"
+                                 alt="Avatar de Ana"
+                                 width="24" height="24"
+                                 onerror="this.outerHTML='<span class=&quot;avatar-iniciales&quot; style=&quot;width:24px; height:24px; font-size:9.6px; background-color:rgb(84, 242, 139)&quot; title=&quot;Ana&quot;>[AN]</span>'">
+                            <span class="usuario-nombre">Ana</span>
+                            <span class="punto conectado" title="en línea"></span>
+                        </div>
+
+                        <div class="usuario">
+                            <img class="avatar"
+                                 src="https://api.dicebear.com/10.x/adventurer/svg?seed=Profesor"
+                                 alt="Avatar de Profesor"
+                                 width="24" height="24"
+                                 onerror="this.outerHTML='<span class=&quot;avatar-iniciales&quot; style=&quot;width:24px; height:24px; font-size:9.6px; background-color:rgb(187, 242, 84)&quot; title=&quot;Profesor&quot;>[PR]</span>'">
+                            <span class="usuario-nombre">Profesor</span>
+                            <span class="punto conectado" title="en línea"></span>
+                        </div>
+
+                        <div class="usuario">
+                            <img class="avatar"
+                                 src="https://api.dicebear.com/10.x/croodles/svg?seed=Luc%C3%ADa"
+                                 alt="Avatar de Lucía"
+                                 width="24" height="24"
+                                 onerror="this.outerHTML='<span class=&quot;avatar-iniciales&quot; style=&quot;width:24px; height:24px; font-size:9.6px; background-color:rgb(242, 84, 171)&quot; title=&quot;Lucía&quot;>[LU]</span>'">
+                            <span class="usuario-nombre">Lucía</span>
+                            <span class="punto conectado" title="en línea"></span>
+                        </div>
+                    </aside>
+
+                    <!-- Zona del canal: píldoras + mensajes + caja -->
+                    <section class="zona-canal">
+                        <nav class="pildoras" aria-label="Canales">
+                            <button type="button" class="pildora activa">
+                                <span>#general</span>
+                                <span class="pildora-contador">3</span>
+                            </button>
+                            <button type="button" class="pildora">
+                                <span>#daw</span>
+                                <span class="pildora-contador">1</span>
+                            </button>
+                            <button type="button" class="pildora">
+                                <span>#dam</span>
+                                <span class="pildora-contador">0</span>
+                            </button>
+                            <button type="button" class="pildora">
+                                <span>#asir</span>
+                                <span class="pildora-contador">0</span>
+                            </button>
+                            <button type="button" class="pildora">
+                                <span>#smr</span>
+                                <span class="pildora-contador">0</span>
+                            </button>
+                        </nav>
+
+                        <div class="mensajes" id="lista-mensajes">
+                            <!-- Mensaje de sistema: gris cursiva, sin avatar, con espaciador -->
+                            <div class="mensaje sistema">
+                                <span class="mensaje-hora">10:15</span>
+                                <span class="mensaje-espaciador"></span>
+                                <div class="mensaje-cuerpo">
+                                    <span class="mensaje-texto">· Profesor se ha unido al canal</span>
+                                </div>
+                            </div>
+
+                            <!-- Fila de mensaje: hora + avatar circular + nombre en SU color + texto -->
+                            <div class="mensaje">
+                                <span class="mensaje-hora">10:16</span>
+                                <img class="avatar"
+                                     src="https://api.dicebear.com/10.x/adventurer/svg?seed=Profesor"
+                                     alt="Avatar de Profesor"
+                                     width="40" height="40"
+                                     onerror="this.outerHTML='<span class=&quot;avatar-iniciales&quot; style=&quot;width:40px; height:40px; font-size:16px; background-color:rgb(187, 242, 84)&quot; title=&quot;Profesor&quot;>[PR]</span>'">
+                                <div class="mensaje-cuerpo">
+                                    <span class="mensaje-nombre" style="color: rgb(187, 242, 84)">Profesor</span>
+                                    <span class="mensaje-texto">Bienvenidos a clase. Hoy: SignalR y Rx.NET.</span>
+                                </div>
+                            </div>
+
+                            <div class="mensaje sistema">
+                                <span class="mensaje-hora">10:16</span>
+                                <span class="mensaje-espaciador"></span>
+                                <div class="mensaje-cuerpo">
+                                    <span class="mensaje-texto">· Lucía se ha unido al canal</span>
+                                </div>
+                            </div>
+
+                            <div class="mensaje">
+                                <span class="mensaje-hora">10:17</span>
+                                <img class="avatar"
+                                     src="https://api.dicebear.com/10.x/croodles/svg?seed=Luc%C3%ADa"
+                                     alt="Avatar de Lucía"
+                                     width="40" height="40"
+                                     onerror="this.outerHTML='<span class=&quot;avatar-iniciales&quot; style=&quot;width:40px; height:40px; font-size:16px; background-color:rgb(242, 84, 171)&quot; title=&quot;Lucía&quot;>[LU]</span>'">
+                                <div class="mensaje-cuerpo">
+                                    <span class="mensaje-nombre" style="color: rgb(242, 84, 171)">Lucía</span>
+                                    <span class="mensaje-texto">¿Los mensajes llegan a todo el mundo al instante?</span>
+                                </div>
+                            </div>
+
+                            <div class="mensaje sistema">
+                                <span class="mensaje-hora">10:17</span>
+                                <span class="mensaje-espaciador"></span>
+                                <div class="mensaje-cuerpo">
+                                    <span class="mensaje-texto">· Ana se ha unido al canal</span>
+                                </div>
+                            </div>
+
+                            <div class="mensaje">
+                                <span class="mensaje-hora">10:18</span>
+                                <img class="avatar"
+                                     src="https://api.dicebear.com/10.x/lorelei/svg?seed=Ana"
+                                     alt="Avatar de Ana"
+                                     width="40" height="40"
+                                     onerror="this.outerHTML='<span class=&quot;avatar-iniciales&quot; style=&quot;width:40px; height:40px; font-size:16px; background-color:rgb(84, 242, 139)&quot; title=&quot;Ana&quot;>[AN]</span>'">
+                                <div class="mensaje-cuerpo">
+                                    <span class="mensaje-nombre" style="color: rgb(84, 242, 139)">Ana</span>
+                                    <span class="mensaje-texto">¡Hola a todos! 👋</span>
+                                </div>
+                            </div>
+
+                            <div class="mensaje">
+                                <span class="mensaje-hora">10:18</span>
+                                <img class="avatar"
+                                     src="https://api.dicebear.com/10.x/adventurer/svg?seed=Profesor"
+                                     alt="Avatar de Profesor"
+                                     width="40" height="40"
+                                     onerror="this.outerHTML='<span class=&quot;avatar-iniciales&quot; style=&quot;width:40px; height:40px; font-size:16px; background-color:rgb(187, 242, 84)&quot; title=&quot;Profesor&quot;>[PR]</span>'">
+                                <div class="mensaje-cuerpo">
+                                    <span class="mensaje-nombre" style="color: rgb(187, 242, 84)">Profesor</span>
+                                    <span class="mensaje-texto">Sí — cada cliente se suscribe al mismo flujo de la store y repinta solo.</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Caja fija abajo, con texto escrito (botón ➤ activo) -->
+                        <div class="caja-envoltura">
+                            <form class="caja" onsubmit="return false">
+                                <input id="caja-texto"
+                                       class="caja-entrada"
+                                       placeholder="Escribe un mensaje..."
+                                       maxlength="500"
+                                       autocomplete="off"
+                                       value="¡Sí, lo veo en mi pantalla!">
+                                <button type="button"
+                                        class="caja-boton"
+                                        title="Enviar mensaje">➤</button>
+                            </form>
+                        </div>
+                    </section>
+                </div>
+            </div>
+        </div>
+
+        <p class="doc-nota">
+            <b>Reglas de la casa</b> visibles en esta vista: la lista de la izquierda es <b>solo tu canal</b>
+            (evento de grupo); los <b>conteos globales</b> viven en la barra y en las píldoras
+            (3 en la sala · 4 en total = #general 3 + #daw 1). Los nombres salen en un color derivado del
+            nombre (mismo hash que la terminal) y los mensajes de sistema van en gris cursiva.
+            <b>Estados no mostrados:</b> si la conexión cae, el punto pasa a rojo y aparece
+            <b>“Reconectar”</b> en la barra; los fallos de conexión entran al flujo de mensajes como aviso
+            (nunca junto al campo). Con ventana estrecha (≤720px) la lista de usuarios se oculta.
+        </p>
+    </section>
+
+    <footer class="doc-pie">
+        Boceto estático sin SignalR ni Rx.NET — solo maqueta visual.<br>
+        Fuente de estilos: <code>AulaChatNet.Client.Blazor/wwwroot/css/app.css</code> ·
+        Colores de nombre y avatares: mismo algoritmo determinista que la app (FNV-1a → HSV → RGB;
+        estilos DiceBear <code>lorelei</code> (Ana), <code>adventurer</code> (Profesor) y
+        <code>croodles</code> (Lucía)).
+    </footer>
+</div>
+</body>
+</html>
