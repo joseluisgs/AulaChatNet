@@ -153,6 +153,18 @@ public class ChatStore : IChatStore
     public IReadOnlyList<string> Canales => _config.Canales;
 
     /// <inheritdoc />
+    public string? Canal => _canalActual.Value;
+
+    /// <inheritdoc />
+    public IReadOnlyList<UsuarioConectadoDto> VistaUsuarios => _usuarios.Value;
+
+    /// <inheritdoc />
+    public EstadisticasDto EstadisticasActuales => _estadisticas.Value;
+
+    /// <inheritdoc />
+    public EstadoConexion EstadoValor => _estado.Value;
+
+    /// <inheritdoc />
     public async Task<ResultadoConexion> ConectarAsync(string usuario, string canal)
     {
         try
@@ -258,6 +270,22 @@ public class ChatStore : IChatStore
     }
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<UsuarioConectadoDto>?> ObtenerUsuariosAsync(string canal)
+    {
+        try
+        {
+            return await _conexion.InvokeAsync<IReadOnlyList<UsuarioConectadoDto>?>(
+                ChatHubMetodos.ObtenerUsuarios, canal);
+        }
+        catch (Exception)
+        {
+            // null también significa "no pude consultar": el que lo pinta
+            // usa un mensaje que vale para ambos casos
+            return null;
+        }
+    }
+
+    /// <inheritdoc />
     public async Task<string?> ReconectarAsync()
     {
         if (_usuarioActual is null || _canalActual.Value is null)
@@ -315,6 +343,14 @@ public class ChatStore : IChatStore
         // destello de ellos antes de que llegue el historial del servidor
         _mensajes.OnNext([]);
         _usuarios.OnNext([]);
+    }
+
+    /// <inheritdoc />
+    public void LimpiarVista()
+    {
+        // Solo la vista local: el servidor guarda el historial igual que
+        // antes (vuelve al cambiar de canal o reconectar)
+        _mensajes.OnNext([]);
     }
 
     /// <inheritdoc />

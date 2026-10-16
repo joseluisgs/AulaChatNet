@@ -47,6 +47,36 @@ public interface IChatStore : IDisposable
     /// <summary>Canales disponibles, en el orden de la configuración.</summary>
     IReadOnlyList<string> Canales { get; }
 
+    // ── Valores actuales (calco de ClienteChat: el procesador de comandos
+    // y la UI necesitan el valor YA, no un evento futuro) ──
+
+    /// <summary>Último valor del canal canónico en el que estamos (null hasta conectar).</summary>
+    string? Canal { get; }
+
+    /// <summary>Último valor de la lista de conectados del canal actual.</summary>
+    IReadOnlyList<UsuarioConectadoDto> VistaUsuarios { get; }
+
+    /// <summary>Último valor de las estadísticas globales (total y por sala).</summary>
+    EstadisticasDto EstadisticasActuales { get; }
+
+    /// <summary>Último valor del estado de la conexión.</summary>
+    EstadoConexion EstadoValor { get; }
+
+    /// <summary>
+    /// Consulta los conectados de CUALQUIER canal: el servidor responde SOLO
+    /// a este cliente (no difunde nada), igual que un GET de una API.
+    /// </summary>
+    /// <param name="canal">Canal a consultar (ya validado por el llamador).</param>
+    /// <returns>La lista de esa sala, o null si el servidor no conoce el canal o no hay conexión.</returns>
+    Task<IReadOnlyList<UsuarioConectadoDto>?> ObtenerUsuariosAsync(string canal);
+
+    /// <summary>
+    /// Vacía la vista local de mensajes (comando /limpiar): solo es una
+    /// limpieza de PANTALLA — el historial vive en el servidor y vuelve al
+    /// cambiar de canal o al reconectar.
+    /// </summary>
+    void LimpiarVista();
+
     /// <summary>
     /// Abre la conexión y da de alta al usuario en un canal.
     /// </summary>

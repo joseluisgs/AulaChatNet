@@ -1,3 +1,4 @@
+using AulaChatNet.Client.Blazor.Services;
 using AulaChatNet.Client.Blazor.Services.Storage;
 using AulaChatNet.Client.Blazor.State;
 using AulaChatNet.Shared.Configuracion;
@@ -14,7 +15,8 @@ namespace AulaChatNet.Client.Blazor.Infrastructures;
 public static class ServicesConfig
 {
     /// <summary>
-    /// Registra las stores reactivas del chat y la sesión del navegador.
+    /// Registra las stores reactivas del chat, la sesión del navegador y el
+    /// procesador de comandos.
     /// </summary>
     /// <param name="services">Colección de servicios de la aplicación.</param>
     /// <param name="urlHub">URL completa del hub (base del servidor + Chat:HubRuta).</param>
@@ -40,6 +42,16 @@ public static class ServicesConfig
             new SesionStore(
                 proveedor.GetRequiredService<ILocalStorageService>(),
                 proveedor.GetService<ILogger<SesionStore>>()));
+
+        // Procesador de comandos (/canal, /ayuda, /sesion...): MISMO parser
+        // que la terminal (Shared), ejecutado con los recursos de la store
+        // y la sesión del navegador. Singleton porque solo depende de
+        // servicios también únicos por pestaña.
+        services.AddSingleton<IProcesadorComandos>(proveedor =>
+            new ProcesadorComandos(
+                proveedor.GetRequiredService<IChatStore>(),
+                proveedor.GetRequiredService<ChatConfig>(),
+                proveedor.GetRequiredService<ISesionStore>()));
 
         return services;
     }

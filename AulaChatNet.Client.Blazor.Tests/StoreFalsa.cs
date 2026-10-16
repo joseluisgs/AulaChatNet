@@ -16,6 +16,11 @@ namespace AulaChatNet.Client.Blazor.Tests;
 /// red de verdad (o sin ella), y los COMPONENTES contra esta doble, porque
 /// a un componente no le importa de dónde vienen los datos, sino cómo los
 /// pinta y qué le dice al pulsar.
+///
+/// Los "valores actuales" (Canal, EstadoValor, VistaUsuarios,
+/// EstadisticasActuales) se resuelven en el MOMENTO de la llamada contra el
+/// sujeto correspondiente: "menear" el flujo desde el test cambia lo que
+/// vean el procesador de comandos y los componentes.
 /// </remarks>
 /// </summary>
 public class StoreFalsa
@@ -59,6 +64,13 @@ public class StoreFalsa
         _mock.Setup(s => s.Estado).Returns(Estado);
         _mock.Setup(s => s.EnSesion).Returns(EnSesion);
         _mock.Setup(s => s.Canales).Returns(canales);
+
+        // Valores actuales: leídos del SUJETO en cada llamada (lazy), así
+        // que "menear" el flujo desde el test se refleja al instante
+        _mock.Setup(s => s.Canal).Returns(() => CanalActual.Value);
+        _mock.Setup(s => s.EstadoValor).Returns(() => Estado.Value);
+        _mock.Setup(s => s.VistaUsuarios).Returns(() => Usuarios.Value);
+        _mock.Setup(s => s.EstadisticasActuales).Returns(() => Estadisticas.Value);
     }
 
     /// <summary>

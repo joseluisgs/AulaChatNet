@@ -3,6 +3,7 @@ using System.Text;
 using AulaChatNet.Client.Blazor.Components;
 using AulaChatNet.Client.Blazor.Components.Pages;
 using AulaChatNet.Client.Blazor.Configuracion;
+using AulaChatNet.Client.Blazor.Services;
 using AulaChatNet.Client.Blazor.State;
 using AulaChatNet.Shared.Configuracion;
 using Bunit;
@@ -35,6 +36,10 @@ public class ChatTests : BunitContext
 
         Services.AddSingleton(_store.Objeto);
         Services.AddSingleton(sesion.Object);
+
+        // La vista de canal incluye la caja de texto, que despacha los
+        // comandos (/canal...) al procesador compartido
+        Services.AddSingleton(Mock.Of<IProcesadorComandos>());
         Services.AddSingleton(new ChatConfig
         {
             Canales = ["#general", "#daw"]

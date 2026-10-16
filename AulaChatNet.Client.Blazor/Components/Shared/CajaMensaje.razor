@@ -1,10 +1,15 @@
 @* Caja de texto fija abajo con el placeholder "Escribe un mensaje...".
    Enter o botón envían; la validación local (misma regla que el servidor)
    se pinta AQUÍ, junto al campo. Si lo que falla es la conexión, el aviso
-   va al flujo de mensajes (regla de la casa). *@
+   va al flujo de mensajes (regla de la casa).
+
+   Lo que empieza por "/" no es un mensaje: se parsea con el MISMO parser
+   que la terminal (vive en Shared) y lo ejecuta el procesador de comandos
+   de la web; sus resultados salen en el flujo de mensajes como avisos. *@
 @implements IDisposable
 @inject IChatStore Store
 @inject ChatConfig Config
+@inject IProcesadorComandos Procesador
 @inject IJSRuntime JS
 
 <div class="caja-envoltura">
@@ -47,12 +52,29 @@
         });
     }
 
-    /// <summary>Valida, envía y limpia el campo (Enter o botón ➤).</summary>
+    /// <summary>
+    /// Un comando (línea con "/") se ejecuta en el momento y sus resultados
+    /// salen en el flujo de mensajes; un texto normal pasa por la validación
+    /// local y se envía al canal (Enter o botón ➤).
+    /// </summary>
     private async Task EnviarAsync()
     {
         _error = null;
 
         var texto = _texto?.Trim() ?? string.Empty;
+
+        // Mismo parser que la terminal: "/canal daw" es un comando aquí y
+        // allí. El campo se vacía ANTES de ejecutar, para poder seguir
+        // escribiendo mientras el comando toca la red o la store
+        var comando = ParserComandos.Parse(texto);
+
+        if (comando is not Comando.Enviar)
+        {
+            _texto = "";
+            _focoPendiente = true;
+            await Procesador.EjecutarAsync(comando);
+            return;
+        }
 
         // Validación local ANTES de tocar la red: mismo criterio que el
         // servidor, para no gastar una ida y vuelta por algo evidente
