@@ -74,6 +74,17 @@ body {
     gap: 14px;
 }
 
+/* Icono de la app en la pantalla de carga (splash), sobre el título.
+   Va en el propio index.html, que es lo primero que pinta el navegador
+   mientras se descarga el runtime de WebAssembly. */
+.carga-icono {
+    width: 88px;
+    height: 88px;
+    object-fit: contain;
+    border-radius: 22%;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+}
+
 .carga-logo {
     color: var(--dc-blurple);
     font-size: 28px;
@@ -155,6 +166,18 @@ body {
     border-radius: 8px;
     padding: 32px;
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.45);
+}
+
+/* Icono de la aplicación (resources/icon-app.png, raíz del repo).
+   En el panel de entrada va centrado sobre el título. */
+.entrada-icono {
+    display: block;
+    width: 76px;
+    height: 76px;
+    object-fit: contain; /* el PNG no es cuadrado: se escala sin deformar */
+    margin: 0 auto 14px;
+    border-radius: 22%;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
 }
 
 .entrada-logo {
@@ -259,6 +282,15 @@ body {
     padding: 0 16px;
     background: var(--dc-oscuro);
     box-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
+    flex-shrink: 0;
+}
+
+/* Icono de la aplicación en la barra superior: pequeño, al lado del título */
+.barra-icono {
+    width: 28px;
+    height: 28px;
+    object-fit: contain;
+    border-radius: 24%;
     flex-shrink: 0;
 }
 
