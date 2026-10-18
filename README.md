@@ -5,11 +5,26 @@
 [![C#](https://img.shields.io/badge/C%23-14-blue)](https://docs.microsoft.com/en-us/dotnet/csharp/)
 [![SignalR](https://img.shields.io/badge/SignalR-Tiempo%20real-purple)](https://learn.microsoft.com/aspnet/core/signalr/introduction)
 [![Rx.NET](https://img.shields.io/badge/Rx.NET-Reactivo-orange)](https://github.com/dotnet/reactive)
+[![SQLite](https://img.shields.io/badge/SQLite-Embebido-003B57)](https://www.sqlite.org/)
+[![EF Core](https://img.shields.io/badge/EF%20Core-10-512BD4)](https://learn.microsoft.com/ef/core/)
 
 
-**Chat en tiempo real para el aula con .NET 10, SignalR y Rx.NET. Clientes para terminal y web (Blazor), con estética de Discord.**
+**Chat en tiempo real para el aula con .NET 10, SignalR y Rx.NET, con el historial persistido en SQLite. Clientes para terminal y web (Blazor), con estética de Discord.**
 
-> **Proyecto docente vivo.** Este README se amplía por fases, como en [TiendaDawApi-NetCore](https://github.com/joseluisgs/TiendaDawApi-NetCore). La documentación didáctica vive en [`docs/`](docs/).
+## 📑 Tabla de Contenidos
+
+- [🎯 Descripción](#-descripción)
+- [🚀 Tecnologías](#-tecnologías)
+- [📂 Estructura del Proyecto](#-estructura-del-proyecto)
+- [🏗️ Arquitectura](#️-arquitectura)
+- [🏃‍♂️ Inicio rápido](#️-inicio-rápido)
+- [📡 Hub del chat](#-hub-del-chat)
+- [🌐 Endpoints REST](#-endpoints-rest)
+- [⚙️ Configuración](#️-configuración)
+- [✅ Estado por fases](#-estado-por-fases)
+- [📚 Documentación](#-documentación)
+- [📝 Licencia](#-licencia)
+- [👨‍💻 Autor](#-autor)
 
 ## 🎯 Descripción
 
@@ -20,16 +35,17 @@ AulaChatNet es un proyecto educativo de ejemplo para el módulo **Desarrollo Web
 - 🔄 **Rx.NET**: los mensajes entrantes se exponen como `IObservable<MensajeDto>`; la UI se suscribe aplicando operadores reactivos (filtrar, agrupar, formatear)
 - 💻 **Múltiples clientes**: consola con Spectre.Console (vista en vivo con cabecera y pie fijos, editor de línea con cursor y reconexión con re-alta) y web con Blazor WebAssembly, ambos sobre el mismo hub y con los **mismos comandos `/`** (el parser vive en `Shared` y lo usan los dos clientes)
 - 🎨 **Estética Discord**: layout de dos columnas, avatares (DiceBear) y paleta oscura
-- 🗄️ **Fase 1 en memoria**: estado en `ConcurrentDictionary`, sin base de datos
+- 🗄️ **Persistencia (Fase 2)**: SQLite embebido en un fichero (`Data/aulachat.db`) con EF Core; el historial sobrevive a cualquier reinicio mientras que la presencia y la unicidad de nicks siguen en memoria, y se escribe en segundo plano sin frenar el chat
 
 ## 🚀 Tecnologías
 
 - **.NET 10 con C# 14** - Plataforma principal
 - **ASP.NET Core + SignalR** - Servidor en tiempo real
+- **SQLite + EF Core 10** - Base de datos embebida en un fichero, sin servidor ni contenedor; migraciones aplicadas al arrancar
 - **Rx.NET (System.Reactive)** - Programación reactiva en los clientes
 - **Blazor WebAssembly** - Cliente web
 - **Spectre.Console** - Cliente de terminal
-- **Serilog** - Logging en los tres clientes: servidor (consola + fichero), terminal (fichero) y web (consola del navegador)
+- **Serilog** - Logging en los tres procesos de la solución: servidor (consola + fichero), terminal (fichero) y web (consola del navegador)
 - **DiceBear API** - Avatares deterministas por nombre de usuario
 - **NUnit + FluentAssertions** - Tests por proyecto
 
@@ -42,13 +58,16 @@ AulaChatNet/
 ├── Directory.Build.props                    # LangVersion, Nullable, warnings como errores
 ├── Directory.Packages.props                 # Central Package Management (versiones aquí)
 ├── docs/                                   # Documentación didáctica
+├── scripts/                                # Utilidades de la repo (auditoría de diagramas Mermaid)
 ├── AulaChatNet.Shared/                      # DTOs, constantes del hub, ChatConfig, avatar, operadores Rx, comandos (parser + ayuda)
 │   └── AulaChatNet.Shared.Tests/
-├── AulaChatNet.Server/                      # ASP.NET Core + SignalR
+├── AulaChatNet.Server/                      # ASP.NET Core + SignalR + SQLite
 │   ├── Hubs/                                # ChatHub (alta, mensajes, canales, nick, estadísticas)
-│   ├── Services/                            # IChatStore / ChatStore (en memoria)
+│   ├── Services/                            # IChatStore / ChatStore (caché en memoria)
 │   ├── Models/                              # EstadoCanal, ConexionChat
-│   ├── Infrastructures/                     # Extensiones de arranque (servicios, CORS, hub)
+│   ├── Persistencia/                        # Entidad, contexto, repositorio, escritor y limpieza programada (Fase 2)
+│   ├── Migrations/                          # Migraciones de EF Core (esquema de la tabla Mensajes)
+│   ├── Infrastructures/                     # Extensiones de arranque (servicios, CORS, hub, persistencia)
 │   └── AulaChatNet.Server.Tests/
 ├── AulaChatNet.Client.Terminal/             # Consola con Spectre.Console (TUI estilo Discord)
 │   └── AulaChatNet.Client.Terminal.Tests/
@@ -58,48 +77,83 @@ AulaChatNet/
 
 ## 🏗️ Arquitectura
 
-Capa compartida (`Shared`) como contrato entre servidor y clientes, un hub de SignalR por servidor y estado en memoria separado por canal. Detalle y diagramas en [`docs/01-arquitectura-del-servidor.md`](docs/01-arquitectura-del-servidor.md):
+Capa compartida (`Shared`) como contrato entre servidor y clientes, un hub de SignalR como puerta de entrada y el estado en el `ChatStore`. Desde la Fase 2 se añade la persistencia: el historial se respalda en SQLite y **la escritura y el mantenimiento del fichero ocurren en dos servicios en segundo plano**, para que el hilo de SignalR nunca espere a disco. Detalle en [`docs/01-arquitectura-del-servidor.md`](docs/01-arquitectura-del-servidor.md) y en [`docs/04-persistencia.md`](docs/04-persistencia.md):
 
 ```mermaid
 flowchart TD
     subgraph Clientes["Clientes"]
         T["Terminal<br/>Spectre.Console + Rx"]
-        B["Blazor WASM<br/>estética Discord + Rx"]
+        B["Web Blazor<br/>Blazor WebAssembly + Rx"]
     end
 
-    S["AulaChatNet.Server<br/>ChatHub (/hubs/chat) + ChatStore en memoria"]
+    subgraph Servidor["AulaChatNet.Server"]
+        H["ChatHub<br/>puerta de entrada (/hubs/chat)"]
+        S["ChatStore<br/>presencia y unicidad en memoria<br/>historial en caché"]
+        Q["Cola de escritura<br/>(Channel)"]
+        P["Servicios de fondo<br/>PersistenciaMensajesService<br/>LimpiezaProgramada"]
+        R["MensajeRepository<br/>(EF Core, asíncrono)"]
+    end
 
-    SH["AulaChatNet.Shared<br/>DTOs · constantes · ChatConfig · operadores Rx"]
+    SH["AulaChatNet.Shared<br/>DTOs · constantes · ChatConfig<br/>operadores Rx · comandos /"]
 
-    T <-->|"SignalR (WebSocket)"| S
-    B <-->|"SignalR (WebSocket)"| S
+    DB["SQLite embebido<br/>Data/aulachat.db (modo WAL)"]
+
+    T <-->|"SignalR (WebSocket)"| H
+    B <-->|"SignalR (WebSocket)"| H
+
+    H --> S
+    S -.->|"encola, sin esperar"| Q
+    Q --> P
+    P --> R
+    R -->|"INSERT · DELETE · VACUUM"| DB
+    R -.->|"precarga al arrancar"| S
+
     T -.-> SH
     B -.-> SH
     S -.-> SH
 
     style T fill:#FF9800,color:#fff
     style B fill:#FF9800,color:#fff
+    style H fill:#2196F3,color:#fff
     style S fill:#2196F3,color:#fff
-    style SH fill:#9C27B0,color:#fff
+    style Q fill:#9C27B0,color:#fff
+    style P fill:#9C27B0,color:#fff
+    style R fill:#9C27B0,color:#fff
+    style SH fill:#607D8B,color:#fff
+    style DB fill:#4CAF50,color:#fff
 ```
 
 ## 🏃‍♂️ Inicio rápido
 
-```bash
-# Compilar y arrancar el servidor (sirve la web en http://localhost:5030)
-dotnet run --project AulaChatNet.Server
+Los tres puntos de entrada de la aplicación —servidor, web y terminal— y la base de datos:
 
-# En desarrollo de la web, mejor con watch: reconstruye el cliente y
-# relanza el servidor solo (el manifiesto de assets de Blazor se lee al
-# arrancar, así que sin watch los cambios del cliente no llegan)
+```bash
+# ── 1) SERVIDOR ───────────────────────────────────────────────────────
+# Compila y arranca; sirve TODO: hub SignalR, API REST y la web.
+dotnet run --project AulaChatNet.Server
+#   → http://localhost:5030
+
+# ── 2) WEB (Blazor WebAssembly) ───────────────────────────────────────
+# No tiene comando propio: se sirve desde el servidor del apartado 1.
+# Uso normal: abre el navegador en http://localhost:5030 y ya estás
+# dentro, sin instalar nada más.
+#
+# Solo si estás CAMBIANDO el código de la web, usa watch en lugar de
+# run: reconstruye el cliente y relanza el servidor (el manifiesto de
+# assets de Blazor se lee al arrancar, así que sin watch los cambios
+# no llegan al navegador)
 dotnet watch --project AulaChatNet.Server
 
-# Cliente terminal en otra consola (por defecto, el 5030)
+# ── 3) TERMINAL ───────────────────────────────────────────────────────
+# En OTRA consola: se conecta al servidor del 5030 por defecto
+# (la URL es configurable en la sección Terminal de appsettings)
 dotnet run --project AulaChatNet.Client.Terminal
 
-# Tests de todos los proyectos
+# ── 4) TESTS de todos los proyectos ───────────────────────────────────
 dotnet test
 ```
+
+**Base de datos (SQLite)**: no hay que crearla ni instalarla. Al arrancar, el servidor crea `Data/aulachat.db` si no existe, aplica las migraciones pendientes y precarga el historial de cada canal —mientras el servidor siga en pie, la web y el terminal leen ese mismo historial sin hacer nada especial—. En desarrollo la vacía a propósito (`Persistencia:LimpiarAlArrancar` está en `true` en `appsettings.Development.json`): ponla a `false` y reinicia para comprobar que los mensajes sobreviven.
 
 En desarrollo, el servidor añade `Cache-Control: no-cache` a `index.html` y a `/_framework/*`, para que el navegador pida siempre la última versión del manifiesto.
 
@@ -145,6 +199,7 @@ La configuración vive en `appsettings.json` (con override por entorno en `appse
 | Sección | Qué controla |
 |---------|--------------|
 | `Chat` | Canales, ruta del hub, límites de usuario/mensaje, historial máximo, URL de avatares |
+| `Persistencia` | Fichero SQLite, migración automática, limpieza al arrancar, mensajes precargados y mantenimiento (`LimpiezaCadaHoras`, `RetencionDias`, `VacuumSiFragmentado`) |
 | `Serilog` | **Servidor**: consola (Information, con color) + fichero de errores (`logs/aulachat-YYYY-MM-DD.log`, rolling y retención de 7 días). **Terminal**: solo fichero en `%LOCALAPPDATA%\AulaChatNet\logs\terminal-YYYY-MM-DD.log` (config en `SerilogConfig.cs`; sin consola para no romper el lienzo Live). **Web**: consola del navegador (sink `BrowserConsole`, config en `Program.cs`) |
 | `Cors` | Orígenes permitidos para el cliente Blazor en desarrollo |
 | `Terminal` | Sección del cliente terminal: `UrlServidor` y `RecordarSesion` |
@@ -155,20 +210,23 @@ La configuración vive en `appsettings.json` (con override por entorno en `appse
 | Fase | Contenido | Estado |
 |------|-----------|--------|
 | Entorno | `.slnx`, Central Package Management, GitFlow | ✅ Hecho |
-| **Fase 1 · Shared** | DTOs, `ChatConfig`, avatar, operadores Rx, parser de comandos `/` y catálogo de ayuda | ✅ Hecho — 111 tests |
-| **Fase 1 · Server** | `ChatHub`, `ChatStore` en memoria, canales, estadísticas, Serilog | ✅ Hecho — 71 tests |
-| **Fase 1 · Terminal** | Spectre.Console, vista en vivo, entrada guiada, comandos, sesión y Serilog a fichero | ✅ Hecho — 45 tests |
-| **Fase 1 · Blazor** | Layout Discord + store reactiva estilo `NotificationStore` + comandos `/` (parser compartido) + Serilog a consola del navegador | ✅ Hecho — 93 tests |
-| Fase 2 | Persistencia (SQLite + EF Core) | 🔜 Futura |
+| **Fase 1 · Shared** | DTOs, `ChatConfig`, avatar, operadores Rx, parser de comandos `/` y catálogo de ayuda | ✅ Hecho |
+| **Fase 1 · Server** | `ChatHub`, `ChatStore` en memoria, canales, estadísticas, Serilog | ✅ Hecho |
+| **Fase 1 · Terminal** | Spectre.Console, vista en vivo, entrada guiada, comandos, sesión y Serilog a fichero | ✅ Hecho |
+| **Fase 1 · Blazor** | Layout Discord + store reactiva estilo `NotificationStore` + comandos `/` (parser compartido) + Serilog a consola del navegador | ✅ Hecho |
+| **Fase 2 · Server** | Persistencia con SQLite + EF Core: modelo e índices, migraciones, escritura en segundo plano, precarga del historial y mantenimiento (retención + `VACUUM`) | ✅ Hecho |
 | Fase 3 | Extras (moderación, reacciones) | 🔜 Futura |
+
+> 📝 **Nota:** la Fase 2 tocó **solo el servidor**: ni el hub ni los clientes cambiaron, porque el contrato ya estaba hecho en la Fase 1.
 
 ## 📚 Documentación
 
 Toda la documentación didáctica vive en [`docs/`](docs/):
 
-- 📖 [`docs/01-arquitectura-del-servidor.md`](docs/01-arquitectura-del-servidor.md) - Arquitectura por capas, ciclo de vida de una conexión de SignalR, estado por canal, grupos, estadísticas, Serilog y dos bugs reales, con diagramas Mermaid
-- 💻 [`docs/02-cliente-terminal.md`](docs/02-cliente-terminal.md) - **Manual de uso** con capturas reales en ASCII (arranque, vista en vivo, comandos y sus salidas, reconexión y sesión) y su arquitectura interna: Spectre.Console, capa reactiva con Rx, modo doble (consola/tubería) y tests
+- 📖 [`docs/01-arquitectura-del-servidor.md`](docs/01-arquitectura-del-servidor.md) - Arquitectura por capas, ciclo de vida de una conexión de SignalR, estado por canal, grupos, estadísticas, Serilog, dos bugs reales y la evolución Fase 1 → Fase 2 (sección 3.5), con diagramas Mermaid
+- 💻 [`docs/02-cliente-terminal.md`](docs/02-cliente-terminal.md) - **Manual de uso** con capturas reales en ASCII (arranque, vista en vivo, comandos y sus salidas, reconexión y sesión) y su arquitectura interna: Spectre.Console, capa reactiva con Rx, modo doble (consola/tubería) y tests. Incluye la nota de por qué la persistencia no lo tocó
 - 🌐 [`docs/03-cliente-blazor.md`](docs/03-cliente-blazor.md) - **El cliente web**: Blazor WebAssembly alojado por el servidor, la estética de Discord en CSS propio, la store central y la capa reactiva con suscripciones en los componentes, los comandos `/` reutilizando el parser de `Shared`, la sesión en `localStorage`, el desarrollo con `dotnet watch` y **dos bugs reales** (el `Closed` fantasma y el manifiesto de assets caducado), con sus arreglos y tests
+- 🗄️ [`docs/04-persistencia.md`](docs/04-persistencia.md) - **La persistencia de la Fase 2**: por qué SQLite, qué se guarda en disco y qué no (separación por longevidad), el modelo con EF Core y sus índices, `Migrate()` frente a `EnsureCreated()`, la escritura en segundo plano con el patrón *write-behind*, la precarga, la limpieza con retención y `VACUUM`, y **tres trampas reales** que solo salieron al ejecutar
 - 🖼️ [`docs/boceto-vistas.html`](docs/boceto-vistas.html) - **Boceto visual de las dos vistas de la web** con los mismos estilos y elementos que la app: [vista 1 · panel de entrada](docs/boceto-vistas.html#vista-1) y [vista 2 · vista de canal](docs/boceto-vistas.html#vista-2)
 
 > 💡 **Consejo:** si solo vas a leer un documento, empieza por el del servidor: es el mapa completo sobre el que se apoyan los dos clientes.
