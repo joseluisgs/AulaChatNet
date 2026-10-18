@@ -59,6 +59,7 @@ AulaChatNet/
 ├── Directory.Packages.props                 # Central Package Management (versiones aquí)
 ├── docs/                                   # Documentación didáctica
 ├── scripts/                                # Utilidades de la repo (auditoría de diagramas Mermaid)
+├── resources/                              # Icono de la app (maestro): cada cliente lleva su propia copia dentro del proyecto
 ├── AulaChatNet.Shared/                      # DTOs, constantes del hub, ChatConfig, avatar, operadores Rx, comandos (parser + ayuda)
 │   └── AulaChatNet.Shared.Tests/
 ├── AulaChatNet.Server/                      # ASP.NET Core + SignalR + SQLite
