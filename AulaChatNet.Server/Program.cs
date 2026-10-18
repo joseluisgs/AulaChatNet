@@ -1,8 +1,11 @@
 using System.Text;
 using AulaChatNet.Server.Infrastructures;
+using AulaChatNet.Server.Persistencia;
 using AulaChatNet.Server.Services;
 using AulaChatNet.Shared.Configuracion;
 using AulaChatNet.Shared.Constantes;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Serilog;
 using Serilog.Events;
 
@@ -30,6 +33,11 @@ var configuration = builder.Configuration;
 
 // Opciones tipadas del chat (sección "Chat") + store en memoria (singleton)
 services.AddChatServices(configuration);
+
+// Persistencia (Fase 2): SQLite + EF Core. Registra la fábrica de contextos y
+// el repositorio de mensajes; la carpeta de la base de datos se crea aquí si
+// no existe (SQLite crea el fichero, pero no su carpeta).
+services.AddPersistencia(configuration);
 
 // SignalR (realtime) + CORS (para el cliente Blazor en desarrollo)
 services.AddChatSignalR();
@@ -109,6 +117,39 @@ PrintStartupInfo(configuration);
 
 try
 {
+    // Migraciones al arrancar (Fase 2). Se usa Migrate() y no EnsureCreated():
+    // Migrate() aplica SOLO lo que falta y conserva los datos existentes;
+    // EnsureCreated() recrearía el esquema y borraría el historial guardado.
+    // Se usa un servicio con scope porque el DbContext es de corta vida.
+    var persistencia = app.Services.CreateScope().ServiceProvider
+        .GetRequiredService<IDbContextFactory<AulaChatContexto>>();
+
+    var opcionesPersistencia = app.Services.GetRequiredService<IOptions<PersistenciaConfig>>().Value;
+
+    if (opcionesPersistencia.MigrarAutomaticamente)
+    {
+        await using var contexto = await persistencia.CreateDbContextAsync();
+        var migraciones = await contexto.Database.GetPendingMigrationsAsync();
+
+        if (migraciones.Any())
+        {
+            await contexto.Database.MigrateAsync();
+            Log.Information(
+                "💾 Base de datos migrada en {Ruta} ({Pendientes} migraciones aplicadas)",
+                opcionesPersistencia.Ruta, migraciones.Count());
+        }
+        else
+        {
+            Log.Information("💾 Base de datos al día en {Ruta}", opcionesPersistencia.Ruta);
+        }
+    }
+    else
+    {
+        Log.Warning(
+            "💾 Migraciones automáticas DESACTIVADAS (MigrarAutomaticamente=false): " +
+            "la base de datos en {Ruta} puede estar desactualizada", opcionesPersistencia.Ruta);
+    }
+
     app.Run();
 }
 catch (Exception ex)

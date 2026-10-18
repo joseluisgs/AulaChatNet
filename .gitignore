@@ -33,6 +33,10 @@ TestResults/
 # Logs de la aplicación (Serilog)
 logs/
 
+# Base de datos SQLite de la persistencia (Fase 2). Es un artefacto de
+# ejecución, no código: cada entorno genera el suyo al arrancar.
+AulaChatNet.Server/Data/
+
 # Contenido multimedia (no subir a git)
 /multimedia/
 
