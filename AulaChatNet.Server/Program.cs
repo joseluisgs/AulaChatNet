@@ -10,9 +10,9 @@ Console.OutputEncoding = Encoding.UTF8;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Serilog: TODO se configura en la sección "Serilog" de appsettings.json
-// (sinks, niveles, rolling de 7 días del fichero de errores...). La
-// configuración llega ya fusionada con appsettings.{Entorno}.json.
+// Serilog: la configuración vive entera en la sección "Serilog" de
+// appsettings.json (sinks, niveles, rolling de 7 días del fichero de
+// errores...), ya fusionada con appsettings.{Entorno}.json.
 Log.Logger = SerilogConfig.Configure(builder.Configuration).CreateLogger();
 
 // Serilog como provider principal de logging (unifica ASP.NET Core + Serilog)
