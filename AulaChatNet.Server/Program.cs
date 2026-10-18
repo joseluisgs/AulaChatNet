@@ -117,7 +117,7 @@ PrintStartupInfo(configuration);
 
 try
 {
-    // Migraciones al arrancar (Fase 2). Se usa Migrate() y no EnsureCreated():
+    // Persistencia al arrancar (Fase 2). Se usa Migrate() y no EnsureCreated():
     // Migrate() aplica SOLO lo que falta y conserva los datos existentes;
     // EnsureCreated() recrearía el esquema y borraría el historial guardado.
     // Se usa un servicio con scope porque el DbContext es de corta vida.
@@ -126,9 +126,23 @@ try
 
     var opcionesPersistencia = app.Services.GetRequiredService<IOptions<PersistenciaConfig>>().Value;
 
+    // Un único contexto desechable para toda la fase de arranque (borrado + migración)
+    await using var contexto = await persistencia.CreateDbContextAsync();
+
+    // Limpieza opcional: si la clave está activa, se BORRA la base de datos
+    // entera antes de migrar, para empezar con el historial vacío. Está pensada
+    // para desarrollo. El porqué es una clave explícita y no una regla por
+    // entorno está explicado en PersistenciaConfig.LimpiarAlArrancar.
+    if (opcionesPersistencia.LimpiarAlArrancar)
+    {
+        var borrada = await contexto.Database.EnsureDeletedAsync();
+        Log.Warning(
+            "🧹 Arranque limpio (LimpiarAlArrancar=true): base de datos {Estado}. El historial empieza vacío.",
+            borrada ? "borrada y recreada" : "no existía, se crea vacía");
+    }
+
     if (opcionesPersistencia.MigrarAutomaticamente)
     {
-        await using var contexto = await persistencia.CreateDbContextAsync();
         var migraciones = await contexto.Database.GetPendingMigrationsAsync();
 
         if (migraciones.Any())
@@ -145,9 +159,15 @@ try
     }
     else
     {
+        // Sin migraciones no hay tablas. Si además se pidió limpiar, el borrado
+        // deja la BD sin esquema, así que se avisa alto y claro.
         Log.Warning(
             "💾 Migraciones automáticas DESACTIVADAS (MigrarAutomaticamente=false): " +
-            "la base de datos en {Ruta} puede estar desactualizada", opcionesPersistencia.Ruta);
+            "la base de datos en {Ruta} puede estar desactualizada{Extra}",
+            opcionesPersistencia.Ruta,
+            opcionesPersistencia.LimpiarAlArrancar
+                ? " (Y con LimpiarAlArrancar=true se borró sin recrear el esquema: la app fallará)"
+                : string.Empty);
     }
 
     app.Run();

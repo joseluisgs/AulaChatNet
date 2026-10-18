@@ -55,6 +55,31 @@ public class PersistenciaConfig
     public bool MigrarAutomaticamente { get; set; } = true;
 
     /// <summary>
+    /// Si es true, al arrancar se BORRA la base de datos completa y se recrea
+    /// desde cero: el historial arranca vacío en cada ejecución.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es una llave de desarrollo para cuando quieres empezar de cero sin
+    /// borrar a mano el fichero .db. En producción NUNCA se activa.
+    /// </para>
+    /// <para>
+    /// Está como CLAVE DE CONFIGURACIÓN y no amarrada al entorno
+    /// (Development/Production) a propósito. La Fase 2 existe justamente para
+    /// que el historial SOBREVIVA a un reinicio; si el arranque en desarrollo
+    /// limpiase siempre la base de datos, nunca podrías comprobar ese
+    /// comportamiento en el entorno donde desarrollas y demuestras. Además, el
+    /// borrado silencioso por entorno engaña: crees que tu código persiste y no
+    /// es así. Con una clave explícita la decisión es tuya y visible.
+    /// Para «en desarrollo empiezo limpio», ponla en true en
+    /// appsettings.Development.json: obtienes el mismo efecto, pero como
+    /// elección consciente.
+    /// </para>
+    /// </remarks>
+    /// <example>false</example>
+    public bool LimpiarAlArrancar { get; set; } = false;
+
+    /// <summary>
     /// Nº máximo de mensajes que se cargan en la caché en memoria al arrancar
     /// (los que se reenvían al conectar al canal).
     /// </summary>

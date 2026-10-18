@@ -34,8 +34,10 @@ TestResults/
 logs/
 
 # Base de datos SQLite de la persistencia (Fase 2). Es un artefacto de
-# ejecución, no código: cada entorno genera el suyo al arrancar.
-AulaChatNet.Server/Data/
+# ejecución, no código: cada entorno genera el suyo al arrancar. La regla es
+# "Data/" a cualquier nivel para cubrir tanto AulaChatNet.Server/Data/ como
+# un Data/ suelto que pudiera aparecer según sea el directorio de trabajo.
+Data/
 
 # Contenido multimedia (no subir a git)
 /multimedia/
