@@ -101,4 +101,48 @@ public class MensajeRepository(IDbContextFactory<AulaChatContexto> fabrica, ILog
 
         return borrados;
     }
+
+    /// <inheritdoc />
+    public async Task<double> GetFragmentacionAsync(CancellationToken cancelacion = default)
+    {
+        await using var contexto = await fabrica.CreateDbContextAsync(cancelacion);
+
+        // Los PRAGMA no son un SELECT de tabla, así que no valen las consultas
+        // LINQ: se leen con SqlQueryRaw. Hay DOS trampas de EF aquí, y las dos
+        // solo salen al ejecutar:
+        //  1) EF mete la instrucción dentro de un FROM, así que "PRAGMA
+        //     page_count" a secas NO sirve: no es un SELECT componible y EF lo
+        //     rechaza con CheckComposableSql. La forma válida en SQLite moderno
+        //     es la función de tabla del PRAGMA, que sí es un SELECT.
+        //  2) Para un tipo escalar EF envuelve el resultado como
+        //     SELECT [s].[Value] FROM (...) AS [s], así que la columna debe
+        //     llamarse exactamente Value; si no, SQLite falla con
+        //     "no such column: s.Value".
+        var paginas = await contexto.Database
+            .SqlQueryRaw<long>("SELECT page_count AS Value FROM pragma_page_count()")
+            .SingleAsync(cancelacion);
+
+        if (paginas <= 0)
+            return 0;                       // base vacía o recién creada: nada que medir
+
+        var libres = await contexto.Database
+            .SqlQueryRaw<long>("SELECT freelist_count AS Value FROM pragma_freelist_count()")
+            .SingleAsync(cancelacion);
+
+        return libres * 100.0 / paginas;
+    }
+
+    /// <inheritdoc />
+    public async Task CompactarAsync(CancellationToken cancelacion = default)
+    {
+        await using var contexto = await fabrica.CreateDbContextAsync(cancelacion);
+
+        // VACUUM no puede ejecutarse DENTRO de una transacción, y
+        // ExecuteSqlRawAsync no abre ninguna por su cuenta, así que aquí es
+        // seguro. Reescribe la base de datos entera: es caro, por eso solo se
+        // invoca desde la limpieza cuando la fragmentación merece la pena.
+        await contexto.Database.ExecuteSqlRawAsync("VACUUM", cancelacion);
+
+        logger.LogDebug("VACUUM ejecutado: base de datos compactada");
+    }
 }

@@ -51,4 +51,52 @@ public interface IMensajesRepository
     /// <param name="cancelacion">Token para cancelar la operación.</param>
     /// <returns>Número de mensajes eliminados.</returns>
     Task<int> LimpiarAsync(DateTime anteriorA, CancellationToken cancelacion = default);
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Mantenimiento de SQLite. Estos dos métodos no hablan de "mensajes" sino
+    // de la BASE DE DATOS, y viven aquí por una decisión de diseño: el
+    // repositorio es la puerta ÚNICA a la base de datos, y preferimos eso a
+    // repartir el SQL por varios sitios. Así, todo el SQL del servidor está en
+    // un solo fichero (MensajeRepository.cs) y el servicio de limpieza queda
+    // como un orquestador puro, sin una línea de SQL, que se puede testear
+    // con un simple mock.
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Devuelve la fragmentación actual de la base de datos, como porcentaje
+    /// de páginas libres sobre el total (0 = nada desperdiciado, 100 = todo
+    /// hueco).
+    /// </summary>
+    /// <remarks>
+    /// Es la señal HONESTA de «cuánto espacio se tira», y se mide con los
+    /// PRAGMA <c>freelist_count</c> y <c>page_count</c>. Se usa esta y NO el
+    /// tamaño del fichero porque el proyecto corre en modo WAL: ahí los datos
+    /// recién escritos viven en el fichero <c>-.db-wal</c>, así que el
+    /// <c>.db</c> se queda en una sola página de cabecera y su tamaño no
+    /// refleja nada.
+    /// </remarks>
+    /// <param name="cancelacion">Token para cancelar la operación.</param>
+    /// <returns>Porcentaje de páginas libres, entre 0 y 100.</returns>
+    Task<double> GetFragmentacionAsync(CancellationToken cancelacion = default);
+
+    /// <summary>
+    /// Ejecuta un <c>VACUUM</c>: reescribe la base de datos entera por una
+    /// versión compacta y devuelve las páginas libres al fichero.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es la ÚNICA forma de que SQLite devuelva de verdad el espacio: el
+    /// <c>DELETE</c> solo marca páginas como libres para reutilizarlas, no las
+    /// suelta. Por eso es una operación cara (reescribe todo) y no se hace en
+    /// cada limpieza, solo cuando la fragmentación supera el umbral.
+    /// </para>
+    /// <para>
+    /// En modo WAL puede fallar con «database is locked» si hay lecturas
+    /// concurrentes (p. ej. alguien pidiendo el historial). El servicio de
+    /// limpieza lo traga y lo deja anotado en el log: reintentará en la
+    /// siguiente pasada.
+    /// </para>
+    /// </remarks>
+    /// <param name="cancelacion">Token para cancelar la operación.</param>
+    Task CompactarAsync(CancellationToken cancelacion = default);
 }

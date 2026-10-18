@@ -146,6 +146,46 @@ public class IntegracionPersistenciaTests
         storeTrasReinicio.GetHistorial(General).Should().BeEmpty();
     }
 
+    #region Limpieza programada (Fase 6) contra el fichero real
+
+    [Test]
+    public async Task LimpiezaProgramada_ContraElFicheroReal_BorraLoViejo_YDejaLaBaseSinFragmentar()
+    {
+        // Arrange: 400 mensajes VIEJOS (de hace 100 días) con texto largo, para
+        // que al borrarlos se liberen de verdad páginas enteras; y uno RECIENTE,
+        // que es el que tiene que seguir ahí al final.
+        var repo = CrearRepositorio();
+        var antiguo = DateTime.UtcNow.AddDays(-100);
+
+        for (var i = 0; i < 400; i++)
+            await repo.GuardarAsync(General,
+                new MensajeDto(Guid.NewGuid(), "Ana", new string('x', 400), antiguo, TipoMensaje.Normal));
+
+        await repo.GuardarAsync(General,
+            new MensajeDto(Guid.NewGuid(), "Ana", "reciente", DateTime.UtcNow, TipoMensaje.Normal));
+
+        // La retención es de 30 días: lo de hace 100 se va, lo de hoy se queda.
+        var config = new PersistenciaConfig { RetencionDias = 30, VacuumSiFragmentado = 25 };
+        var servicio = new LimpiezaProgramada(
+            repo, Options.Create(config), NullLogger<LimpiezaProgramada>.Instance);
+
+        // Act: UNA pasada completa — borrar, medir la fragmentación y compactar
+        await servicio.LimpiarAsync();
+
+        // Assert 1: se fue lo viejo y sobrevivió lo reciente...
+        var historial = await repo.GetUltimosAsync(General, 10);
+        historial.Should().ContainSingle()
+            .Which.Texto.Should().Be("reciente", "la retención es de 30 días y ese mensaje es de hoy");
+
+        // Assert 2: ...y la base quedó SIN páginas libres. Esto solo es posible
+        // si el VACUUM llegó a ejecutarse, porque el DELETE por sí solo deja las
+        // páginas marcadas como libres (fragmentación > 0) sin devolver nada.
+        (await repo.GetFragmentacionAsync()).Should().Be(0,
+            "el borrado masivo superó el umbral, así que debía compactarse");
+    }
+
+    #endregion
+
     /// <summary>
     /// Fábrica mínima de contextos para el test: reparte el mismo juego de
     /// opciones a cada contexto, igual que <c>AddDbContextFactory</c> en DI.

@@ -19,8 +19,11 @@ namespace AulaChatNet.Server.Persistencia;
 ///   "Persistencia": {
 ///     "Ruta": "Data/aulachat.db",
 ///     "MigrarAutomaticamente": true,
-///     "HistorialPersistido": 0,
-///     "LimpiezaCadaHoras": 24
+///     "LimpiarAlArrancar": false,
+///     "PreloadMensajes": 50,
+///     "LimpiezaCadaHoras": 24,
+///     "RetencionDias": 0,
+///     "VacuumSiFragmentado": 25
 ///   }
 /// }
 /// </code>
@@ -110,6 +113,28 @@ public class PersistenciaConfig
     /// </remarks>
     /// <example>90</example>
     public int RetencionDias { get; set; } = 0;
+
+    /// <summary>
+    /// Umbral de fragmentación (en % de páginas libres) a partir del cual la
+    /// limpieza ejecuta un VACUUM para devolver el espacio al disco.
+    /// 0 = nunca ejecutar VACUUM.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// El VACUUM reescribe la base de datos entera para compactarla, así que
+    /// es CARO: no se hace en cada limpieza, solo cuando merece la pena. Se
+    /// mide la fragmentación real con <c>PRAGMA freelist_count</c> y
+    /// <c>PRAGMA page_count</c> (páginas libres sobre páginas totales), que es
+    /// la señal honesta de «cuánto espacio se está desperdiciando».
+    /// </para>
+    /// <para>
+    /// Un valor razonable está entre 20 y 30: por debajo, el espacio libre es
+    /// poco y SQLite lo reutilizará con los mensajes nuevos sin necesidad de
+    /// reescribir nada.
+    /// </para>
+    /// </remarks>
+    /// <example>25</example>
+    public int VacuumSiFragmentado { get; set; } = 25;
 
     /// <summary>
     /// Devuelve la cadena de conexión SQLite para la ruta configurada.

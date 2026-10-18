@@ -185,6 +185,68 @@ public class MensajeRepositoryTests
 
     #endregion
 
+    #region Mantenimiento (fragmentación y VACUUM)
+
+    [Test]
+    public async Task Fragmentacion_TrasBorrarMuchosMensajes_SubeY_ALimpiar_VuelveACero()
+    {
+        // Arrange: rellenar la base con mensajes VIEJOS para que se asignen
+        // varias páginas (si no, al borrar no se libera NINGUNA página y no se
+        // puede medir la fragmentación de verdad)
+        var antiguo = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        for (var i = 0; i < 400; i++)
+            await _repo.GuardarAsync(General, Mensaje(new string('x', 400), cuando: antiguo));
+
+        // Act 1: borrar todo lo anterior a 2021 (es decir, lo que acabamos de meter)
+        var borrados = await _repo.LimpiarAsync(new DateTime(2021, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+
+        // Assert 1: el DELETE marca las páginas como LIBRES, pero no las suelta;
+        // ahí es donde aparece la fragmentación
+        borrados.Should().Be(400);
+        var fragmentada = await _repo.GetFragmentacionAsync();
+        fragmentada.Should().BeGreaterThan(0,
+            "al borrar masivamente debe quedar espacio libre sin recoger");
+
+        // Act 2: compactar
+        await _repo.CompactarAsync();
+
+        // Assert 2: el VACUUM recoge las páginas libres y la base queda limpia
+        (await _repo.GetFragmentacionAsync()).Should().Be(0,
+            "tras el VACUUM no debe quedar ninguna página libre");
+    }
+
+    [Test]
+    public async Task Fragmentacion_DevuelveUnPorcentajeEntreCeroYCien()
+    {
+        // Arrange
+        await _repo.GuardarAsync(General, Mensaje("algún mensaje"));
+
+        // Act
+        var fragmentacion = await _repo.GetFragmentacionAsync();
+
+        // Assert: es un PORCENTAJE (páginas libres / páginas totales)
+        fragmentacion.Should().BeInRange(0, 100);
+    }
+
+    [Test]
+    public async Task Compactar_DejaLaBaseUtilizable_SiguePudiendoEscribirYLeer()
+    {
+        // Arrange
+        await _repo.GuardarAsync(General, Mensaje("antes del VACUUM"));
+
+        // Act: un VACUUM reescribe el fichero entero, así que hay que
+        // comprobar que después la base sigue funcionando con normalidad
+        await _repo.CompactarAsync();
+        await _repo.GuardarAsync(General, Mensaje("después del VACUUM"));
+
+        // Assert
+        var historial = await _repo.GetUltimosAsync(General, 10);
+        historial.Should().HaveCount(2);
+        historial[^1].Texto.Should().Be("después del VACUUM");
+    }
+
+    #endregion
+
     #region Reanudación (la prueba que justifica la fase entera)
 
     [Test]

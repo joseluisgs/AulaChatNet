@@ -63,6 +63,12 @@ public static class PersistenciaConfigExtensions
         // antes de construir, así que es seguro).
         services.AddHostedService<PersistenciaMensajesService>();
 
+        // Servicio en segundo plano de MANTENIMIENTO: borra lo que supera la
+        // retención y compacta con VACUUM si hay mucha fragmentación. No
+        // depende del ChatStore, solo del repositorio y de la configuración,
+        // así que no impone ningún orden respecto al resto.
+        services.AddHostedService<LimpiezaProgramada>();
+
         return services;
     }
 }
