@@ -57,15 +57,28 @@ public class MensajeEntidad
     /// Momento (UTC) en el que se escribió, asignado SIEMPRE por el servidor.
     ///
     /// <remarks>
-    /// Es <c>DateTimeOffset</c> y no <c>DateTime</c> a propósito: SQLite no
-    /// tiene un tipo de fecha nativo, guarda texto, y el proveedor de EF Core
-    /// puede DEVOLVER un <c>DateTime</c> con el <c>Kind</c> perdido (Unspecified
-    /// en vez de Utc). Con <c>DateTimeOffset</c> el desfase viaja en el propio
-    /// valor y el redondeo es siempre correcto. Es el gotcha número uno de
-    /// SQLite con fechas.
+    /// <para>
+    /// Es <c>DateTime</c> SIEMPRE en UTC, y ese es un contrato, no un detalle.
+    /// La lección que cuesta aprender: SQLite no tiene un tipo de fecha nativo,
+    /// guarda texto, y el proveedor de EF Core puede DEVOLVER el <c>Kind</c>
+    /// perdido (Unspecified en vez de Utc). Por eso al LEER hay que devolverlo
+    /// a UTC con <c>DateTime.SpecifyKind</c>, y por eso aquí se usa
+    /// <c>DateTime</c> y no <c>DateTimeOffset</c>.
+    /// </para>
+    /// <para>
+    /// De hecho, la primera versión de esta entidad usó <c>DateTimeOffset</c>
+    /// precisamente para blindar el UTC… y SQLite reventó al ordenar:
+    /// <c>SQLite does not support expressions of type 'DateTimeOffset' in ORDER
+    /// BY clauses</c>. La consulta central del chat («los últimos N de un
+    /// canal») es un ORDER BY, así que la opción «más segura» rompía lo
+    /// principal. Con <c>DateTime</c> en UTC el orden SÍ funciona, porque se
+    /// guarda como texto ISO-8601 con ceros a la izquierda y el orden
+    /// lexicográfico coincide con el cronológico. Un gotcha real, cazado por
+    /// los tests y aquí documentado.
+    /// </para>
     /// </remarks>
     /// </summary>
-    public DateTimeOffset Timestamp { get; set; }
+    public DateTime Timestamp { get; set; }
 
     /// <summary>
     /// Tipo del mensaje: <see cref="TipoMensaje.Normal"/> (de usuario) o
