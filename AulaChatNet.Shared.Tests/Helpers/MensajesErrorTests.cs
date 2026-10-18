@@ -1,9 +1,9 @@
-using AulaChatNet.Client.Terminal.Servicios;
+using AulaChatNet.Shared.Helpers;
 using FluentAssertions;
 using System.Net.Sockets;
 using System.Text.Json;
 
-namespace AulaChatNet.Client.Terminal.Tests.Servicios;
+namespace AulaChatNet.Shared.Tests.Helpers;
 
 /// <summary>
 /// Suite de tests para MensajesError: traducir excepciones a mensajes que

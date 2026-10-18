@@ -1,0 +1,13 @@
+@* Aplicación raíz: enrutamiento sencillo — por ahora hay UNA sola página
+   (Chat, ruta "/"), pero se deja el Router de toda la vida para que añadir
+   una página nueva sea cuestión de meterle un @page a un fichero nuevo. *@
+<Router AppAssembly="@typeof(App).Assembly">
+    <Found Context="ruta">
+        <RouteView RouteData="@ruta" DefaultLayout="@typeof(Layout.MainLayout)" />
+    </Found>
+    <NotFound>
+        <LayoutView Layout="@typeof(Layout.MainLayout)">
+            <p class="mensajes-vacio">Esa página no existe. Vuelve al <a href="/">chat</a>.</p>
+        </LayoutView>
+    </NotFound>
+</Router>

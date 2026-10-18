@@ -1,7 +1,7 @@
-using AulaChatNet.Client.Terminal.Comandos;
+using AulaChatNet.Shared.Comandos;
 using FluentAssertions;
 
-namespace AulaChatNet.Client.Terminal.Tests.Comandos;
+namespace AulaChatNet.Shared.Tests.Comandos;
 
 /// <summary>
 /// Suite de tests para ParserComandos: convierte lo que escribe el usuario

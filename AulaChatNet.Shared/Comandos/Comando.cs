@@ -1,4 +1,4 @@
-namespace AulaChatNet.Client.Terminal.Comandos;
+namespace AulaChatNet.Shared.Comandos;
 
 /// <summary>
 /// Representa lo que el usuario quiere hacer: un comando (/canal, /salir...)
@@ -7,8 +7,13 @@ namespace AulaChatNet.Client.Terminal.Comandos;
 /// <remarks>
 /// Es un <c>record</c> jerárquico: cada variante se declara dentro del tipo
 /// base, y el pattern matching del <c>switch</c> las distingue sin casts ni
-/// enums paralelos. Añadir un comando nuevo es añadir una línea aquí y su
-/// caso en el parser — nada más.
+/// enums paralelos. Añadir un comando nuevo es añadir una línea aquí, su
+/// caso en el parser y su fila en <see cref="AyudaComandos"/> — nada más.
+///
+/// Vive en Shared porque los DOS clientes (terminal y web) interpretan la
+/// misma línea escrita del mismo modo: el parser se escribe una vez y cada
+/// cliente ejecuta sus variantes con sus propios recursos (Spectre en una
+/// punta, stores de Blazor en la otra).
 /// </remarks>
 /// </summary>
 public abstract record Comando
@@ -36,17 +41,17 @@ public abstract record Comando
     /// <param name="NombreCanal">Canal a consultar (null = el canal actual).</param>
     public sealed record Usuarios(string? NombreCanal = null) : Comando;
 
-    /// <summary>/reconectar: volver a entrar si la conexión se perdió (en la vista en vivo, la tecla R hace lo mismo).</summary>
+    /// <summary>/reconectar: volver a entrar si la conexión se perdió (la terminal asocia además la tecla R).</summary>
     public sealed record Reconectar : Comando;
 
     /// <summary>/sesion [borrar]: ver la sesión guardada o borrarla.</summary>
     /// <param name="Accion">Ver lo guardado (por defecto) o borrarlo.</param>
     public sealed record Sesion(AccionSesion Accion) : Comando;
 
-    /// <summary>/limpiar: limpiar la vista y repintar desde el búfer local.</summary>
+    /// <summary>/limpiar: limpiar la vista local de mensajes (el historial sigue en el servidor).</summary>
     public sealed record Limpiar : Comando;
 
-    /// <summary>/salir: desconectar y cerrar (Ctrl+C hace exactamente lo mismo).</summary>
+    /// <summary>/salir: desconectar y cerrar la sesión.</summary>
     public sealed record Salir : Comando;
 
     /// <summary>Comando que no se reconoce; se guarda la palabra para repetirla.</summary>

@@ -1,7 +1,7 @@
 using System.Net.Sockets;
 using System.Text.Json;
 
-namespace AulaChatNet.Client.Terminal.Servicios;
+namespace AulaChatNet.Shared.Helpers;
 
 /// <summary>
 /// Traduce excepciones técnicas a mensajes que ENTienda quien usa el chat.
@@ -11,8 +11,9 @@ namespace AulaChatNet.Client.Terminal.Servicios;
 /// excepción — "HttpRequestException" no le dice nada a quien solo quiere
 /// entrar al aula. El tipo es un detalle para nosotras: aquí se traduce a
 /// dos preguntas que sí se entienden, <c>¿qué pasa?</c> y <c>qué puedo
-/// hacer?</c>. El detalle técnico completo (tipo y mensaje original) se
-/// queda fuera de la consola; cuando haya logging (Fase 2), ahí sí irá.
+/// hacer?</c>. El detalle técnico completo (tipo y mensaje original) no va
+/// a la consola del usuario: se escribe en el log de cada cliente (Serilog),
+/// que es donde de verdad sirve para diagnosticar.
 ///
 /// Es lógica pura: sin consola, sin red, sin estado — por eso
 /// <c>MensajesErrorTests</c> la prueba en milisegundos.

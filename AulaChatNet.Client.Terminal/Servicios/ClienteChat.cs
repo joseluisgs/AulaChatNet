@@ -47,9 +47,14 @@ public class ClienteChat : IDisposable
     // reutiliza para volver a darse de alta sin volver a preguntar al usuario
     private string? _usuarioActual;
 
-    // true mientras CERRAMOS la conexión a propósito (salida ordenada o
+    // true mientras la conexión se cierra A PROPÓSITO (salida ordenada o
     // registro rechazado): el evento Closed salta también en esos casos y
-    // no queremos un aviso de "conexión perdida" cuando la perdimos nosotros
+    // no queremos un aviso de "conexión perdida" cuando la perdimos nosotros.
+    // Ojo: SignalR invoca Closed de forma ASÍNCRONA, a veces DESPUÉS de que
+    // StopAsync devuelva, así que el flag NO se resetea al cerrar — solo lo
+    // hace ConectarAsync/ReconectarAsync al empezar la siguiente conexión.
+    // Si no, el cierre tardío se encontraría el flag ya en false (aviso
+    // fantasma justo después de un rechazo de nick).
     private bool _cierreIntencionado;
 
     /// <summary>Error devuelto al invocar el hub con la conexión caída.</summary>
@@ -171,6 +176,9 @@ public class ClienteChat : IDisposable
     {
         try
         {
+            // Aquí se "despierta" el flag de cierre intencionado: el Closed
+            // tardío de un intento anterior (rechazo o salida) ya no debe
+            // confundirse con una caída inesperada de ESTA conexión
             _cierreIntencionado = false;
             _estado.OnNext(EstadoConexion.Conectando);
             await _conexion.StartAsync();
@@ -192,11 +200,13 @@ public class ClienteChat : IDisposable
         {
             // El servidor respondió y rechazó el alta (p. ej. nombre en uso):
             // cerramos para que el llamador pueda preguntar de nuevo sin
-            // estados colgados. El cierre es NUESTRO, así que Closed no avisa
+            // estados colgados. El cierre es NUESTRO, así que Closed no
+            // avisa — y como ese evento puede llegar DESPUÉS de que StopAsync
+            // devuelva, el flag NO se resetea aquí (lo hará la próxima
+            // llamada a ConectarAsync): así no hay aviso fantasma.
             _estado.OnNext(EstadoConexion.Desconectado);
             _cierreIntencionado = true;
             await _conexion.StopAsync();
-            _cierreIntencionado = false;
 
             return new ResultadoConexion(error, HayServidor: true);
         }
@@ -392,9 +402,11 @@ public class ClienteChat : IDisposable
     {
         try
         {
-            _cierreIntencionado = true; // cierre pedido: Closed no avisa
+            // Cierre pedido: Closed no avisa. El flag NO se resetea al
+            // terminar (SignalR puede entregar Closed tardío); lo hará la
+            // próxima ConectarAsync, al empezar la siguiente conexión.
+            _cierreIntencionado = true;
             await _conexion.StopAsync();
-            _cierreIntencionado = false;
             _estado.OnNext(EstadoConexion.Desconectado);
         }
         catch

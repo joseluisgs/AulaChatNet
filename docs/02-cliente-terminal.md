@@ -373,4 +373,4 @@ Además, el **smoke E2E** arranca el servidor real y el terminal con `stdin`/`st
 | Rx | Stores con `BehaviorSubject`; el bucle **solo pinta el estado actual** cada 50 ms |
 | Configuración | `Terminal:UrlServidor` + sección `Chat` compartida; la validación real, en el servidor |
 
-Con el terminal listo, el siguiente cliente es la web: Blazor WebAssembly con la estética de Discord y la misma capa reactiva sobre el mismo hub.
+Con el terminal listo, el siguiente cliente es la web: [Blazor WebAssembly con la estética de Discord y su store central](03-cliente-blazor.md), con la misma capa reactiva sobre el mismo hub.

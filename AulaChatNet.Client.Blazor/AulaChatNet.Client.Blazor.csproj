@@ -4,7 +4,9 @@
     <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>AulaChatNet.Client.Blazor</RootNamespace>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <!-- Sin NoWarn de CS1591: todo el API público está documentado, así que
+         con TreatWarningsAsErrors la compilación FALLA si aparece documentación
+         XML pendiente (la regla de la casa se autocumple, no se silencia). -->
   </PropertyGroup>
 
   <ItemGroup>
@@ -17,6 +19,12 @@
     <!-- Configuración: lee wwwroot/appsettings.json (sección Chat, AvatarBaseUrl) -->
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Binder" />
+
+    <!-- Logging: Serilog a la consola del navegador (BrowserConsole, vía JS;
+         el sink de consola normal no sirve en WASM) -->
+    <PackageReference Include="Serilog" />
+    <PackageReference Include="Serilog.Sinks.BrowserConsole" />
+    <PackageReference Include="Serilog.Extensions.Logging" />
   </ItemGroup>
 
   <ItemGroup>

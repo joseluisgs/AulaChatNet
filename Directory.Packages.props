@@ -23,17 +23,30 @@
     <!-- Spectre.Console: UI de terminal elegante (paneles, colores, Live) -->
     <PackageVersion Include="Spectre.Console" Version="0.57.2" />
 
-    <!-- Blazor WebAssembly -->
-    <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.2" />
-    <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.2" />
+    <!-- Blazor WebAssembly (10.0.13: misma línea parcheada que SignalR.Client) -->
+    <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.13" />
+    <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.13" />
+
+    <!-- Alojamiento del cliente WASM en el servidor (UseBlazorFrameworkFiles) -->
+    <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="10.0.13" />
   </ItemGroup>
 
   <ItemGroup>
-    <!-- ══════════════ Servidor ══════════════ -->
-    <!-- Logging estructurado (estilo Tienda) -->
+    <!-- ══════════════ Logging (Serilog en servidor, terminal y Blazor) ══════════════ -->
+    <!-- Núcleo: el servidor lo trae con Serilog.AspNetCore; terminal y Blazor lo usan directo -->
+    <PackageVersion Include="Serilog" Version="4.3.0" />
+
+    <!-- Logging estructurado del servidor (estilo Tienda): consola + fichero de errores con rolling -->
     <PackageVersion Include="Serilog.AspNetCore" Version="10.0.0" />
     <PackageVersion Include="Serilog.Sinks.Console" Version="6.1.1" />
     <PackageVersion Include="Serilog.Sinks.File" Version="7.0.0" />
+
+    <!-- Puente ILogger<T> → Serilog (AddSerilog en el cliente Blazor; el servidor ya lo incluye en AspNetCore) -->
+    <PackageVersion Include="Serilog.Extensions.Logging" Version="10.0.0" />
+
+    <!-- Sink del navegador (Blazor WASM): escribe en la consola del navegador vía JS;
+         WriteTo.Console no funciona en WASM (no hay terminal que detectar) -->
+    <PackageVersion Include="Serilog.Sinks.BrowserConsole" Version="8.0.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -45,5 +58,8 @@
     <PackageVersion Include="Moq" Version="4.21.0" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
     <PackageVersion Include="coverlet.collector" Version="10.0.1" />
+
+    <!-- bUnit: pruebas de componentes Blazor (los stores se prueban con NUnit solo) -->
+    <PackageVersion Include="bunit" Version="2.11.3" />
   </ItemGroup>
 </Project>

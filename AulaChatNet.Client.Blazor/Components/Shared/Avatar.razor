@@ -1,0 +1,58 @@
+@* Avatar circular con RESPALDO: pinta la imagen de DiceBear y, si el
+   navegador no puede cargarla (sin internet, API caída, aula sin red), se
+   cambia solo a las iniciales sobre el color determinista del usuario —
+   los mismos cálculos que usa la terminal (AvatarHelper en Shared).
+
+   No hay que "detectar" nada: el propio navegador nos avista del fallo con
+   el evento onerror de la etiqueta <img>. *@
+@inject ChatConfig Config
+
+@if (_fallado)
+{
+    <span class="avatar-iniciales"
+          style="width: @(Tamano)px; height: @(Tamano)px; font-size: @(Tamano * 2 / 5)px; background-color: @Color;"
+          title="@Usuario">@Iniciales</span>
+}
+else
+{
+    <img class="avatar"
+         src="@Direccion"
+         alt="Avatar de @Usuario"
+         width="@Tamano"
+         height="@Tamano"
+         @onerror="MarcarFallo" />
+}
+
+@code {
+    /// <summary>Usuario cuyo avatar se pinta (es su semilla: mismo nombre, mismo avatar).</summary>
+    [Parameter] public string Usuario { get; set; } = "";
+
+    /// <summary>Diámetro en píxeles: 40 en los mensajes, 24 en la lista de conectados.</summary>
+    [Parameter] public int Tamano { get; set; } = 40;
+
+    /// <summary>true cuando la imagen ha fallado: a partir de ahí se pintan iniciales.</summary>
+    private bool _fallado;
+
+    /// <summary>URL de DiceBear (la base viene de la configuración, nunca escrita a mano).</summary>
+    private string Direccion => AvatarHelper.ObtenerUrl(Usuario, Config.AvatarBaseUrl);
+
+    /// <summary>
+    /// Iniciales del círculo. El helper devuelve "[JL]" (formato de la
+    /// terminal, que los imprime literalmente); aquí se quitan los corchetes
+    /// porque el círculo ya los hace de marco.
+    /// </summary>
+    private string Iniciales => AvatarHelper.ObtenerIniciales(Usuario).Trim('[', ']');
+
+    /// <summary>Color de fondo determinista del usuario (mismo que su nombre en la terminal).</summary>
+    private string Color
+    {
+        get
+        {
+            var (rojo, verde, azul) = AvatarHelper.ObtenerColor(Usuario);
+            return $"rgb({rojo}, {verde}, {azul})";
+        }
+    }
+
+    /// <summary>El navegador ha fallado al cargar la imagen: se pinta el respaldo.</summary>
+    private void MarcarFallo() => _fallado = true;
+}

@@ -10,9 +10,9 @@ Console.OutputEncoding = Encoding.UTF8;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Serilog: TODO se configura en la sección "Serilog" de appsettings.json
-// (sinks, niveles, rolling de 7 días del fichero de errores...). La
-// configuración llega ya fusionada con appsettings.{Entorno}.json.
+// Serilog: la configuración vive entera en la sección "Serilog" de
+// appsettings.json (sinks, niveles, rolling de 7 días del fichero de
+// errores...), ya fusionada con appsettings.{Entorno}.json.
 Log.Logger = SerilogConfig.Configure(builder.Configuration).CreateLogger();
 
 // Serilog como provider principal de logging (unifica ASP.NET Core + Serilog)
@@ -61,9 +61,29 @@ app.UseSerilogRequestLogging(opciones =>
 
 app.UseCorsPolicy();
 
-// El servidor alojará también el cliente Blazor (archivos estáticos en
-// wwwroot): en la Fase 1 esa carpeta aún está vacía y esto no hace nada.
-app.UseDefaultFiles();
+// En DESARROLLO, ninguna respuesta se cachea en el navegador: los assets
+// del cliente Blazor cambian con cada rebuild, y una caché vieja (o un 404
+// que el navegador guardó mientras el manifiesto estaba desactualizado)
+// deja la página en blanco sin ningún error en el servidor.
+if (app.Environment.IsDevelopment())
+{
+    app.Use((contexto, siguiente) =>
+    {
+        contexto.Response.OnStarting(() =>
+        {
+            contexto.Response.Headers.CacheControl = "no-cache";
+            return Task.CompletedTask;
+        });
+
+        return siguiente();
+    });
+}
+
+// El servidor aloja el cliente Blazor WASM: los archivos del proyecto
+// Blazor (index.html, el runtime _framework y el css) se sirven desde la
+// misma URL que el hub — así no hay CORS en el camino. El fallback hace
+// que cualquier ruta (la raíz "/") devuelva index.html, que es una SPA.
+app.UseBlazorFrameworkFiles();
 app.UseStaticFiles();
 
 // Publicación del hub en la ruta de la config (Chat:HubRuta)
@@ -75,6 +95,11 @@ app.MapChatHub(configuration);
 // cuando la terminal todavía quiere decir "actualmente hay 20 personas".
 app.MapGet(ChatRutas.Estadisticas, (IChatStore store) =>
     Results.Ok(store.GetEstadisticas()));
+
+// SPA fallback: la raíz "/" y cualquier ruta sin extensión sirven el
+// index.html del cliente Blazor (DESPUÉS de mapear hub y endpoints, o
+// se los comería).
+app.MapFallbackToFile("index.html");
 
 PrintStartupInfo(configuration);
 
