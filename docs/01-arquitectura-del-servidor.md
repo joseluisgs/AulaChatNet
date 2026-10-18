@@ -11,11 +11,12 @@
   - [2.6. Consulta de usuarios: ObtenerUsuariosAsync](#26-consulta-de-usuarios-obtenerusuariosasync)
   - [2.7. Desconexión: OnDisconnectedAsync](#27-desconexión-ondisconnectedasync)
   - [2.8. Cómo se prueba todo esto sin abrir una terminal](#28-cómo-se-prueba-todo-esto-sin-abrir-una-terminal)
-- [3. El estado en memoria: ChatStore](#3-el-estado-en-memoria-chatstore)
+- [3. El estado del chat: ChatStore](#3-el-estado-del-chat-chatstore)
   - [3.1. Dos estructuras, dos misiones](#31-dos-estructuras-dos-misiones)
   - [3.2. Unicidad de nombres sin bloqueos](#32-unicidad-de-nombres-sin-bloqueos)
   - [3.3. La cola circular del historial](#33-la-cola-circular-del-historial)
   - [3.4. Las estadísticas globales y GET /estadisticas](#34-las-estadísticas-globales-y-get-estadisticas)
+  - [3.5. Evolución: qué cambió en la Fase 2 y por qué](#35-evolución-qué-cambió-en-la-fase-2-y-por-qué)
 - [4. Los canales como grupos de SignalR](#4-los-canales-como-grupos-de-signalr)
   - [4.1. Un canal, un grupo](#41-un-canal-un-grupo)
   - [4.2. Configuración sin hardcodeos](#42-configuración-sin-hardcodeos)
@@ -35,7 +36,7 @@
 
 > 💡 **Punto de partida:** abres Discord y entras al canal #general. En pantalla ves a 40 personas y el mensaje que escribió Marta hace tres minutos. Abres otra pestaña en #daw y ves a otras 12 y su historial, sin mezclarse. Nadie ha recargado nada: todo llega solo. ¿Cómo sabe el servidor quién está en cada canal? ¿Cómo hace para mandarte el historial correcto y no el de otro? ¿Y qué pasa si dos personas se ponen el mismo nombre a la vez?
 
-En este punto diseñamos por dentro el servidor de AulaChatNet: la arquitectura por capas, el ciclo de vida completo de una conexión de SignalR, las estructuras de datos que sostienen los canales en memoria, por qué cada canal es un "grupo", cómo se configura el logging sin tocar código y, para rematar, los dos bugs reales que enseñó este servidor mientras se construía.
+En este punto diseñamos por dentro el servidor de AulaChatNet: la arquitectura por capas, el ciclo de vida completo de una conexión de SignalR, las estructuras de datos que sostienen los canales en memoria, por qué cada canal es un "grupo", cómo se configura el logging sin tocar código, qué cambió de verdad en la Fase 2 cuando el historial se mudó a SQLite y, para rematar, los dos bugs reales que enseñó este servidor mientras se construía.
 
 **Objetivos de aprendizaje:**
 
@@ -43,6 +44,7 @@ En este punto diseñamos por dentro el servidor de AulaChatNet: la arquitectura 
 - Seguir el ciclo de vida de una conexión SignalR: alta, envío, cambio de canal, cambio de nick y desconexión
 - Comprender por qué el estado vive en `ConcurrentDictionary` y qué es la concurrencia
 - Ver la cola circular del historial y el límite configurable
+- Aplicar el criterio de longevidad que separa, en la Fase 2, lo que queda en memoria de lo que se persiste
 - Usar los grupos de SignalR para que cada canal reciba solo lo suyo
 - Sacar provecho de las estadísticas globales: evento `EstadisticasActualizadas` (push) y `GET /estadisticas` (pull)
 - Configurar Serilog entero desde `appsettings.json`, con rotación de 7 días
@@ -54,12 +56,12 @@ AulaChatNet es una solución con varios proyectos porque **el contrato entre ser
 
 ```mermaid
 flowchart TD
-    subgraph Clientes["Clientes (Fase 1)"]
+    subgraph Clientes["Clientes (sin tocar en la Fase 2)"]
         T["AulaChatNet.Client.Terminal<br/>consola elegante (Spectre.Console)"]
         B["AulaChatNet.Client.Blazor<br/>web (Blazor WebAssembly)"]
     end
 
-    S["AulaChatNet.Server<br/>ASP.NET Core + SignalR<br/>ChatHub + ChatStore"]
+    S["AulaChatNet.Server<br/>ASP.NET Core + SignalR<br/>ChatHub + ChatStore + SQLite"]
 
     SH["AulaChatNet.Shared<br/>DTOs · constantes · ChatConfig<br/>avatar · operadores Rx"]
 
@@ -82,6 +84,7 @@ Cada carpeta del servidor tiene una responsabilidad, y los nombres lo dicen todo
 | `Hubs/` | La puerta de entrada de SignalR | `ChatHub.cs` |
 | `Services/` | La lógica y el estado | `IChatStore`, `ChatStore` |
 | `Models/` | Los datos que usa el servidor | `EstadoCanal`, `ConexionChat` |
+| `Persistencia/` | La persistencia (Fase 2): entidad, contexto, repositorio y servicios de fondo | `AulaChatContexto`, `MensajeRepository`, `LimpiezaProgramada` |
 | `Infrastructures/` | Extensiones de arranque (registran servicios, mapean rutas) | `AddChatServices`, `MapChatHub` |
 
 > 📝 **Nota:** el patrón de "extensiones en `Infrastructures/`" no es un capricho: es el mismo estilo que usan proyectos reales para dejar el `Program.cs` limpio y leerlo como un índice.
@@ -110,7 +113,7 @@ flowchart LR
     style E fill:#f44336,color:#fff
 ```
 
-📌 **Ejemplo real:** WhatsApp. Cuando envías un mensaje, tu móvil no espera a que el del otro esté encendido: el servidor lo recibe, lo guarda y lo reenvía a los que están conectados. Si el destinatario está fuera, el mensaje le llegará cuando se conecte (eso lo veremos en la Fase 2 con persistencia; de momento solo se envía a los conectados).
+📌 **Ejemplo real:** WhatsApp. Cuando envías un mensaje, tu móvil no espera a que el del otro esté encendido: el servidor lo recibe, lo guarda y lo reenvía a los que están conectados. Si el destinatario está fuera, el mensaje le llegará cuando se conecte (eso ya lo hace la Fase 2: el historial se guarda en SQLite y te recupera lo que te perdiste al volver; de momento, en la Fase 1, solo se enviaba a los conectados).
 
 ## 1.3. Un patrón de errores, un solo formato
 
@@ -310,7 +313,7 @@ var hub = new ChatHub(store, Options.Create(config), logger.Object)
 
 Los proxies no hacen nada de red: solo guardan en una lista cada `SendCoreAsync`. Así un test puede preguntar: "¿qué recibió el grupo #daw?" y "¿recibió algo el grupo #general?". En `ChatHubTests.cs` tienes el patrón completo, incluida la simulación de varias conexiones.
 
-## 3. El estado en memoria: ChatStore
+## 3. El estado del chat: ChatStore
 
 ### 3.1. Dos estructuras, dos misiones
 
@@ -319,14 +322,12 @@ El estado del chat vive en memoria, en dos colecciones concurrentes con misiones
 ```mermaid
 flowchart LR
     subgraph INDICE["_conexiones (índice global, uno solo)"]
-        direction TB
         C1["conn-1 → #general · Ana"]
         C2["conn-2 → #daw · Luis"]
         C3["conn-3 → #daw · Marta"]
     end
 
     subgraph CANALES["_canales (un EstadoCanal por canal)"]
-        direction TB
         G["#general<br/>nombres: Ana<br/>historial: cola"]
         S["#daw<br/>nombres: Luis, Marta<br/>historial: cola"]
     end
@@ -335,8 +336,6 @@ flowchart LR
     C2 -.->|"viven en"| S
     C3 -.->|"viven en"| S
 
-    style INDICE fill:#607D8B,color:#fff
-    style CANALES fill:#9C27B0,color:#fff
     style G fill:#4CAF50,color:#fff
     style S fill:#4CAF50,color:#fff
 ```
@@ -378,7 +377,7 @@ while (estado.Historial.Count > Config.HistorialMaximo
 }
 ```
 
-📌 **Ejemplo real:** Discord te muestra los últimos 100 mensajes de un canal; más atrás, no hay nada (eso es historial persistido, que nuestra Fase 2 añadirá).
+📌 **Ejemplo real:** Discord te muestra los últimos 100 mensajes de un canal; más atrás, no hay nada (eso es historial persistido, que en nuestra Fase 2 ya se guarda en SQLite, como veremos en la sección 3.5).
 
 ### 3.4. Las estadísticas globales y GET /estadisticas
 
@@ -418,6 +417,26 @@ app.MapGet(ChatRutas.Estadisticas, (IChatStore store) =>
 
 📌 **Ejemplo real:** abrir Discord sin iniciar sesión y ver "12.345.678 personas en línea": ese número no viene de una conexión de chat, viene de una consulta rápida como esta.
 
+### 3.5. Evolución: qué cambió en la Fase 2 y por qué
+
+La Fase 1 terminó con **todo** el estado en memoria, y ese era el problema de fondo: al parar el servidor, el historial desaparecía. La Fase 2 lo arregló, pero sin meterlo todo en la base de datos. La decisión fue aplicar el criterio de **longevidad**: separar por la pregunta *¿qué pasa si apago el proceso?*
+
+| Estado | Fase 1 | Fase 2 | Por qué |
+|--------|--------|--------|---------|
+| Presencia (`_conexiones`) | Memoria | **Sigue en memoria** | Un `connectionId` no significa nada tras un reinicio: las conexiones ya no existen |
+| Unicidad de nicks (`_canales`) | Memoria | **Sigue en memoria** | Nadie está conectado al arrancar, así que todos los nicks están libres |
+| Historial (`_canales`) | Cola en memoria | **Caché + SQLite** | Es el único con valor pasado: leerlo mañana es justo su propósito |
+| Mensajes de sistema | Memoria | **No se persisten** | Son ruido de sesión, no historia del aula |
+
+Dos detalles de diseño que no son evidentes y conviene retener:
+
+1. **El hub y los clientes no se tocaron.** El contrato (`MensajeDto`, los eventos, `GetHistorial`) seguía valiendo tal cual: la memoria dejó de ser la *única* fuente de verdad del historial para pasar a ser su **caché**. Ese es el verdadero éxito de la fase: añadir persistencia con **cero cambios en el protocolo**.
+2. **Escribir dejó de ser síncrono respecto al disco.** `AddMensaje` sigue siendo síncrono —memoria más encolado en un `Channel`, instantáneo— y la escritura real pasó a un `BackgroundService`. Así el hilo de SignalR **nunca espera a un disco**, que es la regla de oro de los hubs en tiempo real.
+
+La asimetría que esto produce es deliberada y es lo que más confunde al principio: `IChatStore` es síncrono (no hace E/S) e `IMensajesRepository` es asíncrono (siempre toca disco). **`async` va donde hay E/S**, no por convención.
+
+> 📝 **Nota:** en el punto 4 está la evolución completa de esa decisión —el modelo de datos, las migraciones, el escritor en segundo plano, la limpieza con `VACUUM` y las tres trampas reales que solo salieron al ejecutar—, con el detalle de cada porqué: [4. La persistencia con SQLite](04-persistencia.md).
+
 ## 4. Los canales como grupos de SignalR
 
 ### 4.1. Un canal, un grupo
@@ -443,8 +462,6 @@ flowchart TD
     style T fill:#FF9800,color:#fff
     style B fill:#FF9800,color:#fff
     style T2 fill:#607D8B,color:#fff
-    style CANAL_DAW fill:#4CAF50,color:#fff
-    style CANAL_GENERAL fill:#607D8B,color:#fff
 ```
 
 La belleza de esto es que **no hay que inventar la lógica de reenvío**: SignalR ya sabe a quién está enviando dentro del grupo, y quien se desconecta sale del grupo automáticamente.
@@ -565,14 +582,14 @@ public List<string> Canales { get; set; } = [];
 
 | Concepto | Qué retener |
 |----------|-------------|
-| Arquitectura | Hub (transporte) → Store (estado) → Shared (contrato compartido) |
+| Arquitectura | Hub (transporte) → Store (estado) → Shared (contrato compartido); desde la Fase 2, el historial se respalda en SQLite |
 | Errores | `Task<string?>`: `null` = OK, texto = mensaje para el cliente (`ObtenerUsuariosAsync` devuelve datos) |
 | Ciclo de vida | Conectar → alta → historial (solo al caller) → mensajes al grupo → salida |
 | Nick | `CambiarNickAsync` cambia el nombre en caliente, con aviso "X ahora se llama Y" al canal |
 | Consultas | `ObtenerUsuariosAsync` mira cualquier canal sin cambiar de él y sin avisar a nadie |
-| Estado | `_conexiones` global + un `EstadoCanal` (nombres + historial) por canal |
+| Estado | `_conexiones` global + un `EstadoCanal` (nombres + historial) por canal; separación **por longevidad**: solo el historial se persiste |
 | Unicidad | `TryAdd` atómico por canal, con claves normalizadas |
-| Historial | `ConcurrentQueue` circular, límite `HistorialMaximo` configurable |
+| Historial | `ConcurrentQueue` circular, límite `HistorialMaximo` configurable; desde la Fase 2, cacheado en memoria y respaldado en SQLite |
 | Canales | Cada canal es un grupo de SignalR; lista en `appsettings.json`, **el orden del array es el orden de pantalla** |
 | Estadísticas | `GetEstadisticas` → evento `EstadisticasActualizadas` (push a todos) + `GET /estadisticas` (pull, antes de registrarse) |
 | Logging | Serilog desde `appsettings.json`; consola Information, fichero Error con rolling de 7 días |
