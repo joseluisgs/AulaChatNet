@@ -17,6 +17,7 @@
   - [3.3. La cola circular del historial](#33-la-cola-circular-del-historial)
   - [3.4. Las estadísticas globales y GET /estadisticas](#34-las-estadísticas-globales-y-get-estadisticas)
   - [3.5. Evolución: qué cambió en la Fase 2 y por qué](#35-evolución-qué-cambió-en-la-fase-2-y-por-qué)
+  - [3.6. Productor/consumidor: la cola de escritura con Channel](#36-productorconsumidor-la-cola-de-escritura-con-channel)
 - [4. Los canales como grupos de SignalR](#4-los-canales-como-grupos-de-signalr)
   - [4.1. Un canal, un grupo](#41-un-canal-un-grupo)
   - [4.2. Configuración sin hardcodeos](#42-configuración-sin-hardcodeos)
@@ -45,6 +46,7 @@ En este punto diseñamos por dentro el servidor de AulaChatNet: la arquitectura 
 - Comprender por qué el estado vive en `ConcurrentDictionary` y qué es la concurrencia
 - Ver la cola circular del historial y el límite configurable
 - Aplicar el criterio de longevidad que separa, en la Fase 2, lo que queda en memoria de lo que se persiste
+- Entender el patrón **productor/consumidor** y usar un `Channel` para guardar en segundo plano sin bloquear el hilo de SignalR
 - Usar los grupos de SignalR para que cada canal reciba solo lo suyo
 - Sacar provecho de las estadísticas globales: evento `EstadisticasActualizadas` (push) y `GET /estadisticas` (pull)
 - Configurar Serilog entero desde `appsettings.json`, con rotación de 7 días
@@ -431,11 +433,146 @@ La Fase 1 terminó con **todo** el estado en memoria, y ese era el problema de f
 Dos detalles de diseño que no son evidentes y conviene retener:
 
 1. **El hub y los clientes no se tocaron.** El contrato (`MensajeDto`, los eventos, `GetHistorial`) seguía valiendo tal cual: la memoria dejó de ser la *única* fuente de verdad del historial para pasar a ser su **caché**. Ese es el verdadero éxito de la fase: añadir persistencia con **cero cambios en el protocolo**.
-2. **Escribir dejó de ser síncrono respecto al disco.** `AddMensaje` sigue siendo síncrono —memoria más encolado en un `Channel`, instantáneo— y la escritura real pasó a un `BackgroundService`. Así el hilo de SignalR **nunca espera a un disco**, que es la regla de oro de los hubs en tiempo real.
+2. **Escribir dejó de ser síncrono respecto al disco.** `AddMensaje` sigue siendo síncrono —memoria más encolado en un `Channel`, instantáneo— y la escritura real pasó a un `BackgroundService`. Así el hilo de SignalR **nunca espera a un disco**, que es la regla de oro de los hubs en tiempo real. Qué es exactamente ese `Channel` y por qué hace falta, en la sección 3.6.
 
 La asimetría que esto produce es deliberada y es lo que más confunde al principio: `IChatStore` es síncrono (no hace E/S) e `IMensajesRepository` es asíncrono (siempre toca disco). **`async` va donde hay E/S**, no por convención.
 
 > 📝 **Nota:** en el punto 4 está la evolución completa de esa decisión —el modelo de datos, las migraciones, el escritor en segundo plano, la limpieza con `VACUUM` y las tres trampas reales que solo salieron al ejecutar—, con el detalle de cada porqué: [4. La persistencia con SQLite](04-persistencia.md).
+
+### 3.6. Productor/consumidor: la cola de escritura con Channel
+
+La sección 3.5 decía que el `AddMensaje` "encola en un `Channel`" sin explicar qué es eso ni por qué hace falta. Vamos a ello, porque detrás hay un patrón de programación que aparece cada vez que dos piezas trabajan a ritmos distintos.
+
+> 💡 **Punto de partida:** estás en un bar y pides una caña. El camarero no se queda parado esperando a que el barril se llene: apunta tu pedido en la libreta, cobra la mesa siguiente y ya irá a por ella. Tu bebida llega igualmente, pero **el camarero no ha dejado de trabajar a lo tuyo**. Ahora imagina que en vez de un camarero hubiera UNO solo para todo el bar y que, además, cada pedido le costara esperar 5 segundos de pie en la cocina. El bar se paralizaría. Pues eso es lo que le pasa a un hub de SignalR cuando escribe en disco dentro del método.
+
+**Objetivos de esta sección:**
+
+- Entender qué es el patrón **productor/consumidor** y cuándo conviene usarlo
+- Ver con números por qué un hilo de SignalR **no puede esperar al disco**
+- Saber qué es un `System.Threading.Channels.Channel` y usar sus cuatro métodos
+- Distinguir qué resuelve el `Channel` y qué no (y por qué no es lo mismo que Rx)
+
+#### El problema: el hilo del hub no puede esperar
+
+`ChatStore.AddMensaje` se ejecuta **dentro del hilo de SignalR** que atiende a ese alumno. En la Fase 1 eso no importaba: solo tocaba memoria. Pero en la Fase 2 hay que guardar el mensaje en SQLite, y una escritura en disco **cuesta milisegundos reales** —que suenen a poco, pero que se multiplican:
+
+| Situación | Coste | Qué ocurre |
+|-----------|-------|------------|
+| 1 alumno escribe | ~1–5 ms de disco | Nadie se entera |
+| 25 alumnos escribiendo a la vez | 25 esperas en el *pool* de hilos | Los mensajes se serializan y el chat "respira" mal |
+| Pico de una prueba con toda la clase | El *pool* se agota | Los mensajes dejan de llegar **a todos**, conectados o no |
+
+Y la regla de oro es simple: **un hub de SignalR atiende conexiones, no espera E/S**. Su hilo es caro y compartido; gastarlo esperando a un disco es exactamente lo contrario de lo que debe hacer.
+
+#### El patrón productor/consumidor, en teoría
+
+El problema tiene nombre y es anterior a .NET: cuando **quien produce** algo y **quien lo consume** trabajan a ritmos distintos, se intercala una **cola** entre ambos y cada uno hace lo suyo:
+
+```mermaid
+flowchart LR
+    P["PRODUCTOR<br/>genera datos<br/>y los deja en la cola"] --> Q["COLA<br/>almacena<br/>en orden"]
+    Q --> C["CONSUMIDOR<br/>toma datos<br/>a su ritmo"]
+    C --> D["DESTINO<br/>el trabajo real"]
+
+    style P fill:#FF9800,color:#fff
+    style Q fill:#9C27B0,color:#fff
+    style C fill:#2196F3,color:#fff
+    style D fill:#4CAF50,color:#fff
+```
+
+Las tres propiedades que aporta la cola son las que nos interesan:
+
+1. **Desacople.** El productor no sabe quién consume ni cuándo: solo sabe que su dato ya está depositado. Puede cambiar el consumidor sin tocar al productor.
+2. **Absorbe picos.** Si llegan 20 mensajes de golpe, la cola crece y el consumidor los va digiriendo a su ritmo. Nada se pierde y nadie espera.
+3. **Ordena.** Como es una cola, lo primero que entra es lo primero que sale. En un chat eso no es un detalle: el historial debe respetar el orden en que se escribieron.
+
+📌 **Ejemplo real:** es el mismo patrón de una cinta de montaje, de un buzón de correos o de la lista de reproducción de Spotify —tú añades canciones (productor) y el reproductor las va tragando (consumidor), aunque añadas más rápido de lo que dura cada una—.
+
+#### Sin el patrón: el bar se para
+
+Para ver la diferencia, comparemos los dos escenarios con el mismo mensaje:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Alumno (cliente)
+    participant H as ChatHub (hilo de SignalR)
+    participant D as SQLite
+
+    Note over H: ⚠️ El hilo está OCUPADO de principio a fin
+    C->>H: SendAsync("hola a todos")
+    H->>H: AddMensaje → caché en memoria
+    H->>D: INSERT... y el hilo ESPERA aquí
+    D-->>H: guardado (1–5 ms)
+    H-->>C: MensajeNuevo al grupo
+    Note over H: con la clase entera escribiendo,<br/>el pool de hilos se agota y<br/>el chat deja de responder
+```
+
+#### Con el patrón: el camarero sigue cobrando
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Alumno (cliente)
+    participant H as ChatHub (hilo de SignalR)
+    participant Q as Cola (Channel)
+    participant S as Servicio de fondo
+    participant D as SQLite
+
+    C->>H: SendAsync("hola a todos")
+    H->>H: AddMensaje → caché en memoria
+    H->>Q: TryWrite (instantáneo, no espera)
+    H-->>C: MensajeNuevo al grupo
+    Note over H: el hilo queda LIBRE<br/>para el siguiente alumno
+    par Segundo plano, a su ritmo
+        S->>Q: WaitToReadAsync (espera sin CPU)
+        S->>Q: TryRead → se lleva el mensaje
+        S->>D: INSERT
+        D-->>S: guardado
+    end
+```
+
+La diferencia sustancial no es la velocidad del disco —esa es igual en los dos—, sino **quién espera**. En el primer caso espera el hilo que atiende a todos; en el segundo espera un hilo propio que no le quita tiempo a nadie. El alumno ve su mensaje al instante en los dos casos; lo que cambia es si el servidor sigue en pie.
+
+#### Qué es exactamente un Channel
+
+`System.Threading.Channels.Channel<T>` es una clase **del propio SDK de .NET** —no hay que instalar ningún paquete— pensada exactamente para esto: comunicar un productor y un consumidor con una cola thread-safe. No inventa nada nuevo, es la formalización del patrón.
+
+Nuestro uso se reduce a **cuatro métodos**, y conviene conocerlos bien porque son todo lo que hay que saber:
+
+| Método | Quién lo usa | Qué hace | Por qué aquí |
+|--------|--------------|----------|--------------|
+| `Channel.CreateUnbounded<T>()` | Al construir el store | Crea la cola **sin límite** | Un chat no debe descartar mensajes; si el disco va lento, la cola crece un poco y ya |
+| `Writer.TryWrite(item)` | **Productor** (`AddMensaje`) | Intenta meter el dato. Devuelve `true`/`false` y **nunca bloquea** | Se ejecuta en el hilo de SignalR: no puede esperar nada |
+| `Reader.WaitToReadAsync()` | **Consumidor** (servicio de fondo) | Devuelve un `Task` que termina cuando haya algo que leer. Espera **sin consumir CPU** | No hay sondeo ni bucles ocupados: el hilo se duerme y el runtime lo despierta |
+| `Reader.TryRead(out item)` | **Consumidor** | Saca el dato de la cola | El bucle de drenado vacía lo que haya acumulado |
+
+Y este es el código real, lado a lado:
+
+```csharp
+// PRODUCTOR — ChatStore.AddMensaje (hilo de SignalR)
+if (_repository is not null)
+    _colaEscritura.Writer.TryWrite((canal, mensaje));   // instantáneo
+
+// CONSUMIDOR — PersistenciaMensajesService (hilo propio)
+while (await lector.WaitToReadAsync(stoppingToken))     // espera sin CPU
+    await DrenarAsync(lector, stoppingToken);           // vacía con TryRead
+```
+
+> 💡 **Consejo:** cuando necesites desacoplar "quien produce" de "quien consume" en .NET —una cola de trabajos, un envío de correos, un logger con cola—, `System.Threading.Channels` es la respuesta por defecto. No construyas colas propias con `ConcurrentQueue` y semáforos: el `Channel` ya es thread-safe, ya sabe esperar y ya sabe drenar.
+
+#### Por qué no se hizo con Rx, si el proyecto ya lo usa
+
+Este proyecto usa Rx.NET por todas partes —`Shared/Observables` y las stores de los dos clientes—, así que la pregunta es legítima: ¿por qué aquí un `Channel` y no un `Subject<T>`?
+
+Porque resuelven cosas distintas:
+
+- Un `Subject<T>` de Rx es un **empujón** (`OnNext`), no una cola: si en ese instante no hay suscriptor, **el dato se pierde**. Además no es thread-safe para llamadas concurrentes, y si el consumidor lanza una excepción, **la suscripción muere** y todo lo que llegue después se cae en silencio.
+- Un `Channel` **bufferiza de verdad** (los datos esperan hasta que alguien los lea), **es thread-safe** y **sigue funcionando aunque el consumidor se retrase**.
+
+Es decir: Rx está pensado para **componer y transformar** flujos, y el `Channel` para **transportarlos con garantías**. No compiten; se complementan. Si en el futuro quisieras reintentos automáticos o volcados por lotes, podrías envolver el `Channel` en Rx y usar lo mejor de ambos.
+
+> ⚠️ **Advertencia:** el `Channel` **sin límite** tiene una contrapartida. Si el disco se colgara del todo, la cola crecería sin parar y se comería la memoria. En un servidor de aula es un riesgo despreciable; en producción habría que ponerle un techo y decidir qué hacer cuando se llene. Esa decisión es, precisamente, la que un patrón productor/consumidor te obliga a tomar en serio.
 
 ## 4. Los canales como grupos de SignalR
 

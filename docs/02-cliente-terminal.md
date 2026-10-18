@@ -34,13 +34,64 @@ El cliente es una aplicación de consola normal (no usa `WebApplication` ni host
 | Carpeta | Contenido | Ejemplo |
 |---------|-----------|---------|
 | `Program.cs` | Pantalla de entrada, bucle de chat y pintado | Entrada guiada, `BucleEnVivo` |
-| `Comandos/` | Parser puro y tipos de comando | `ParserComandos`, `Comando` |
 | `Consola/` | Todo lo que se escribe en pantalla | `Banner`, `Ayuda`, `EditorLinea`, `Conectados`, `TemaDiscord` |
-| `Servicios/` | La conexión a SignalR, las stores reactivas y los mensajes de error | `ClienteChat`, `ResultadoConexion`, `MensajesError` |
+| `Servicios/` | La conexión a SignalR y las stores reactivas | `ClienteChat` |
 | `Sesion/` | Último nick/canal del usuario | `SesionStore`, `SesionTerminal` |
-| `Configuracion/` | Sección `Terminal` del appsettings | `TerminalConfig` |
+| `Configuracion/` | Sección `Terminal` del appsettings y el logger a fichero | `TerminalConfig`, `SerilogConfig` |
 
-> 📝 **Nota:** `Comandos/` y la línea de entrada no tocan la consola ni la red: `ParserComandos.Parse("...")` recibe una cadena y devuelve un `record`, y `EditorLinea` guarda texto y cursor sin saber qué tecla se pulsó. Por eso esas dos piezas se testean en milisegundos, sin abrir ninguna ventana.
+> 📝 **Nota:** lo que NO está en este proyecto y quizá busques aquí: el **parser de comandos** (`ParserComandos`, `Comando`, `AyudaComandos`), los **DTOs** (`MensajeDto`, `ResultadoConexion`, `EstadisticasDto`…) y `MensajesError` viven en **`AulaChatNet.Shared`**, porque el cliente web los usa exactamente igual que este. Una sola implementación, dos clientes: si mañana se añade un comando, se toca `Shared` y los dos clientes lo entienden sin mover una línea.
+
+Y así encajan las piezas —cada flecha es "usa" o "pinta", y ninguna va al revés:
+
+```mermaid
+flowchart TD
+    P["Program.cs<br/>entrada guiada + BucleEnVivo"]
+
+    subgraph CONSOLA["Consola/ (solo pinta)"]
+        BA["Banner<br/>Ayuda"]
+        ED["EditorLinea<br/>texto y cursor"]
+        CO["Conectados<br/>TemaDiscord"]
+    end
+
+    subgraph SERVICIOS["Servicios/ (solo red y estado)"]
+        CC["ClienteChat<br/>conexión SignalR<br/>stores reactivas"]
+    end
+
+    subgraph SESS["Sesion/"]
+        SS["SesionStore<br/>último nick y canal"]
+    end
+
+    CFG["Configuracion/<br/>TerminalConfig · SerilogConfig"]
+
+    subgraph COMPARTIDO["AulaChatNet.Shared (contrato común)"]
+        SH["ParserComandos · Comando<br/>DTOs · MensajesError<br/>ChatConfig"]
+    end
+
+    SRV["AulaChatNet.Server<br/>hub /hubs/chat"]
+
+    P --> BA
+    P --> ED
+    P --> CO
+    P --> SS
+    P --> CFG
+    P --> SH
+    P <-->|"SignalR + GET /estadisticas"| CC
+    CC <-->|"eventos"| SRV
+    CC -.->|"Estado como IObservable"| P
+    SH -.->|"mismos tipos<br/>que el servidor"| SRV
+
+    style P fill:#FF9800,color:#fff
+    style CC fill:#2196F3,color:#fff
+    style BA fill:#607D8B,color:#fff
+    style ED fill:#607D8B,color:#fff
+    style CO fill:#607D8B,color:#fff
+    style SS fill:#607D8B,color:#fff
+    style CFG fill:#607D8B,color:#fff
+    style SH fill:#9C27B0,color:#fff
+    style SRV fill:#4CAF50,color:#fff
+```
+
+> 💡 **Consejo:** fíjate en la dirección de las flechas. `Consola/`, `Sesion/` y `Configuracion/` **no saben** que existe SignalR ni la red: reciben cadenas y DTOs y devuelven texto. Toda la comunicación pasa por `ClienteChat`, que es el único que abre sockets. Esa separación es la razón de que casi todo el proyecto se pueda testear sin abrir una ventana.
 
 ## 2.2. El arranque, pantalla a pantalla
 
@@ -244,6 +295,24 @@ Usa: /canal <nombre> (p. ej. /canal daw)
 
 SignalR reintenta solo (0, 2, 10 y 30 s), pero al reconectar el transporte **no basta**: el servidor ya te dio de baja (`OnDisconnectedAsync`) y tu conexión nueva tiene otro `ConnectionId` que no está en ningún grupo. Por eso, al volver (`Reconnected`), el cliente **vuelve a invocar `ConnectAsync`** con el nick y el canal recordados — si no, quedarías de escayola: la cabecera diría "conectado" pero nadie te vería ni te llegaría nada.
 
+```mermaid
+stateDiagram-v2
+    [*] --> Conectado: ConnectAsync OK
+
+    Conectado --> Reconectando: la conexión se cae
+    Reconectando --> Conectado: Reconnected →<br/>volver a llamar ConnectAsync<br/>(nick y canal recordados)
+    Reconectando --> Caido: se agotaron los reintentos<br/>(Closed)
+
+    Caido --> Conectado: R o /reconectar<br/>(sin reiniciar el programa)
+    Caido --> [*]: /salir
+
+    state "Conectado y dado de alta\nen el grupo del canal" as Conectado
+    state "Reconnecting:\nsolo transporte" as Reconectando
+    state "Closed: sin conexión" as Caido
+```
+
+El detalle que hace distinto a cada camino es **quién re-alta**: en la reconexión automática es el propio `Reconnected`; en la caída total, el alumno con la tecla `R`. En los dos casos el resultado es el mismo —una nueva invocación de `ConnectAsync`—, porque el servidor **no recuerda quién era la conexión anterior**.
+
 Si los reintentos automáticos se agotan (`Closed`), el pie se convierte en instrucción y el mensaje de la caída entra en la zona de mensajes:
 
 ```text
@@ -326,6 +395,22 @@ Además, para donde no conviene suscribirse (la cabecera se repinta en cada vuel
 Y los cambios de conexión que solo conoce el cliente (la caída, la re-alta tras reconectar) **entran por el mismo sitio**: el cliente fabrica un mensaje de sistema local y lo añade a la vista de mensajes. Un único flujo para pintar TODO, sea o no del servidor.
 
 La idea bonita de todo esto: **el bucle de la vista en vivo no procesa eventos, solo pinta el estado actual** cada 50 ms. Los eventos van llegando por SignalR → Rx actualiza el store → la siguiente vuelta del bucle pinta lo que hay. Sin colas, sin "cola de repintados", sin estados intermedios: la pantalla nunca miente.
+
+```mermaid
+flowchart LR
+    SRV["Servidor<br/>eventos SignalR"] -->|"MensajeNuevo<br/>ListaUsuarios<br/>Estadisticas"| CC["ClienteChat<br/>OnNext en el<br/>BehaviorSubject"]
+    CC -->|"IObservable"| OP["Operadores Rx<br/>SoloNormales<br/>DeUsuario · AgruparPorUsuario"]
+    OP -->|"solo el<br/>interesado"| SUS["Suscripción<br/>del bucle en vivo"]
+    CC -.->|"VistaMensajes<br/>.Value síncrono"| BUC["BucleEnVivo<br/>repinta cada 50 ms"]
+
+    style SRV fill:#4CAF50,color:#fff
+    style CC fill:#2196F3,color:#fff
+    style OP fill:#9C27B0,color:#fff
+    style SUS fill:#FF9800,color:#fff
+    style BUC fill:#607D8B,color:#fff
+```
+
+Hay dos caminos sobre el MISMO dato, y conviene no confundirlos: los **operadores Rx** (de `Shared/Observables`) filtran y transforman el flujo cuando quieres decidir qué pintar; las **lecturas síncronas** (`VistaMensajes` y compañía) son para cuando solo necesitas el valor actual, sin suscripción. El bucle en vivo usa la segunda —pinta el estado—, y los operadores sirven para quien quiera hacer algo más fino.
 
 📌 **Ejemplo real:** es el mismo patrón que React con un estado global (el componente no calcula nada: renderiza el estado), y el mismo que sigue `NotificationStore` de Blazor en el otro cliente.
 
