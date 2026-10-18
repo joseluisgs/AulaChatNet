@@ -135,15 +135,25 @@ dotnet run --project AulaChatNet.Server
 #   → http://localhost:5030
 
 # ── 2) WEB (Blazor WebAssembly) ───────────────────────────────────────
-# No tiene comando propio: se sirve desde el servidor del apartado 1.
-# Uso normal: abre el navegador en http://localhost:5030 y ya estás
-# dentro, sin instalar nada más.
+# SÍ tiene comando propio: es un proyecto con DevServer, y el propio
+# launchSettings.json le asigna el http://localhost:5031.
 #
-# Solo si estás CAMBIANDO el código de la web, usa watch en lugar de
-# run: reconstruye el cliente y relanza el servidor (el manifiesto de
-# assets de Blazor se lee al arrancar, así que sin watch los cambios
-# no llegan al navegador)
-dotnet watch --project AulaChatNet.Server
+# OPCIÓN A — uso normal (recomendada): no arranques nada aparte. El
+# servidor del apartado 1 aloja el WASM en su propio 5030, así que el
+# navegador ya está dentro y no hay CORS en el camino.
+#
+# OPCIÓN B — desarrollo del cliente aislado: arráncalo tú solo. Su
+# appsettings.Development.json apunta con Web:UrlServidor al 5030 para
+# que hable con el servidor de verdad (sin ese ajuste no encontraría
+# ni el hub ni /estadisticas).
+dotnet run --project AulaChatNet.Client.Blazor
+#   → http://localhost:5031
+#
+# Cambiando el código de la web, usa watch en lugar de run: el
+# manifiesto de assets de Blazor se lee al arrancar, así que sin watch
+# los cambios no llegan al navegador
+dotnet watch --project AulaChatNet.Server          # con la OPCIÓN A
+dotnet watch --project AulaChatNet.Client.Blazor   # con la OPCIÓN B
 
 # ── 3) TERMINAL ───────────────────────────────────────────────────────
 # En OTRA consola: se conecta al servidor del 5030 por defecto
@@ -224,8 +234,8 @@ La configuración vive en `appsettings.json` (con override por entorno en `appse
 
 Toda la documentación didáctica vive en [`docs/`](docs/):
 
-- 📖 [`docs/01-arquitectura-del-servidor.md`](docs/01-arquitectura-del-servidor.md) - Arquitectura por capas, ciclo de vida de una conexión de SignalR, estado por canal, grupos, estadísticas, Serilog, dos bugs reales y la evolución Fase 1 → Fase 2 (sección 3.5), con diagramas Mermaid
-- 💻 [`docs/02-cliente-terminal.md`](docs/02-cliente-terminal.md) - **Manual de uso** con capturas reales en ASCII (arranque, vista en vivo, comandos y sus salidas, reconexión y sesión) y su arquitectura interna: Spectre.Console, capa reactiva con Rx, modo doble (consola/tubería) y tests. Incluye la nota de por qué la persistencia no lo tocó
+- 📖 [`docs/01-arquitectura-del-servidor.md`](docs/01-arquitectura-del-servidor.md) - Arquitectura por capas, ciclo de vida de una conexión de SignalR, estado por canal, el patrón **productor/consumidor** y la cola de escritura con `Channel` (sección 3.6, con diagramas), grupos, estadísticas, Serilog, dos bugs reales y la evolución Fase 1 → Fase 2 (sección 3.5), con diagramas Mermaid
+- 💻 [`docs/02-cliente-terminal.md`](docs/02-cliente-terminal.md) - **El cliente terminal**: por dentro y por fuera — su arquitectura en capas y su flujo de conexión con diagramas Mermaid, el bucle de vista en vivo de Spectre.Console, la capa reactiva con Rx.NET, el modo doble (consola/tubería) y cómo se prueba todo sin abrir una terminal; acompañado del recorrido de uso con capturas reales en ASCII (arranque, vista en vivo, comandos y sus salidas, reconexión y sesión). Incluye la nota de por qué la persistencia no lo tocó
 - 🌐 [`docs/03-cliente-blazor.md`](docs/03-cliente-blazor.md) - **El cliente web**: Blazor WebAssembly alojado por el servidor, la estética de Discord en CSS propio, la store central y la capa reactiva con suscripciones en los componentes, los comandos `/` reutilizando el parser de `Shared`, la sesión en `localStorage`, el desarrollo con `dotnet watch` y **dos bugs reales** (el `Closed` fantasma y el manifiesto de assets caducado), con sus arreglos y tests
 - 🗄️ [`docs/04-persistencia.md`](docs/04-persistencia.md) - **La persistencia de la Fase 2**: por qué SQLite, qué se guarda en disco y qué no (separación por longevidad), el modelo con EF Core y sus índices, `Migrate()` frente a `EnsureCreated()`, la escritura en segundo plano con el patrón *write-behind*, la precarga, la limpieza con retención y `VACUUM`, y **tres trampas reales** que solo salieron al ejecutar
 - 🖼️ [`docs/boceto-vistas.html`](docs/boceto-vistas.html) - **Boceto visual de las dos vistas de la web** con los mismos estilos y elementos que la app: [vista 1 · panel de entrada](docs/boceto-vistas.html#vista-1) y [vista 2 · vista de canal](docs/boceto-vistas.html#vista-2)

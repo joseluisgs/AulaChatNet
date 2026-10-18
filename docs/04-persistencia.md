@@ -242,6 +242,31 @@ public void AddMensaje(string canal, MensajeDto mensaje)
 }
 ```
 
+### Por qué un Channel y no otra cosa
+
+La cola del esquema es un `Channel` de `System.Threading.Channels`. **Qué es, por qué hace falta y en qué se diferencia de Rx** está explicado con diagramas en el punto 3.6 de la arquitectura del servidor: [3.6 Productor/consumidor: la cola de escritura con Channel](01-arquitectura-del-servidor.md#36-productorconsumidor-la-cola-de-escritura-con-channel).
+
+Aquí nos quedamos solo con lo que toca a la persistencia —quién produce, quién consume y qué se descartó:
+
+| Lado | Quién | Cómo |
+|------|-------|------|
+| Productor | `ChatStore.AddMensaje` (hilo de SignalR) | `TryWrite(...)`: síncrono, no bloquea nunca |
+| Consumidor | `PersistenciaMensajesService` (hilo propio) | `WaitToReadAsync(...)` + `TryRead(...)`: espera sin ocupar CPU |
+
+La cola es **sin límite** (`CreateUnbounded`): un chat no descarta mensajes. Si el disco va lento, la cola crece un poco y ya — el coste es memoria transitoria, no datos perdidos.
+
+Las alternativas que se descartaron, mirando desde la persistencia:
+
+- **Escribir directamente en el hub** (`await _repo.GuardarAsync(...)`): la opción más simple, y a escala de aula funcionaría. Pero es justo lo que prohíbe el apartado anterior: el hilo de SignalR esperando E/S. Con la clase entera escribiendo a la vez, el *pool* se agota y el chat se congela.
+- **`Task.Run` (fire-and-forget)**: no bloquea, pero pierde el orden, se traga las excepciones si no las cazas y no drena nada al apagar. Para persistir, perder mensajes no es aceptable.
+- **`ConcurrentQueue` + sondeo periódico** (`Task.Delay` + `while TryDequeue`): funciona, pero o bien sondeas tan seguido que desperdicias CPU, o tan poco que los mensajes tardan en llegar. Además hay que inventar la señal de "no quedan más" a base de semáforos. El `Channel` te da esa señal gratis con `WaitToReadAsync`.
+- **`BlockingCollection`**: es la versión anterior (.NET Framework) del mismo patrón. Requiere `CompleteAdding` para avisar al consumidor de que no habrá más, sus métodos bloqueantes encajan peor con `await`, y el propio `Channel` es el relevo oficial pensado para código asíncrono.
+- **TPL Dataflow (`BufferBlock`)**: haría el trabajo, pero es un paquete adicional (`System.Threading.Tasks.Dataflow`) para resolver algo que la biblioteca estándar ya trae.
+
+> 💡 **Consejo:** cuando necesites desacopar "quien produce" de "quien consume" en .NET —una cola de trabajos, un envío de correos, un logger con cola—, `System.Threading.Channels` es la respuesta por defecto. Lo que conviene retener aquí es sencillo: si un día toque añadir persistencia a otro sitio del servidor, el `Channel` es la pieza por defecto — no construyas colas propias con `ConcurrentQueue` y semáforos.
+
+📖 **Para seguir:** el lado lector de la misma historia —cómo el historial se precarga al arrancar y por qué los clientes no notan nada—, en [§4.6 Leer: el historial ya está cargado](#46-leer-el-historial-ya-esta-cargado); y la trampa real de arrancar un servicio de fondo, en [§4.10 Tres trampas que solo salen al ejecutar](#410-tres-trampas-que-solo-salen-al-ejecutar).
+
 ### La asimetría que confunde a todo el mundo
 
 `IChatStore` es **síncrono** e `IMensajesRepository` es **asíncrono**, y esa diferencia es deliberada:
