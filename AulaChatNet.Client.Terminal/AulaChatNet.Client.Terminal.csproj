@@ -5,6 +5,12 @@
     <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>AulaChatNet.Client.Terminal</RootNamespace>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- Icono de la aplicación: csc lo incrusta en el .exe (/win32icon), así
+         que se ve en el Explorador, en la barra de tareas y en Alt+Tab. El .ico
+         vive en resources/, DENTRO del propio proyecto, así que la ruta no sale
+         nunca del proyecto: si se copia o mueve el cliente, la compilación
+         sigue funcionando. El maestro está en resources/ de la raíz. -->
+    <ApplicationIcon>resources\icon-app.ico</ApplicationIcon>
     <!-- Sin NoWarn de CS1591: todo el API público está documentado, así que
          con TreatWarningsAsErrors la compilación FALLA si aparece documentación
          XML pendiente (la regla de la casa se autocumple, no se silencia). -->

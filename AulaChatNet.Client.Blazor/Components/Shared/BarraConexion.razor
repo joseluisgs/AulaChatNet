@@ -9,6 +9,11 @@
 @inject IChatStore Store
 
 <header class="barra">
+    @* Icono de la app: mismo fichero que el panel de entrada (wwwroot/resources) *@
+    <img class="barra-icono"
+         src="resources/icon-app.png"
+         alt="AulaChatNet"
+         width="28" height="28" />
     <span class="barra-logo"># AulaChatNet</span>
     <span class="barra-separador">·</span>
     <span class="barra-nick">@(_nick ?? "…")</span>

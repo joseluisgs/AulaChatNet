@@ -50,8 +50,8 @@ Blazor WebAssembly combina las dos cosas: el runtime de .NET (Mono) **compilado 
 flowchart TD
     P["Pestaña del navegador<br/>(corre TODO el cliente)"] --> R["Runtime .NET (Mono)<br/>ejecutado como WebAssembly"]
     R --> C["Tu C#: ChatStore, Rx,<br/>componentes y comandos"]
-    P -->|"WebSocket (SignalR)"| H["Servidor 5030<br/>ChatHub + ChatStore en memoria"]
-    H --> F["Fase 2: SQLite + EF Core"]
+    P -->|"WebSocket (SignalR)"| H["Servidor 5030<br/>ChatHub + ChatStore"]
+    H --> F["Historial en SQLite<br/>(Fase 2, EF Core)"]
 
     style P fill:#2196F3,color:#fff
     style R fill:#9C27B0,color:#fff
@@ -228,7 +228,7 @@ Blazor tiene DOS direcciones fijas de comunicación entre componentes, y siempre
 
    En este proyecto así trabajan `Avatar` (`Usuario`, `Tamano`) y `MensajeItem` (`Mensaje`): componentes **hoja** que solo pintan lo que reciben.
 
-2. **Eventos hacia arriba (hijo → padre)**: cuando el hijo necesita DECIRLE algo al padre («el usuario ha pulsado», «el formulario se ha enviado»), expone una propiedad `[Parameter]` de tipo `EventCallback` y la dispara con `InvokeAsync`. El padre enlaza su propio método:
+2. **Eventos hacia arriba (hijo → padre)**: cuando el hijo necesita DECIRLE algo al padre ("el usuario ha pulsado", "el formulario se ha enviado"), expone una propiedad `[Parameter]` de tipo `EventCallback` y la dispara con `InvokeAsync`. El padre enlaza su propio método:
 
    ```csharp
    @* El hijo declara el evento y lo dispara cuando toca *@
@@ -555,7 +555,7 @@ La solución, en dos mitades (guía oficial de Blazor alojado):
 
 ## 3.11. Cómo se prueba
 
-La web tiene **93 tests** (bUnit + NUnit + FluentAssertions + Moq), con el mismo doble enfoque que el resto del proyecto:
+La web tiene su propia suite (bUnit + NUnit + FluentAssertions + Moq), con el mismo doble enfoque que el resto del proyecto:
 
 | Suite | Qué cubre |
 |-------|-----------|
@@ -592,9 +592,9 @@ Y más allá de los tests unitarios, la verificación de esta fase se hizo en **
 | Bug Closed | SignalR entrega `Closed` tarde: el flag de cierre se resetea al INICIAR la siguiente conexión, nunca al cerrar |
 | Sesión | `localStorage` clave `aulachat.sesion`; un navegador bloqueado no rompe nada |
 | Desarrollo | `dotnet watch` (reconstruye y relanza) + `no-cache` en Development: el manifiesto se lee al arrancar |
-| Pruebas | 93 tests: stores con red de verdad, componentes contra `StoreFalsa` con sujetos "meneables" |
+| Pruebas | Stores con red de verdad y componentes contra `StoreFalsa` con sujetos "meneables" |
 | CSS | Propio, con variables en `:root`; paleta Discord clásica; avatares DiceBear con respaldo de iniciales |
 
-Con los dos clientes listos sobre el mismo hub, la Fase 2 abre el siguiente capítulo: sacar el estado de las `ConcurrentDictionary` a una base de datos real (SQLite + EF Core) sin tocar ni el hub ni los clientes — el contrato ya está hecho.
+> 📝 **Nota (evolución de la Fase 2):** con los dos clientes listos sobre el mismo hub, la Fase 2 abrió el siguiente capítulo: sacar el historial de las `ConcurrentDictionary` a una base de datos real (SQLite + EF Core) **sin tocar ni el hub ni los clientes**. Y así salió: el contrato ya estaba hecho y no hubo que moverlo — la web sigue suscribiéndose a `MensajeNuevo` y pidiendo el historial exactamente igual que en la Fase 1, solo que ahora ese historial procede de SQLite. El detalle de las decisiones y de sus trampas, en [4. La persistencia con SQLite](04-persistencia.md).
 
 > 📝 **Nota:** el boceto previo de estas vistas sigue disponible en [`docs/boceto-vistas.html`](boceto-vistas.html), por si quieres comparar el dibujo con lo que acabó saliendo.

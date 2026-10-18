@@ -19,6 +19,11 @@
     <PackageReference Include="NUnit" />
     <PackageReference Include="NUnit.Analyzers" />
     <PackageReference Include="NUnit3TestAdapter" />
+
+    <!-- SQLite para los tests del repositorio: se usa la base de datos en
+         memoria COMPARTIDA (no la llana :memory:, que daría una BD vacía nueva
+         por cada conexión y haría los tests falsos) -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
   </ItemGroup>
 
   <ItemGroup>
