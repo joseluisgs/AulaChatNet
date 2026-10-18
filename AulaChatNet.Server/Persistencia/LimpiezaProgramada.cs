@@ -17,7 +17,7 @@ namespace AulaChatNet.Server.Persistencia;
 /// <b>Retención por TIEMPO, no por cantidad.</b> Se configura cuántos días se
 /// conserva todo (<c>RetencionDias</c>), y cada <c>LimpiezaCadaHoras</c> se
 /// borra lo que sea más viejo. Es más fácil de razonar que limitar el número
-/// de mensajes: «me quedo con un mes» se entiende sin pensar.
+/// de mensajes: "me quedo con un mes" se entiende sin pensar.
 /// </para>
 /// <para>
 /// <b>El VACUUM es opcional y va por separado del DELETE</b>, porque hacen

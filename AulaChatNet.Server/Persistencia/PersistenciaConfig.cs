@@ -74,7 +74,7 @@ public class PersistenciaConfig
     /// comportamiento en el entorno donde desarrollas y demuestras. Además, el
     /// borrado silencioso por entorno engaña: crees que tu código persiste y no
     /// es así. Con una clave explícita la decisión es tuya y visible.
-    /// Para «en desarrollo empiezo limpio», ponla en true en
+    /// Para "en desarrollo empiezo limpio", ponla en true en
     /// appsettings.Development.json: obtienes el mismo efecto, pero como
     /// elección consciente.
     /// </para>
@@ -125,7 +125,7 @@ public class PersistenciaConfig
     /// es CARO: no se hace en cada limpieza, solo cuando merece la pena. Se
     /// mide la fragmentación real con <c>PRAGMA freelist_count</c> y
     /// <c>PRAGMA page_count</c> (páginas libres sobre páginas totales), que es
-    /// la señal honesta de «cuánto espacio se está desperdiciando».
+    /// la señal honesta de "cuánto espacio se está desperdiciando".
     /// </para>
     /// <para>
     /// Un valor razonable está entre 20 y 30: por debajo, el espacio libre es

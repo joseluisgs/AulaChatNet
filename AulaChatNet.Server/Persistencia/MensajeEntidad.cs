@@ -69,8 +69,8 @@ public class MensajeEntidad
     /// De hecho, la primera versión de esta entidad usó <c>DateTimeOffset</c>
     /// precisamente para blindar el UTC… y SQLite reventó al ordenar:
     /// <c>SQLite does not support expressions of type 'DateTimeOffset' in ORDER
-    /// BY clauses</c>. La consulta central del chat («los últimos N de un
-    /// canal») es un ORDER BY, así que la opción «más segura» rompía lo
+    /// BY clauses</c>. La consulta central del chat ("los últimos N de un
+    /// canal") es un ORDER BY, así que la opción "más segura" rompía lo
     /// principal. Con <c>DateTime</c> en UTC el orden SÍ funciona, porque se
     /// guarda como texto ISO-8601 con ceros a la izquierda y el orden
     /// lexicográfico coincide con el cronológico. Un gotcha real, cazado por

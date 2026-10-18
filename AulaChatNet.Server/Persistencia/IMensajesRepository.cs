@@ -68,7 +68,7 @@ public interface IMensajesRepository
     /// hueco).
     /// </summary>
     /// <remarks>
-    /// Es la señal HONESTA de «cuánto espacio se tira», y se mide con los
+    /// Es la señal HONESTA de "cuánto espacio se tira", y se mide con los
     /// PRAGMA <c>freelist_count</c> y <c>page_count</c>. Se usa esta y NO el
     /// tamaño del fichero porque el proyecto corre en modo WAL: ahí los datos
     /// recién escritos viven en el fichero <c>-.db-wal</c>, así que el
@@ -91,7 +91,7 @@ public interface IMensajesRepository
     /// cada limpieza, solo cuando la fragmentación supera el umbral.
     /// </para>
     /// <para>
-    /// En modo WAL puede fallar con «database is locked» si hay lecturas
+    /// En modo WAL puede fallar con "database is locked" si hay lecturas
     /// concurrentes (p. ej. alguien pidiendo el historial). El servicio de
     /// limpieza lo traga y lo deja anotado en el log: reintentará en la
     /// siguiente pasada.

@@ -16,8 +16,8 @@ namespace AulaChatNet.Server.Persistencia;
 /// patrón recomendado cuando un singleton necesita acceso a EF Core.
 /// </para>
 /// <para>
-/// <b>Solo se persisten los mensajes NORMALES.</b> Los de sistema («Ana ha
-/// entrado», «Ana ahora se llama…») describen hechos que ya pasaron y solo
+/// <b>Solo se persisten los mensajes NORMALES.</b> Los de sistema ("Ana ha
+/// entrado", "Ana ahora se llama…") describen hechos que ya pasaron y solo
 /// tienen sentido en la sesión viva: guardarlos sería guardar logs, no
 /// conversación. Por eso la caché en memoria del ChatStore los conserva
 /// mientras dura la sesión, pero la base de datos no.
