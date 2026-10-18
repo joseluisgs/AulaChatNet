@@ -1,7 +1,7 @@
-using AulaChatNet.Client.Terminal.Servicios;
+using AulaChatNet.Shared.Dtos;
 using FluentAssertions;
 
-namespace AulaChatNet.Client.Terminal.Tests.Servicios;
+namespace AulaChatNet.Shared.Tests.Dtos;
 
 /// <summary>
 /// Suite de tests para ResultadoConexion: el resultado tipado de conectar.

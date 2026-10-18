@@ -1,0 +1,47 @@
+@* Una fila de mensaje — NUNCA burbujas: Discord y Slack son "filas" con
+   hora a la izquierda, avatar circular, nombre en su color derivado y el
+   texto. Los mensajes de sistema salen en gris cursiva y sin avatar, con un
+   espaciador que los alinea con la columna de texto. *@
+@code {
+    /// <summary>Mensaje a pintar.</summary>
+    [Parameter] public MensajeDto Mensaje { get; set; } = default!;
+
+    /// <summary>
+    /// Hora local de quien mira: el servidor guarda UTC (regla de oro:
+    /// guardar UTC, convertir SOLO al presentar) — sin esta conversión la
+    /// web enseñaría la hora del servidor.
+    /// </summary>
+    private string Hora => Mensaje.Timestamp.ToLocalTime().ToString("HH:mm");
+
+    /// <summary>Color con el que se pinta el nombre del autor (derivado del nombre).</summary>
+    private string ColorNombre
+    {
+        get
+        {
+            var (rojo, verde, azul) = AvatarHelper.ObtenerColor(Mensaje.Usuario);
+            return $"rgb({rojo}, {verde}, {azul})";
+        }
+    }
+}
+
+@if (Mensaje.Tipo == TipoMensaje.Sistema)
+{
+    <div class="mensaje sistema">
+        <span class="mensaje-hora">@Hora</span>
+        <span class="mensaje-espaciador"></span>
+        <div class="mensaje-cuerpo">
+            <span class="mensaje-texto">· @Mensaje.Texto</span>
+        </div>
+    </div>
+}
+else
+{
+    <div class="mensaje">
+        <span class="mensaje-hora">@Hora</span>
+        <Avatar Usuario="@Mensaje.Usuario" Tamano="40" />
+        <div class="mensaje-cuerpo">
+            <span class="mensaje-nombre" style="color: @ColorNombre">@Mensaje.Usuario</span>
+            <span class="mensaje-texto">@Mensaje.Texto</span>
+        </div>
+    </div>
+}

@@ -1,4 +1,4 @@
-namespace AulaChatNet.Client.Terminal.Comandos;
+namespace AulaChatNet.Shared.Comandos;
 
 /// <summary>
 /// Convierte la línea escrita por el usuario en un <see cref="Comando"/>.
@@ -6,8 +6,11 @@ namespace AulaChatNet.Client.Terminal.Comandos;
 /// <remarks>
 /// Es lógica PURA: sin UI, sin red, sin estado. Esa separación es la que
 /// permite testear todos los casos (mayúsculas, sin almohadilla, argumento
-/// ausente...) sin abrir una terminal, que es exactamente lo que hace
-/// <c>ParserComandosTests</c>.
+/// ausente...) sin abrir una terminal ni montar un componente, que es
+/// exactamente lo que hace <c>ParserComandosTests</c> (en Shared.Tests).
+///
+/// Vive en Shared porque los dos clientes usan MISMAS reglas: la línea que
+/// la terminal entiende es la que entiende la web, y viceversa.
 ///
 /// Reglas:
 /// <list type="bullet">

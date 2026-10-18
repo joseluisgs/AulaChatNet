@@ -1,4 +1,4 @@
-namespace AulaChatNet.Client.Terminal.Servicios;
+namespace AulaChatNet.Shared.Dtos;
 
 /// <summary>
 /// Estado de la conexión con el servidor, visto desde el cliente.

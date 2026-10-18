@@ -1,0 +1,107 @@
+@* Barra superior (cabecera fija): identidad + punto de estado de la
+   conexión + gente de tu sala y en total + Reconectar/Salir.
+
+   Se suscribe a CINCO observables de la store: cada trocito de la barra se
+   refresca cuando cambia SU dato. Si la conexión se cae, el punto pasa a
+   rojo y aparece el botón Reconectar (el mismo camino que la tecla R de la
+   terminal). *@
+@implements IDisposable
+@inject IChatStore Store
+
+<header class="barra">
+    <span class="barra-logo"># AulaChatNet</span>
+    <span class="barra-separador">·</span>
+    <span class="barra-nick">@(_nick ?? "…")</span>
+    <span class="barra-separador">·</span>
+    <span class="barra-canal">@(_canal ?? "…")</span>
+    <span class="punto @(Punto.Clase)" title="@Punto.Texto"></span>
+    <span class="barra-estado">@Punto.Texto</span>
+
+    <span class="barra-contador">
+        @_usuarios.Count en la sala · @_estadisticas.TotalConectados en total
+    </span>
+
+    @if (_error is not null)
+    {
+        <span class="barra-error">@_error</span>
+    }
+
+    @if (_estado == EstadoConexion.Desconectado)
+    {
+        <button type="button" class="boton-secundario" @onclick="ReconectarAsync">Reconectar</button>
+    }
+
+    <button type="button" class="boton-secundario" @onclick="SalirAsync">Salir</button>
+</header>
+
+@code {
+    private string? _nick;
+    private string? _canal;
+    private EstadoConexion _estado = EstadoConexion.Desconectado;
+    private IReadOnlyList<UsuarioConectadoDto> _usuarios = [];
+    private EstadisticasDto _estadisticas = new(0, []);
+    private string? _error;
+
+    private readonly CompositeDisposable _suscripciones = new();
+
+    /// <summary>Las cinco suscripciones de la barra (una por dato pintado).</summary>
+    protected override void OnInitialized()
+    {
+        _suscripciones.Add(Store.Nick.Subscribe(valor =>
+        {
+            _nick = valor;
+            _ = InvokeAsync(StateHasChanged);
+        }));
+
+        _suscripciones.Add(Store.CanalActual.Subscribe(valor =>
+        {
+            _canal = valor;
+            _ = InvokeAsync(StateHasChanged);
+        }));
+
+        _suscripciones.Add(Store.Estado.Subscribe(valor =>
+        {
+            _estado = valor;
+            _error = null; // un estado nuevo borra el error de reconexión anterior
+            _ = InvokeAsync(StateHasChanged);
+        }));
+
+        _suscripciones.Add(Store.Usuarios.Subscribe(lista =>
+        {
+            _usuarios = lista;
+            _ = InvokeAsync(StateHasChanged);
+        }));
+
+        _suscripciones.Add(Store.Estadisticas.Subscribe(est =>
+        {
+            _estadisticas = est;
+            _ = InvokeAsync(StateHasChanged);
+        }));
+    }
+
+    /// <summary>
+    /// Punto de Discord: misma paleta que la terminal (verde conectado, gris
+    /// conectando, naranja reconectando, rojo caído) — la clase CSS del punto
+    /// y su texto salen del mismo sitio para que no se desincronicen.
+    /// </summary>
+    private (string Clase, string Texto) Punto => _estado switch
+    {
+        EstadoConexion.Conectado => ("conectado", "conectado"),
+        EstadoConexion.Conectando => ("conectando", "conectando"),
+        EstadoConexion.Reconectando => ("reconectando", "reconectando"),
+        _ => ("desconectado", "desconectado")
+    };
+
+    /// <summary>Reintenta a mano cuando la reconexión automática ya se rindió.</summary>
+    private async Task ReconectarAsync()
+    {
+        // Devuelve null si entró; el error (traducido a palabras de usuario) si no
+        _error = await Store.ReconectarAsync();
+    }
+
+    /// <summary>Cierra la sesión de forma ordenada: vuelve al panel de entrada.</summary>
+    private async Task SalirAsync() => await Store.CerrarAsync();
+
+    /// <summary>Libera las suscripciones cuando el componente se destruye.</summary>
+    public void Dispose() => _suscripciones.Dispose();
+}

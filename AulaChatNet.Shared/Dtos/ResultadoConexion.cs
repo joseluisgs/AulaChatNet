@@ -1,4 +1,4 @@
-namespace AulaChatNet.Client.Terminal.Servicios;
+namespace AulaChatNet.Shared.Dtos;
 
 /// <summary>
 /// Resultado de un intento de conexión con el servidor: el error (si lo hay)

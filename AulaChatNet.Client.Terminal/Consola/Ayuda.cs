@@ -1,12 +1,15 @@
+using AulaChatNet.Shared.Comandos;
 using Spectre.Console;
 using Spectre.Console.Rendering;
 
 namespace AulaChatNet.Client.Terminal.Consola;
 
 /// <summary>
-/// Ayuda del cliente: la tabla de comandos que se muestra al arrancar y
-/// con "/ayuda". La lista de comandos vive en UN sitio, así que añadir un
-/// comando nuevo solo exige tocar este fichero (y el parser).
+/// Ayuda del cliente terminal: pinta la tabla de comandos que se muestra al
+/// arrancar y con "/ayuda". Las FILAS viven en <see cref="AyudaComandos"/>
+/// (Shared: la MISMA lista que pinta la web), así que añadir un comando es
+/// tocar el parser, el catálogo y —si hace falta— el render de aquí. Lo
+/// propio de la terminal (los atajos de teclado) se añade en este fichero.
 ///
 /// <remarks>
 /// Ojo con el markup de Spectre: los corchetes literales de los argumentos
@@ -16,21 +19,10 @@ namespace AulaChatNet.Client.Terminal.Consola;
 /// </summary>
 public static class Ayuda
 {
-    /// <summary>Comandos y su descripción, en el orden en que se muestran.</summary>
-    private static readonly (string Comando, string Descripcion)[] Comandos =
-    [
-        ("/ayuda [comando]", "Esta ayuda, o la de un comando concreto"),
-        ("/canales", "Lista los canales disponibles"),
-        ("/canal <nombre>", "Cambia de canal (p. ej. /canal daw)"),
-        ("/nick <nombre>", "Cambia tu nombre en caliente (p. ej. /nick Ana2)"),
-        ("/usuarios [canal]", "Conectados de tu canal o de otro (p. ej. /usuarios daw)"),
-        ("/reconectar", "Vuelve a entrar si se perdió la conexión (en vivo, también la tecla R)"),
-        ("/sesion [borrar]", "Ver la sesión guardada o borrarla (útil en aulas compartidas)"),
-        ("/limpiar", "Limpia la pantalla (el historial lo repinta el servidor)"),
-        ("/salir", "Desconectar y cerrar (Ctrl+C hace lo mismo)")
-    ];
-
-    /// <summary>Tabla completa de comandos (al arrancar y con /ayuda).</summary>
+    /// <summary>
+    /// Tabla completa de comandos (al arrancar y con /ayuda), con el pie de
+    /// los atajos propios de la terminal.
+    /// </summary>
     /// <returns>La tabla lista para pintar con AnsiConsole.Write o meterla en el lienzo en vivo.</returns>
     public static IRenderable CrearGeneral()
     {
@@ -40,12 +32,15 @@ public static class Ayuda
             .AddColumn(new TableColumn("[grey]Comando[/]").NoWrap())
             .AddColumn(new TableColumn("[grey]Qué hace[/]"));
 
-        foreach (var (comando, descripcion) in Comandos)
+        foreach (var fila in AyudaComandos.Comandos)
             tabla.AddRow(
-                $"[{TemaDiscord.Blurple.ToMarkup()}]{Markup.Escape(comando)}[/]",
-                descripcion);
+                $"[{TemaDiscord.Blurple.ToMarkup()}]{Markup.Escape(fila.Sintaxis)}[/]",
+                fila.Descripcion);
 
-        return tabla;
+        // Lo propio de ESTE cliente: la web no tiene esas teclas
+        return new Rows(
+            tabla,
+            new Markup("[grey]Atajos: R = /reconectar (con la línea vacía) · Ctrl+C = /salir[/]"));
     }
 
     /// <summary>Muestra la tabla completa de comandos (al arrancar y con /ayuda).</summary>
@@ -57,7 +52,8 @@ public static class Ayuda
 
     /// <summary>
     /// Ayuda de UN comando (p. ej. "/ayuda canal"); si no existe, avisa y
-    /// recuerda la ayuda general.
+    /// recuerda la ayuda general. La búsqueda es la MISMA que hace la web:
+    /// por prefijo en el catálogo compartido, ignorando la barra inicial.
     /// </summary>
     /// <param name="tema">Comando del que se pide ayuda (sin barra o con ella).</param>
     /// <returns>Contenido listo para pintar con AnsiConsole.Write o meter en el lienzo en vivo.</returns>
@@ -66,13 +62,9 @@ public static class Ayuda
         if (tema is null)
             return CrearGeneral();
 
-        // Se busca ignorando la barra inicial: "/canal" y "canal" son lo mismo
-        var buscado = tema.Trim().TrimStart('/');
-        var encontrados = Comandos
-            .Where(c => c.Comando.StartsWith($"/{buscado}", StringComparison.OrdinalIgnoreCase))
-            .ToArray();
+        var encontrados = AyudaComandos.Buscar(tema);
 
-        if (encontrados.Length == 0)
+        if (encontrados.Count == 0)
         {
             return new Markup(
                 $"[yellow]No hay ayuda para '{Markup.Escape(tema)}'.[/] " +
@@ -81,7 +73,7 @@ public static class Ayuda
 
         return new Rows(encontrados
             .Select(c => new Markup(
-                $"[{TemaDiscord.Blurple.ToMarkup()}]{Markup.Escape(c.Comando)}[/] — {c.Descripcion}"))
+                $"[{TemaDiscord.Blurple.ToMarkup()}]{Markup.Escape(c.Sintaxis)}[/] — {c.Descripcion}"))
             .ToArray());
     }
 

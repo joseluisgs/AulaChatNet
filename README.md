@@ -18,7 +18,7 @@ AulaChatNet es un proyecto educativo de ejemplo para el módulo **Desarrollo Web
 - 📡 **SignalR**: un único `ChatHub` en el servidor; mensajes, entradas, salidas y cambio de nick en tiempo real
 - 🗂️ **Canales por aula**: `#general`, `#daw`, `#dam`, `#asir` y `#smr` (grupos de SignalR, configurables en `appsettings.json`); historial y lista de conectados por canal, con cambio en vivo
 - 🔄 **Rx.NET**: los mensajes entrantes se exponen como `IObservable<MensajeDto>`; la UI se suscribe aplicando operadores reactivos (filtrar, agrupar, formatear)
-- 💻 **Múltiples clientes**: consola con Spectre.Console (vista en vivo con cabecera y pie fijos, editor de línea con cursor y reconexión con re-alta) y web con Blazor WebAssembly, ambos sobre el mismo hub
+- 💻 **Múltiples clientes**: consola con Spectre.Console (vista en vivo con cabecera y pie fijos, editor de línea con cursor y reconexión con re-alta) y web con Blazor WebAssembly, ambos sobre el mismo hub y con los **mismos comandos `/`** (el parser vive en `Shared` y lo usan los dos clientes)
 - 🎨 **Estética Discord**: layout de dos columnas, avatares (DiceBear) y paleta oscura
 - 🗄️ **Fase 1 en memoria**: estado en `ConcurrentDictionary`, sin base de datos
 
@@ -29,7 +29,7 @@ AulaChatNet es un proyecto educativo de ejemplo para el módulo **Desarrollo Web
 - **Rx.NET (System.Reactive)** - Programación reactiva en los clientes
 - **Blazor WebAssembly** - Cliente web
 - **Spectre.Console** - Cliente de terminal
-- **Serilog** - Logging configurable desde `appsettings.json`
+- **Serilog** - Logging en los tres clientes: servidor (consola + fichero), terminal (fichero) y web (consola del navegador)
 - **DiceBear API** - Avatares deterministas por nombre de usuario
 - **NUnit + FluentAssertions** - Tests por proyecto
 
@@ -42,7 +42,7 @@ AulaChatNet/
 ├── Directory.Build.props                    # LangVersion, Nullable, warnings como errores
 ├── Directory.Packages.props                 # Central Package Management (versiones aquí)
 ├── docs/                                   # Documentación didáctica
-├── AulaChatNet.Shared/                      # DTOs, constantes del hub, ChatConfig, avatar, operadores Rx
+├── AulaChatNet.Shared/                      # DTOs, constantes del hub, ChatConfig, avatar, operadores Rx, comandos (parser + ayuda)
 │   └── AulaChatNet.Shared.Tests/
 ├── AulaChatNet.Server/                      # ASP.NET Core + SignalR
 │   ├── Hubs/                                # ChatHub (alta, mensajes, canales, nick, estadísticas)
@@ -52,7 +52,7 @@ AulaChatNet/
 │   └── AulaChatNet.Server.Tests/
 ├── AulaChatNet.Client.Terminal/             # Consola con Spectre.Console (TUI estilo Discord)
 │   └── AulaChatNet.Client.Terminal.Tests/
-└── AulaChatNet.Client.Blazor/               # ⏳ Blazor WebAssembly
+└── AulaChatNet.Client.Blazor/               # Blazor WebAssembly (alojado por el servidor)
     └── AulaChatNet.Client.Blazor.Tests/
 ```
 
@@ -82,6 +82,26 @@ flowchart TD
     style S fill:#2196F3,color:#fff
     style SH fill:#9C27B0,color:#fff
 ```
+
+## 🏃‍♂️ Inicio rápido
+
+```bash
+# Compilar y arrancar el servidor (sirve la web en http://localhost:5030)
+dotnet run --project AulaChatNet.Server
+
+# En desarrollo de la web, mejor con watch: reconstruye el cliente y
+# relanza el servidor solo (el manifiesto de assets de Blazor se lee al
+# arrancar, así que sin watch los cambios del cliente no llegan)
+dotnet watch --project AulaChatNet.Server
+
+# Cliente terminal en otra consola (por defecto, el 5030)
+dotnet run --project AulaChatNet.Client.Terminal
+
+# Tests de todos los proyectos
+dotnet test
+```
+
+En desarrollo, el servidor añade `Cache-Control: no-cache` a `index.html` y a `/_framework/*`, para que el navegador pida siempre la última versión del manifiesto.
 
 ## 📡 Hub del chat
 
@@ -120,26 +140,27 @@ La ruta vive en `Shared` (`ChatRutas.Estadisticas`), sin rutas escritas dos vece
 
 ## ⚙️ Configuración
 
-Todo se configura en `appsettings.json` (con override por entorno en `appsettings.Development.json`), sin hardcodeos:
+La configuración vive en `appsettings.json` (con override por entorno en `appsettings.Development.json`), sin hardcodeos. Los destinos de Serilog de los dos clientes se fijan en código, porque dependen del medio donde corren (fichero en disco / consola del navegador):
 
 | Sección | Qué controla |
 |---------|--------------|
 | `Chat` | Canales, ruta del hub, límites de usuario/mensaje, historial máximo, URL de avatares |
-| `Serilog` | Consola (Information, con color) + fichero de errores (`logs/aulachat-YYYY-MM-DD.log`, rolling y retención de 7 días) |
+| `Serilog` | **Servidor**: consola (Information, con color) + fichero de errores (`logs/aulachat-YYYY-MM-DD.log`, rolling y retención de 7 días). **Terminal**: solo fichero en `%LOCALAPPDATA%\AulaChatNet\logs\terminal-YYYY-MM-DD.log` (config en `SerilogConfig.cs`; sin consola para no romper el lienzo Live). **Web**: consola del navegador (sink `BrowserConsole`, config en `Program.cs`) |
 | `Cors` | Orígenes permitidos para el cliente Blazor en desarrollo |
 | `Terminal` | Sección del cliente terminal: `UrlServidor` y `RecordarSesion` |
+| `Web` | Cliente Blazor: `UrlServidor` (vacío = mismo origen) y `RecordarSesion` (sesión en localStorage). En desarrollo, `appsettings.Development.json` + `launchSettings.json` permiten ejecutar el cliente por separado: DevServer en el `5031` apuntando al servidor del `5030` |
 
 ## ✅ Estado por fases
 
 | Fase | Contenido | Estado |
 |------|-----------|--------|
 | Entorno | `.slnx`, Central Package Management, GitFlow | ✅ Hecho |
-| **Fase 1 · Shared** | DTOs, `ChatConfig`, avatar, operadores Rx | ✅ Hecho — 60 tests |
+| **Fase 1 · Shared** | DTOs, `ChatConfig`, avatar, operadores Rx, parser de comandos `/` y catálogo de ayuda | ✅ Hecho — 111 tests |
 | **Fase 1 · Server** | `ChatHub`, `ChatStore` en memoria, canales, estadísticas, Serilog | ✅ Hecho — 71 tests |
-| **Fase 1 · Terminal** | Spectre.Console, vista en vivo, entrada guiada, comandos y sesión | ✅ Hecho — 96 tests |
-| **Fase 1 · Blazor** | Layout Discord + store reactiva estilo `NotificationStore` | ⏳ Pendiente |
+| **Fase 1 · Terminal** | Spectre.Console, vista en vivo, entrada guiada, comandos, sesión y Serilog a fichero | ✅ Hecho — 45 tests |
+| **Fase 1 · Blazor** | Layout Discord + store reactiva estilo `NotificationStore` + comandos `/` (parser compartido) + Serilog a consola del navegador | ✅ Hecho — 93 tests |
 | Fase 2 | Persistencia (SQLite + EF Core) | 🔜 Futura |
-| Fase 3 | Extras (moderación, comandos `/`, reacciones) | 🔜 Futura |
+| Fase 3 | Extras (moderación, reacciones) | 🔜 Futura |
 
 ## 📚 Documentación
 
@@ -147,6 +168,8 @@ Toda la documentación didáctica vive en [`docs/`](docs/):
 
 - 📖 [`docs/01-arquitectura-del-servidor.md`](docs/01-arquitectura-del-servidor.md) - Arquitectura por capas, ciclo de vida de una conexión de SignalR, estado por canal, grupos, estadísticas, Serilog y dos bugs reales, con diagramas Mermaid
 - 💻 [`docs/02-cliente-terminal.md`](docs/02-cliente-terminal.md) - **Manual de uso** con capturas reales en ASCII (arranque, vista en vivo, comandos y sus salidas, reconexión y sesión) y su arquitectura interna: Spectre.Console, capa reactiva con Rx, modo doble (consola/tubería) y tests
+- 🌐 [`docs/03-cliente-blazor.md`](docs/03-cliente-blazor.md) - **El cliente web**: Blazor WebAssembly alojado por el servidor, la estética de Discord en CSS propio, la store central y la capa reactiva con suscripciones en los componentes, los comandos `/` reutilizando el parser de `Shared`, la sesión en `localStorage`, el desarrollo con `dotnet watch` y **dos bugs reales** (el `Closed` fantasma y el manifiesto de assets caducado), con sus arreglos y tests
+- 🖼️ [`docs/boceto-vistas.html`](docs/boceto-vistas.html) - **Boceto visual de las dos vistas de la web** con los mismos estilos y elementos que la app: [vista 1 · panel de entrada](docs/boceto-vistas.html#vista-1) y [vista 2 · vista de canal](docs/boceto-vistas.html#vista-2)
 
 > 💡 **Consejo:** si solo vas a leer un documento, empieza por el del servidor: es el mapa completo sobre el que se apoyan los dos clientes.
 
