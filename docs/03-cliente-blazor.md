@@ -1,15 +1,16 @@
 - [3. El cliente web (Blazor WebAssembly)](#3-el-cliente-web-blazor-webassembly)
-  - [3.1. Qué hay dentro del proyecto](#31-qué-hay-dentro-del-proyecto)
-  - [3.2. El arranque: de index.html a la pantalla de entrada](#32-el-arranque-de-indexhtml-a-la-pantalla-de-entrada)
-  - [3.3. La estética de Discord con CSS propio](#33-la-estética-de-discord-con-css-propio)
-  - [3.4. Una sola página y una store que manda](#34-una-sola-página-y-una-store-que-manda)
-  - [3.5. La capa reactiva en la web](#35-la-capa-reactiva-en-la-web)
-  - [3.6. Los comandos / también en la web](#36-los-comandos--también-en-la-web)
-  - [3.7. Un bug real: el Closed fantasma](#37-un-bug-real-el-closed-fantasma)
-  - [3.8. La sesión en el navegador](#38-la-sesión-en-el-navegador)
-  - [3.9. Desarrollo: dotnet watch y el manifiesto de assets](#39-desarrollo-dotnet-watch-y-el-manifiesto-de-assets)
-  - [3.10. Cómo se prueba](#310-cómo-se-prueba)
-  - [3.11. Resumen del punto](#311-resumen-del-punto)
+  - [3.1. Qué es Blazor WebAssembly y por qué lo elegimos](#31-qué-es-blazor-webassembly-y-por-qué-lo-elegimos)
+  - [3.2. Qué hay dentro del proyecto](#32-qué-hay-dentro-del-proyecto)
+  - [3.3. El arranque: de index.html a la pantalla de entrada](#33-el-arranque-de-indexhtml-a-la-pantalla-de-entrada)
+  - [3.4. La estética de Discord con CSS propio](#34-la-estética-de-discord-con-css-propio)
+  - [3.5. Una sola página y una store que manda](#35-una-sola-página-y-una-store-que-manda)
+  - [3.6. La store central y la capa reactiva](#36-la-store-central-y-la-capa-reactiva)
+  - [3.7. Los comandos / también en la web](#37-los-comandos--también-en-la-web)
+  - [3.8. Un bug real: el Closed fantasma](#38-un-bug-real-el-closed-fantasma)
+  - [3.9. La sesión en el navegador](#39-la-sesión-en-el-navegador)
+  - [3.10. Desarrollo: dotnet watch y el manifiesto de assets](#310-desarrollo-dotnet-watch-y-el-manifiesto-de-assets)
+  - [3.11. Cómo se prueba](#311-cómo-se-prueba)
+  - [3.12. Resumen del punto](#312-resumen-del-punto)
 
 
 
@@ -21,13 +22,59 @@ Este punto es el hermano web del [cliente terminal](02-cliente-terminal.md): **m
 
 **Objetivos de aprendizaje:**
 
+- Situar qué es Blazor y WebAssembly, y por qué este cliente está hecho en C# y no en JavaScript
 - Montar una SPA con Blazor WebAssembly alojada por el servidor, sin CORS ni URLs escritas a mano
-- Entender el patrón "una store central + componentes que solo pintan estado", el mismo que usa la terminal
+- Entender qué es una store central (fuente única de verdad, estilo Pinia/Redux): cómo se comunican los componentes con ella, por qué evita los "saltos" de datos y qué aporta la reactividad frente a un singleton clásico
 - Suscribirse a `IObservable<T>` desde un componente y **liberar la suscripción** al destruirlo
 - Reutilizar lógica entre clientes: el parser de comandos vive en `Shared` y lo ejecutan los dos
 - Diagnosticar dos problemas reales: un evento de SignalR que llega tarde y un manifiesto de assets caducado
 
-## 3.1. Qué hay dentro del proyecto
+## 3.1. Qué es Blazor WebAssembly y por qué lo elegimos
+
+Antes de mirar una sola línea de código, conviene aterrizar la plataforma: este cliente **no está escrito en JavaScript**, y eso tiene consecuencias prácticas (y ventajas) que se ven en todo el punto.
+
+**Blazor** es el framework de Microsoft para construir interfaces web escribiendo **C# con plantillas Razor** en lugar de JavaScript. Un fichero `.razor` mezcla HTML con código C#, se compila a una clase normal de .NET y —según dónde se aloje— la interfaz puede ejecutarse en el servidor o dentro del navegador:
+
+| Modelo de Blazor | ¿Dónde corre la interfaz? | Cómo llega lo que ves |
+|------------------|---------------------------|------------------------|
+| Blazor Server | En el servidor | La pinta allí y manda diferencias por SignalR |
+| **Blazor WebAssembly (el nuestro)** | **Dentro del navegador** | El navegador descarga tu código y lo ejecuta él mismo |
+
+**WebAssembly (WASM)** es, junto a HTML y JavaScript, el tercer lenguaje del navegador: un formato **binario** que los navegadores ejecutan casi a velocidad nativo, dentro de una caja de arena (sandbox) sin acceso al disco ni al DOM. Desde 2017 lo soportan Chrome, Firefox, Edge y Safari.
+
+> 📌 **Ejemplo real:** Figma, la web de Photoshop y Google Earth se apoyan en WebAssembly para rendir en el navegador — tareas que antes solo JavaScript podía hacer hoy corren ahí dentro con código compilado.
+
+Blazor WebAssembly combina las dos cosas: el runtime de .NET (Mono) **compilado a WebAssembly** junto con tus DLLs. La primera vez que entras, el navegador descarga unos megas de runtime (el *splash* que verás en la 3.2) y a partir de ahí todo tu C# corre dentro de la pestaña:
+
+```mermaid
+flowchart TD
+    P["Pestaña del navegador<br/>(corre TODO el cliente)"] --> R["Runtime .NET (Mono)<br/>ejecutado como WebAssembly"]
+    R --> C["Tu C#: ChatStore, Rx,<br/>componentes y comandos"]
+    P -->|"WebSocket (SignalR)"| H["Servidor 5030<br/>ChatHub + ChatStore en memoria"]
+    H --> F["Fase 2: SQLite + EF Core"]
+
+    style P fill:#2196F3,color:#fff
+    style R fill:#9C27B0,color:#fff
+    style C fill:#4CAF50,color:#fff
+    style H fill:#FF9800,color:#fff
+    style F fill:#607D8B,color:#fff
+```
+
+**¿Por qué elegimos esta opción?** Cuatro razones, en orden de importancia para una clase:
+
+1. **Un solo lenguaje en los dos extremos.** El mismo C# del servidor para el cliente: no hay que cambiar de cabeza (ni de guion) a mitad de clase.
+2. **La lógica se reutiliza de verdad.** Los contratos (`ChatHubMetodos`, `ChatHubEventos`, `MensajeDto`), el parser de comandos de `Shared/Comandos/` y hasta los operadores de Rx.NET viajan **tal cual** a los dos clientes. En JavaScript habría que reescribirlos o exponerlos por HTTP.
+3. **Mismo modelo que ya conoces.** Componentes, inyección de dependencias, `ILogger<T>`, NUnit con Moq: lo aprendido en el servidor se traslada al cliente sin tener que aprender React o Vue por el camino.
+4. **Encaja con SignalR y Rx.NET.** El `HubConnection` de .NET y `System.Reactive` funcionan en la pestaña igual que en la terminal — el cliente puede "escuchar" sin que nadie pregunte, que es justo lo que pide este chat.
+
+> 📝 **Nota:** ¿y por no una SPA en JavaScript (React o Vue) o Blazor Server? JavaScript obligaría a dos lenguajes y a reescribir el parser de `Shared`; Blazor Server mantendría la interfaz en el servidor y perderíamos el cliente autónomo (con su `localStorage` y su CSS propio) que es la mitad interesante de este módulo. Todas son opciones válidas: esta es la que mejor encaja con los objetivos didácticos.
+
+Dos contras honestas que conviene conocer:
+
+- **La primera carga pesa**: el runtime se descarga y después se cachea en el navegador; si la cache se pierde o está caducada (el manifiesto de assets de la 3.10), se nota. Por eso existen el *splash* y el aviso de error.
+- **Todo lo compilado viaja al cliente**: cualquiera puede abrir las herramientas de desarrollo y ver tu C#. Por eso la configuración WASM (`wwwroot/appsettings.json`) solo contiene ajustes de presentación y **nunca secretos** — la validación real la hace el servidor.
+
+## 3.2. Qué hay dentro del proyecto
 
 El cliente es una aplicación de Blazor WebAssembly (WASM) **alojada por el servidor**: no tiene puerto propio en uso normal; el servidor del `5030` sirve tanto el hub como los archivos del cliente. La lógica está partida por responsabilidades:
 
@@ -44,7 +91,7 @@ El cliente es una aplicación de Blazor WebAssembly (WASM) **alojada por el serv
 
 > 📝 **Nota:** `State/` y `Services/` no tienen NADA de Blazor dentro: son clases C# normales con Rx y SignalR. Eso es lo que permite probarlas sin navegador, igual que la `ClienteChat` de la terminal.
 
-## 3.2. El arranque: de index.html a la pantalla de entrada
+## 3.3. El arranque: de index.html a la pantalla de entrada
 
 La primera vez que entras, el navegador descarga unos megas de runtime: mientras tanto ves el **splash** que vive en `index.html` (`# AulaChatNet · Cargando el chat…` con su barra). Blazor vacía ese `div` en cuanto arranca y pinta la app encima. Ese mismo HTML trae dos joyas didácticas:
 
@@ -76,7 +123,7 @@ flowchart TD
 
 > 💡 **Consejo:** si ejecutas el cliente por separado (DevServer del `5031`), solo tienes que poner `Web:UrlServidor` en `appsettings.Development.json`; sin ese ajuste, todo vive bajo el mismo `5030` y no hay CORS en el camino.
 
-## 3.3. La estética de Discord con CSS propio
+## 3.4. La estética de Discord con CSS propio
 
 La regla de la casa: **CSS propio, sin librerías pesadas**, con TODOS los colores en variables de `:root` — si un día hay que cambiar la paleta, se toca un solo sitio. La paleta es la de Discord clásica: fondo `#36393f`, sidebar `#2f3136`, cabeceras `#202225`, input `#40444b`, acento *blurple* `#5865f2` y verde en línea `#43b581`.
 
@@ -84,20 +131,17 @@ El mapa de la interfaz (dos columnas, la regla del proyecto):
 
 ```mermaid
 flowchart TD
-    subgraph App["Aplicacion (100vh)"]
-        direction TB
-        B["BarraConexion<br/>logo · nick · canal · ● estado · gente · Reconectar/Salir"]
-        subgraph Cuerpo["Contenido: dos columnas"]
-            direction LR
-            U["ListaUsuarios<br/>conectados de tu sala + punto verde"]
-            subgraph Canal["Zona de canal"]
-                direction TB
-                P["ListaCanales<br/>píldoras #general 2 · #daw 3 …"]
-                M["ListaMensajes<br/>scroll, sin burbujas"]
-                C["CajaMensaje<br/>input fijo abajo"]
-            end
-        end
-    end
+    B["BarraConexion<br/>logo · nick · canal · ● estado · gente · Salir"]
+    U["ListaUsuarios<br/>conectados de tu sala + punto verde"]
+    P["ListaCanales<br/>píldoras #general 2 · #daw 3 …"]
+    M["ListaMensajes<br/>scroll, sin burbujas"]
+    C["CajaMensaje<br/>input fijo abajo"]
+
+    B --- U
+    B --- P
+    U --- M
+    P --- M
+    M --- C
 
     style B fill:#202225,color:#fff
     style U fill:#2f3136,color:#fff
@@ -114,7 +158,7 @@ Tres decisiones de diseño que conviene retener:
 
 > 📝 **Nota:** el texto de los mensajes lleva `white-space: pre-wrap` en el CSS. Ese detalle parece menor y no lo es: permite que los avisos multilínea de los comandos (`/ayuda`, `/canales`) se respeten con sus saltos de línea dentro del flujo de mensajes.
 
-## 3.4. Una sola página y una store que manda
+## 3.5. Una sola página y una store que manda
 
 `Chat.razor` es la única página (`@page "/"`) y su lógica entera cabe en un `if`: si la store dice que **no hay sesión activa** pinta el `PanelEntrada`; en cuanto `ConectarAsync` triunfa, la store pone `EnSesion` a `true` y aquí aparece la vista de canal. **Un solo sitio manda: la store central** — los componentes no deciden de dónde vienen los datos, solo los pintan.
 
@@ -123,7 +167,8 @@ flowchart TD
     P["PanelEntrada<br/>nick + canal + GET /estadisticas"] -->|"ConectarAsync(nick, canal)"| S{"Store.EnSesion"}
     S -->|"false"| P
     S -->|"true"| V["Vista de canal<br/>Barra + usuarios + píldoras + mensajes + caja"]
-    V -->|"Salir (/salir o botón)"| C["CerrarAsync()<br/>vistas vaciadas"] --> P
+    V -->|"Salir (/salir o botón)"| C["CerrarAsync()<br/>vistas vaciadas"]
+    C --> P
 
     style P fill:#FF9800,color:#fff
     style S fill:#607D8B,color:#fff
@@ -161,9 +206,104 @@ El `PanelEntrada` es, además, el sitio donde se ven los **casos diferenciados**
 
 Y la validación local ocurre **antes** de tocar la red, con la MISMA `ChatConfig` que usa el servidor: lo único que solo puede decidirlo el servidor es el nombre duplicado en el canal.
 
-## 3.5. La capa reactiva en la web
+## 3.6. La store central y la capa reactiva
 
-La `ChatStore` es el **puerto** de la `ClienteChat` de la terminal: mismo contrato con el hub, mismos estados y mismas traducciones de error (`MensajesError`, nunca "HttpRequestException" en pantalla). Mantiene el estado en `BehaviorSubject<T>` y lo expone como `IObservable<T>`:
+Varios componentes necesitan **los mismos datos**: la barra pinta el nick y el canal, las píldoras el canal actual, la lista de mensajes los mensajes, la lista de usuarios los conectados… ¿De dónde salen? Antes de contestar, conviene repasar cómo se comunican los componentes de Blazor entre sí, porque la store es la respuesta a las limitaciones de ese repaso.
+
+### Cómo se comunican los componentes: propiedades y eventos
+
+Blazor tiene DOS direcciones fijas de comunicación entre componentes, y siempre del mismo árbol:
+
+1. **Propiedades hacia abajo (padre → hijo)**: el padre le "enchufa" datos al hijo declarando una propiedad con `[Parameter]`. El hijo no busca los datos: se los pasan.
+
+   ```razor
+   @* El padre pinta al hijo y le pasa el dato *@
+   <MensajeItem Mensaje="mensaje" />
+   ```
+
+   ```csharp
+   @* El hijo declara la propiedad de entrada *@
+   [Parameter] public MensajeDto Mensaje { get; set; } = default!;
+   ```
+
+   En este proyecto así trabajan `Avatar` (`Usuario`, `Tamano`) y `MensajeItem` (`Mensaje`): componentes **hoja** que solo pintan lo que reciben.
+
+2. **Eventos hacia arriba (hijo → padre)**: cuando el hijo necesita DECIRLE algo al padre («el usuario ha pulsado», «el formulario se ha enviado»), expone una propiedad `[Parameter]` de tipo `EventCallback` y la dispara con `InvokeAsync`. El padre enlaza su propio método:
+
+   ```csharp
+   @* El hijo declara el evento y lo dispara cuando toca *@
+   [Parameter] public EventCallback<string> Enviado { get; set; }
+
+   private async Task AlPulsar() => await Enviado.InvokeAsync(texto);
+   ```
+
+   ```razor
+   @* El padre se suscribe al evento del hijo *@
+   <Hijo Enviado="OnEnviado" />
+   ```
+
+Resumen visual de las dos direcciones — un único árbol, dos flechas opuestas:
+
+```mermaid
+flowchart TD
+    P0["Padre<br/>(p. ej. Chat.razor)"]
+    H0["Hijo<br/>(p. ej. MensajeItem)"]
+
+    P0 -->|"Propiedades hacia abajo (padre → hijo)<br/>[Parameter] Mensaje = dato de entrada"| H0
+    H0 -->|"Eventos hacia arriba (hijo → padre)<br/>EventCallback Enviado = aviso"| P0
+
+    style P0 fill:#2196F3,color:#fff
+    style H0 fill:#FF9800,color:#fff
+```
+
+Este modelo **propiedades abajo, eventos arriba** es perfecto para árboles pequeños y para componentes decorativos. Su límite aparece en cuanto el dato es de INTERÉS GENERAL: si la lista de mensajes quiere saber el canal actual, y la barra también, y las píldoras también, el dato tendría que bajar de `Chat.razor` a cada uno — y cada pulsación subir por eventos hasta la página para que sea ella quien decida. En React y Vue le llaman *prop drilling* (taladro de propiedades): el dato perfora niveles que no lo usan, y la página se convierte en el centralita de todos los eventos.
+
+> 📝 **Nota:** fíjate en un detalle revelador de este cliente: hay `[Parameter]` en dos componentes hoja, pero **ni un solo `EventCallback`** en todo el proyecto. No es un descuido: la comunicación "hacia arriba" la absorbe la store. Ese es precisamente el salto de la siguiente subsección.
+
+### ¿Qué es una store central?
+
+Una store es un objeto C# corriente (registrado en DI como **singleton**) que cumple tres reglas:
+
+1. **Es la única fuente de verdad** (*single source of truth*) del estado: los mensajes, los conectados, el canal, el nick, el estado de la conexión y la sesión activa viven EN ESE OBJETO y en ningún otro sitio.
+2. **Solo se lee**: los componentes reciben el estado; **nunca lo modifican**. La lectura puede ser reactiva (`IObservable<T>`) o síncrona (el valor actual), según lo que convenga.
+3. **Solo se escribe mediante acciones** (sus métodos): `EnviarAsync`, `CambiarCanalAsync`, `CerrarAsync`… El componente que quiere cambiar algo **pide** a la store que lo haga; no toca nada directamente.
+
+El dato viaja en **una sola dirección** — el patrón *unidirectional data flow*:
+
+```mermaid
+flowchart LR
+    C1["CajaMensaje"]
+    C2["ListaMensajes"]
+    C3["BarraConexion"]
+    S["ChatStore<br/>única fuente de verdad"]
+    H["ChatHub<br/>(servidor)"]
+
+    C1 -->|"1 · acción: EnviarAsync"| S
+    S -->|"2 · invoca al hub"| H
+    H -->|"3 · evento: MensajeNuevo"| S
+    S -->|"4 · OnNext"| C2
+    S -->|"4 · OnNext"| C3
+
+    style S fill:#9C27B0,color:#fff
+    style H fill:#4CAF50,color:#fff
+    style C1 fill:#2196F3,color:#fff
+    style C2 fill:#2196F3,color:#fff
+    style C3 fill:#2196F3,color:#fff
+```
+
+Un cambio es, siempre, el mismo viaje: **acción → store → hub → evento de vuelta → store → todos los que escuchan**. Nadie salta del medio.
+
+### Propiedades y eventos: el contrato de la store
+
+La `ChatStore` es el **puerto** de la `ClienteChat` de la terminal: mismo contrato con el hub, mismos estados y mismas traducciones de error (`MensajesError`, nunca "HttpRequestException" en pantalla). Su cara pública se agrupa en tres familias:
+
+| Familia | En C# | Ejemplos | Para qué |
+|---------|-------|----------|----------|
+| **Lectura reactiva** (los "eventos") | propiedades `IObservable<T>` | `Mensajes`, `Usuarios`, `Estadisticas`, `Estado`, `Nick`, `CanalActual`, `EnSesion` | Suscribirse: el componente se entera de **cada** cambio |
+| **Lectura síncrona** (los "valores actuales") | propiedades con el valor presente | `Canal`, `EstadoValor`, `VistaUsuarios`, `EstadisticasActuales` | Leer de un vistazo sin suscribirse (`.Value` del sujeto) |
+| **Acciones** (los "métodos") | `async Task` o `void` | `ConectarAsync`, `EnviarAsync`, `CambiarCanalAsync`, `CambiarNickAsync`, `ObtenerUsuariosAsync`, `ReconectarAsync`, `CerrarAsync`, `Aviso`, `LimpiarVista` | Pedir un cambio; la store lo hace y lo difunde |
+
+Los observables exponen estos flujos:
 
 | Observable | Tipo | De dónde viene |
 |------------|------|----------------|
@@ -174,21 +314,125 @@ La `ChatStore` es el **puerto** de la `ClienteChat` de la terminal: mismo contra
 | `Estado` | `IObservable<EstadoConexion>` | Ciclo de vida de la conexión |
 | `EnSesion` | `IObservable<bool>` | Qué mitad de la página pinta |
 
-Cada componente se suscribe **solo a lo que pinta**: la barra a cinco flujos (una `CompositeDisposable` con las cinco suscripciones), las píldoras a canal + estadísticas, la lista de mensajes al flujo de mensajes. Y para donde no conviene suscribirse, la store ofrece lecturas síncronas del valor actual (`Canal`, `EstadoValor`, `VistaUsuarios`, `EstadisticasActuales`), que son simplemente `.Value` del sujeto.
+Dos convenciones del contrato, heredadas del hub:
+
+- Las acciones de conexión devuelven `string?`: **`null` = OK, texto = error**. El componente no mira excepciones, mira si hay texto.
+- Los nombres de evento no se escriben "a pelo": vienen de las constantes `ChatHubEventos`/`ChatHubMetodos` de `Shared` — la misma fuente que usa el servidor.
+
+### Por qué nadie se pasa datos: adiós a los "saltos"
+
+Sin store, la forma natural de Blazor es enredar los datos por el árbol de componentes — el dato **baja** por parámetros y los cambios **suben** por eventos, pasando por componentes que no los usan:
+
+```mermaid
+flowchart TD
+    P1["Chat.razor<br/>dueño de todo el estado"]
+    LM1["ListaMensajes"]
+    BC1["BarraConexion"]
+    CM1["CajaMensaje"]
+    LC1["ListaCanales"]
+
+    P1 -->|"param: mensajes"| LM1
+    P1 -->|"param: nick, canal, estado"| BC1
+    CM1 -->|"evento: quiero enviar"| P1
+    LC1 -->|"evento: cambiar de canal"| P1
+
+    style P1 fill:#f44336,color:#fff
+```
+
+Con store, cada componente habla directamente con ella y **no le importa dónde está colgado en el árbol**:
+
+```mermaid
+flowchart TD
+    P2["Chat.razor<br/>solo elige QUÉ mitad pinta"]
+    ST["ChatStore"]
+    CM2["CajaMensaje"]
+    LM2["ListaMensajes"]
+    BC2["BarraConexion"]
+    LC2["ListaCanales"]
+
+    P2 -.-> ST
+    CM2 -->|"acción"| ST
+    LM2 -->|"acción"| ST
+    BC2 -->|"acción"| ST
+    LC2 -->|"acción"| ST
+    ST -.->|"observables"| CM2
+    ST -.-> LM2
+    ST -.-> BC2
+    ST -.-> LC2
+
+    style P2 fill:#4CAF50,color:#fff
+    style ST fill:#9C27B0,color:#fff
+```
+
+¿Qué se gana con la estrella?
+
+- **Reutilización**: `ListaMensajes` sirve en cualquier página; no pide parámetros a su padre, se suscribe a `Store.Mensajes`.
+- **Pruebas**: un componente se prueba solo, contra una `StoreFalsa` — no hace falta montar la página entera.
+- **Añadir componentes**: un nuevo panel (p. ej. estadísticas) se suscribe y listo; no hay que tocar la página ni tender cables.
+- **Menos bugs de desincronización**: si dos componentes muestran el nick, muestran el MISMO nick, porque leen de la misma fuente.
+
+> 💡 **Consejo:** el único sitio donde SÍ se "pasan datos" es `Chat.razor`, y solo para decidir qué mitad pintar según `EnSesion` — que no es compartir estado, es consultar la puerta de entrada.
+
+### La vida de una suscripción
+
+`BehaviorSubject` es la clave de que no haya huecos: al suscribirte recibes **el valor actual en el mismo acto** y después, cada cambio. Si los flujos fueran `Subject` corrientes, habría una carrera entre "leo el valor inicial" y "me suscribo"; con `BehaviorSubject` no existe:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Componente (BarraConexion)
+    participant S as ChatStore
+    participant H as ChatHub
+
+    C->>S: Store.Estado.Subscribe(...)
+    S-->>C: valor ACTUAL: Conectado
+    Note over C: pinta ● verde
+    H-->>S: Closed (se cayó la red)
+    S->>S: _estado.OnNext(Desconectado)
+    S-->>C: Desconectado
+    Note over C: pinta ● rojo + botón Reconectar
+    C->>C: Dispose() → suscripción liberada
+    Note over S: el sujeto sigue vivo, ya nadie escucha
+```
+
+Cada componente se suscribe **solo a lo que pinta**: la barra a cinco flujos (una `CompositeDisposable` con las cinco suscripciones), las píldoras a canal + estadísticas, la lista de mensajes al flujo de mensajes. Y para donde no conviene suscribirse, la store ofrece lecturas síncronas del valor actual, que son simplemente `.Value` del sujeto.
 
 La idea clave, la misma que en la terminal: **el componente no procesa eventos, solo pinta el estado**. Evento de SignalR → la store actualiza su sujeto → el componente se repinta. Sin colas ni estados intermedios.
+
+### ¿Qué aporta frente a otras alternativas?
+
+El patrón no es nuevo: se usa en muchos frameworks con distintos nombres. La store de AulaChatNet bebe directamente de **Pinia** (la librería de stores de Vue), que a su vez recoge la idea de Redux:
+
+| Alternativa | Cómo es | Qué le falta respecto a la store reactiva |
+|-------------|---------|-------------------------------------------|
+| **Objeto singleton "a pelo"** (servicio con campos públicos) | DI lo entrega igual, pero sus campos son imperativos: leer está bien, ENTERARSE de que cambió no | No hay notificación: habría que consultar a mano o montar eventos caseros; y los "eventos caseros" son la siguiente fila |
+| **Eventos C# del singleton** (`event Action<...>`) | El servicio dispara `MensajesCambiaron += ...` | Suscripción manual y fácil de olvidar (fugas), sin "valor actual al suscribirte", sin composición y sin lenguaje común entre tipos distintos |
+| **Redux** (React) | Store única + acciones + *reducers* + inmutabilidad, con depurador de acciones | Muy didáctico, mucha ceremonia (tipos de acción, reducers); el patrón de flujo es el mismo que aquí |
+| **Pinia** (Vue) | Stores con *state*, *getters* y *actions*; el motor de reactividad de Vue repinta | El diseño ES este: la única diferencia es el motor — Vue repinta solo; aquí el motor es Rx.NET y hay que pedir `StateHasChanged` |
+| **Store reactiva de AulaChatNet** | Estado privado en `BehaviorSubject`, lectura `IObservable` + valores actuales, acciones `async` | — |
+
+¿Y qué aporta **Rx.NET** encima del patrón Pinia/Redux? Precisamente la potencia de los flujos, sobre todo al escuchar:
+
+- **Valor actual al suscribirte** (`BehaviorSubject`): cero carreras entre "leo" y "me suscribo".
+- **Un solo lenguaje para todo el estado**: leer el estado de la conexión es el MISMO código que leer los mensajes — `Subscribe`. El componente aprende un patrón y lo aplica siete veces.
+- **Composición sin tocar la store**: con operadores Rx, cada consumidor deriva SU vista — `Store.Mensajes.Where(m => m.Tipo == TipoMensaje.Sistema)`, un `Select` para contar, un `DistinctUntilChanged`… — y la store sigue intacta, sin métodos de más para cada necesidad.
+- **Desacople total**: la store no sabe quién escucha (no tiene lista de suscriptores propia: la lleva Rx). Añadir o quitar un componente no la toca.
+- **Despido ordenado**: `Subscribe` devuelve `IDisposable`; el componente se desuscribe en su `Dispose` y ya no hay pintados fantasma ni fugas.
+
+> 📝 **Nota:** en Vue o React, el motor de reactividad repinta **solo**; en Blazor hay que pedirlo con `InvokeAsync(StateHasChanged)` dentro del `Subscribe`. Es el único peaje del patrón en esta plataforma, y es de una línea.
+
+📌 **Ejemplo real:** Pinia de Vue es la inspiración declarada del diseño de estas stores — el autor del proyecto la copió de ahí a propósito. Redux, el abuelo de todo esto, añade además un depurador que registra cada acción: la misma idea de "un solo camino de escritura" llevada al extremo.
 
 Detalles de implementación que valen la pena:
 
 - **Sin bloqueos**: los eventos de SignalR de una conexión llegan serializados (una invocación detrás de otra), así que los `OnNext` son secuenciales.
-- **Los nombres de evento no se escriben "a pelo"**: vienen de las constantes `ChatHubEventos`/`ChatHubMetodos` de `Shared` — la misma fuente que usa el servidor.
 - **La store es singleton a propósito**: la conexión a SignalR es UNA por pestaña; si fuera transitoria, cada componente tendría su propia conexión (y su propio alta).
 - **Reconexión**: `WithAutomaticReconnect` reintenta a los 0, 2, 10 y 30 segundos; el transporte vuelve solo, pero **el ALTA no** — el servidor ya te dio de baja y la conexión nueva tiene otro `ConnectionId`. Por eso `Reconnected` dispara `ReenviarAltaAsync()`, que vuelve a invocar `ConnectAsync` con el nick y canal recordados. Sin ese paso, quedarías de escayola: la barra diría "conectado" pero nadie te vería.
 - **`Aviso(texto)` fabrica mensajes de sistema** con el mismo formato que los del servidor (`TipoMensaje.Sistema`, autor del sistema): la web no distingue si un aviso vino del hub o de casa.
 
-📌 **Ejemplo real:** es el patrón de `NotificationStore` que usan muchas apps React con estado global — y el mismo que ya usaba la terminal, cambiadamente: en lugar de repintar con un bucle cada 50 ms, quien repinta es Blazor cuando le piden `StateHasChanged`.
+📌 **Ejemplo real:** la tienda de notificaciones de muchas apps React sigue el mismo patrón, y en la terminal de este propio proyecto la `ClienteChat` ya lo usaba — solo cambia el motor de repintado: allí un bucle cada 50 ms pintaba el estado actual; aquí quien repinta es Blazor cuando le piden `StateHasChanged`.
 
-## 3.6. Los comandos / también en la web
+## 3.7. Los comandos / también en la web
 
 Los 9 comandos de la terminal (`/ayuda`, `/canales`, `/canal`, `/nick`, `/usuarios`, `/reconectar`, `/sesion`, `/limpiar`, `/salir`) **también existen en la web**, y la parte bonita es que el parser **no se ha escrito dos veces**:
 
@@ -261,7 +505,7 @@ Sesión guardada: Ana → #general
 
 > 💡 **Consejo:** añadir un comando nuevo es **tocar cuatro sitios y solo cuatro**: su `record` y su caso en el parser (Shared), su fila en el catálogo `AyudaComandos` (Shared), su caso en `ProcesarLinea` (terminal) y su caso en `ProcesadorComandos` (web). Las dos ayudas salen del catálogo, así que **nunca divergen**.
 
-## 3.7. Un bug real: el Closed fantasma
+## 3.8. Un bug real: el Closed fantasma
 
 Al probar la web en el navegador con dos pestañas (mismo nick "Ambas dicen llamarse Ana"), el servidor rechazó correctamente el segundo alta — pero **en la consola del navegador aparecía un warning fantasma**: `Conexión perdida de forma inesperada…`, justo después del aviso legítimo del rechazo. El servidor estaba en lo cierto, el cliente mentía.
 
@@ -280,9 +524,6 @@ sequenceDiagram
     Note over C: _cierreIntencionado = false (¡prematuramente!)
     S-->>C: Closed (tardío, asíncrono)
     Note over C: flag en false → WARNING FANTASMA 😱
-
-    style C fill:#2196F3,color:#fff
-    style S fill:#4CAF50,color:#fff
 ```
 
 El arreglo es **no resetear el flag al cerrar**: solo se "despierta" al empezar la siguiente conexión (`ConectarAsync`/`ReconectarAsync`), que es el único momento en que un `Closed` viejo ya no puede confundirse con nada. El mismo patrón se aplicó a la `ClienteChat` de la terminal (idéntico problema, idéntico arreglo).
@@ -291,7 +532,7 @@ El arreglo es **no resetear el flag al cerrar**: solo se "despierta" al empezar 
 
 Verificado de punta a punta en navegador: rechazo de nick duplicado → solo el warning legítimo del hub, **cero** avisos fantasma; `/salir` y reconexión, igual.
 
-## 3.8. La sesión en el navegador
+## 3.9. La sesión en el navegador
 
 La terminal guardaba la sesión en un fichero del perfil; aquí no hay disco, pero sí **`localStorage`** — el armario del navegador, que sobrevive a recargas y apagones. `SesionStore` decide la política (qué recordamos y qué pasa si el navegador no deja escribir) y el trabajo sucio con JS y JSON vive en `ILocalStorageService` (calco del servicio de la Tienda).
 
@@ -301,7 +542,7 @@ La terminal guardaba la sesión en un fichero del perfil; aquí no hay disco, pe
 
 `/sesion` relee del navegador y te enseña lo guardado; `/sesion borrar` lo borra — en aulas compartidas, la forma de no heredar el nick del compañero de la turno anterior. El enlace "¿No eres tú? Borrar sesión" del panel de entrada hace exactamente lo mismo a un clic.
 
-## 3.9. Desarrollo: dotnet watch y el manifiesto de assets
+## 3.10. Desarrollo: dotnet watch y el manifiesto de assets
 
 Blazor WASM emite un **manifiesto de assets** (`blazor.boot.json`) con los hashes de todos los ficheros del cliente. Detrás de la última pantalla en blanco que costó un susto: **ese manifiesto se lee al arrancar el servidor**, no petición a petición. Si editas el cliente y solo haces F5, el navegador recibe un manifiesto viejo que apunta a nombres de archivo que ya no existen → 404 → página en blanco, **sin ningún error en el servidor**.
 
@@ -312,7 +553,7 @@ La solución, en dos mitades (guía oficial de Blazor alojado):
 
 > 💡 **Consejo:** el middleware solo se activa en Development. En producción el manifiesto cambia con cada despliegue, que es cuando la caché larga SÍ es tu amiga.
 
-## 3.10. Cómo se prueba
+## 3.11. Cómo se prueba
 
 La web tiene **93 tests** (bUnit + NUnit + FluentAssertions + Moq), con el mismo doble enfoque que el resto del proyecto:
 
@@ -335,15 +576,16 @@ El truco de los tests de componentes es la **`StoreFalsa`**: en lugar de una con
 
 Y más allá de los tests unitarios, la verificación de esta fase se hizo en **navegador de verdad** contra el servidor real: los 9 comandos tecleados en la caja (incluido `/limpiar` con sus 6 mensajes borrados y `/salir` volviendo al panel), la carrera del nick duplicado con dos pestañas, y las cabeceras `no-cache` comprobadas con las herramientas de desarrollo. La misma filosofía que en la terminal: **probar la app como la usaría el alumno**.
 
-## 3.11. Resumen del punto
+## 3.12. Resumen del punto
 
 | Concepto | Qué retener |
 |----------|-------------|
+| Plataforma | Blazor WebAssembly: el runtime de .NET corre como WebAssembly dentro del navegador — un solo lenguaje en cliente y servidor |
 | Alojamiento | El servidor del `5030` sirve el WASM; por defecto, mismo origen (sin CORS ni URLs escritas) |
 | Configuración | `wwwroot/appsettings.json`; en WASM todo lo leído es PÚBLICO — solo presentación, nunca secretos |
 | Página única | `Chat.razor` pinta panel o canal según `EnSesion`; la store central manda |
 | Componentes | Se suscriben en `OnInitialized`, se desuscriben en `Dispose`, y repintan con `InvokeAsync(StateHasChanged)` |
-| Store | Puerto de la `ClienteChat` de la terminal: mismos eventos, `BehaviorSubject`, singletons (una conexión por pestaña) |
+| Store | Única fuente de verdad (patrón Pinia/Redux): estado en `BehaviorSubject`, lectura reactiva + valores actuales, escritura SOLO por acciones; singleton (una conexión por pestaña) |
 | Reconexión | El transporte vuelve solo; el ALTA se reenvía con `ReenviarAltaAsync` — sin eso, "conectado de escayola" |
 | Comandos | Mismo parser (`Shared`) y mismo catálogo (`AyudaComandos`); ejecución en `ProcesadorComandos`; feedback por el flujo de mensajes |
 | Errores | De campo → junto al campo; de conexión → al flujo de mensajes; nunca tipos de excepción en pantalla |
