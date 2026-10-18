@@ -170,6 +170,25 @@ try
                 : string.Empty);
     }
 
+    // Precarga del historial (Fase 2): se traen los últimos mensajes de cada
+    // canal de la BD a la caché en memoria, ANTES de aceptar conexiones, para
+    // que el primer cliente que entre ya vea el historial. Se usa el ChatStore
+    // concreto (no la interfaz) porque PrecargarAsync es un detalle de
+    // implementación de la persistencia, no del contrato del hub.
+    // Si algo falla (p. ej. esquema sin migrar), se avisa y se arranca con la
+    // caché vacía: una precarga no debe tumbar el servidor.
+    try
+    {
+        var store = app.Services.GetRequiredService<ChatStore>();
+        var precargados = await store.PrecargarAsync(opcionesPersistencia.PreloadMensajes);
+        Log.Information("📚 Historial precargado: {N} mensajes desde la base de datos", precargados);
+    }
+    catch (Exception ex)
+    {
+        Log.Warning(ex,
+            "No se pudo precargar el historial (¿esquema sin migrar?); se arranca con la caché vacía");
+    }
+
     app.Run();
 }
 catch (Exception ex)

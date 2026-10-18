@@ -25,8 +25,11 @@ public static class ServicesConfig
         services.Configure<ChatConfig>(configuration.GetSection(ChatConfig.Seccion));
 
         // Singleton: el estado del canal (usuarios e historial) es de TODA
-        // la aplicación; todos los hubs comparten la misma instancia
-        services.AddSingleton<IChatStore, ChatStore>();
+        // la aplicación; todos los hubs comparten la misma instancia.
+        // Se registra el tipo CONCRETO (para que el servicio de persistencia
+        // pueda inyectarlo) y la interfaz apunta a la MISMA instancia.
+        services.AddSingleton<ChatStore>();
+        services.AddSingleton<IChatStore>(sp => sp.GetRequiredService<ChatStore>());
 
         return services;
     }

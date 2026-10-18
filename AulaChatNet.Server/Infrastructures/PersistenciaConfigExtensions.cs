@@ -57,6 +57,12 @@ public static class PersistenciaConfigExtensions
         // desecha su contexto desde la fábrica.
         services.AddSingleton<IMensajesRepository, MensajeRepository>();
 
+        // Servicio en segundo plano que vacía la cola de escritura del ChatStore
+        // y persiste los mensajes. Dependencia implícita: necesita que
+        // AddChatServices haya registrado el ChatStore (se llama en Program.cs
+        // antes de construir, así que es seguro).
+        services.AddHostedService<PersistenciaMensajesService>();
+
         return services;
     }
 }
