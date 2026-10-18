@@ -18,6 +18,15 @@
     <!-- Alojamiento del cliente Blazor WASM: UseBlazorFrameworkFiles sirve
          el runtime _framework (wasm, dll, brotli) que genera el proyecto cliente -->
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" />
+
+    <!-- ════════ Persistencia (Fase 2) ════════ -->
+    <!-- EF Core + SQLite: la base de datos vive en UN fichero embebido, sin servidor -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
+
+    <!-- Solo para dotnet ef (migraciones); PrivateAssets evita que viaje al alumno
+         en un publish — lo necesita el que DISEÑA el esquema, no quien ejecuta la app -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" />
   </ItemGroup>
 
   <ItemGroup>

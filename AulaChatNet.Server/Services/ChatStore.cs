@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
+using System.Threading.Channels;
 using AulaChatNet.Server.Models;
+using AulaChatNet.Server.Persistencia;
 using AulaChatNet.Shared.Configuracion;
 using AulaChatNet.Shared.Dtos;
 using Microsoft.Extensions.Options;
@@ -7,29 +9,53 @@ using Microsoft.Extensions.Options;
 namespace AulaChatNet.Server.Services;
 
 /// <summary>
-/// Implementación en memoria del estado de los canales (Fase 1). Sin base de
-/// datos: todo vive en colecciones concurrentes que mueren al parar el servidor.
+/// Estado de los canales (Fase 1 y 2): usuarios conectados e historial, separados
+/// POR CANAL.
 ///
 /// <remarks>
+/// <para>
+/// La PRESENCIA y la UNICIDAD de nombres viven SOLO en memoria (colecciones
+/// concurrentes que mueren al parar el servidor): son datos efímeros, anclados a
+/// una conexión viva. El HISTORIAL, en cambio, además de cachearse en memoria se
+/// PERSISTE en la base de datos (Fase 2), de modo que sobrevive a un reinicio.
+/// Esa separación es deliberada: se separa por LONGEVIDAD, no por entidad.
+/// </para>
+/// <para>
 /// Estructuras internas y por qué así:
+/// </para>
 /// <list type="bullet">
 /// <item><c>_conexiones</c> (connectionId → canal + usuario): la ÚNICA fuente
 /// de verdad de "quién está conectado y dónde"; responde en O(1).</item>
 /// <item><c>_canales</c> (canal → <see cref="EstadoCanal"/>): unicidad de
 /// nombres e historial SEPARADOS por canal; su <c>TryAdd</c> de nombres da
 /// la unicidad de forma atómica, sin bloqueos.</item>
+/// <item><c>_colaEscritura</c>: cola por la que se encolan los mensajes para
+/// guardarlos en segundo plano, SIN bloquear el chat (Fase 2).</item>
 /// </list>
+/// <para>
 /// Un mismo <see cref="UsuarioConectado"/> se reutiliza al cambiar de canal,
 /// conservando así la hora de entrada de la sesión.
+/// </para>
 /// </remarks>
 /// </summary>
-public class ChatStore(IOptions<ChatConfig> opciones) : IChatStore
+public class ChatStore(IOptions<ChatConfig> opciones, IMensajesRepository? repository = null) : IChatStore
 {
     private const string ErrorConexionYaRegistrada = "Esta conexión ya está registrada en el canal";
     private const string ErrorSinRegistro = "No estás registrado en el canal, vuelve a conectarte";
 
     private readonly ConcurrentDictionary<string, EstadoCanal> _canales = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, Conexion> _conexiones = new();
+
+    // Repositorio opcional (Fase 2). Si es null (modo Fase 1, p. ej. en los
+    // tests), el store se comporta EXACTAMENTE como antes: solo memoria.
+    private readonly IMensajesRepository? _repository = repository;
+
+    // Cola de escritura en segundo plano: AddMensaje encola aquí y el servicio
+    // de persistencia la vacía contra la base de datos SIN bloquear el chat.
+    // Sin límite (unbounded) a propósito: en un aula el volumen es bajo y no se
+    // debe perder ni un mensaje por un atasco de disco.
+    private readonly Channel<(string Canal, MensajeDto Mensaje)> _colaEscritura =
+        Channel.CreateUnbounded<(string Canal, MensajeDto Mensaje)>();
 
     // Las opciones son singleton: leerlas en cada operación refleja cambios
     // de configuración sin recrear el store.
@@ -159,11 +185,80 @@ public class ChatStore(IOptions<ChatConfig> opciones) : IChatStore
         while (estado.Historial.Count > Config.HistorialMaximo && estado.Historial.TryDequeue(out _))
         {
         }
+
+        // Persistencia (Fase 2): si hay repositorio, se encola para guardarla
+        // en segundo plano. NO se escribe aquí: AddMensaje es síncrono y no
+        // debe bloquear esperando disco. El filtro "solo mensajes normales" lo
+        // aplica el repositorio (única puerta a la BD). Sin repositorio no se
+        // encola nada y la caché se comporta como siempre (modo Fase 1).
+        if (_repository is not null)
+            _colaEscritura.Writer.TryWrite((canal, mensaje));
     }
 
     /// <inheritdoc />
     public IReadOnlyList<MensajeDto> GetHistorial(string canal) =>
         _canales.TryGetValue(canal, out var estado) ? estado.Historial.ToArray() : [];
+
+    /// <summary>
+    /// Lector de la cola de escritura en segundo plano (Fase 2). Lo consume el
+    /// <c>PersistenciaMensajesService</c> para pasar los mensajes a la base de
+    /// datos; también sirve para inspeccionar la cola en los tests.
+    /// </summary>
+    /// <remarks>
+    /// Se expone el lector, no el escritor: el único que encola es el propio
+    /// store (en <see cref="AddMensaje"/>), y el que vacía es el servicio de
+    /// persistencia. Así queda claro quién hace qué.
+    /// </remarks>
+    public ChannelReader<(string Canal, MensajeDto Mensaje)> ColaEscritura => _colaEscritura.Reader;
+
+    /// <summary>
+    /// Carga desde la base de datos los últimos mensajes de cada canal configurado
+    /// y los deja en la caché en memoria, para que el primer cliente que entre ya
+    /// vea el historial (Fase 2).
+    /// </summary>
+    /// <param name="limite">Mensajes por canal a traer del disco
+    /// (<c>Persistencia:PreloadMensajes</c>); se limita además al tamaño de caché.</param>
+    /// <param name="cancelacion">Token para cancelar la operación.</param>
+    /// <returns>Total de mensajes precargados en todos los canales.</returns>
+    /// <remarks>
+    /// No hace nada si no hay repositorio (modo Fase 1). Los mensajes se meten
+    /// DIRECTAMENTE en la caché, sin pasar por la cola de escritura: ya están en
+    /// la base de datos, no hay que volver a guardarlos.
+    /// </remarks>
+    public async Task<int> PrecargarAsync(int limite, CancellationToken cancelacion = default)
+    {
+        if (_repository is null)
+            return 0;
+
+        // No tiene sentido traer más mensajes de los que la caché retiene
+        var tope = Math.Min(limite, Config.HistorialMaximo);
+        if (tope <= 0)
+            return 0;
+
+        var total = 0;
+
+        foreach (var canal in Config.Canales)
+        {
+            var mensajes = await _repository.GetUltimosAsync(canal, tope, cancelacion);
+            if (mensajes.Count == 0)
+                continue;
+
+            var estado = _canales.GetOrAdd(canal, _ => new EstadoCanal());
+
+            foreach (var mensaje in mensajes)
+                estado.Historial.Enqueue(mensaje);
+
+            // Misma poda que AddMensaje, por si acaso (debería ser innecesario
+            // porque tope ya limita lo pedido)
+            while (estado.Historial.Count > Config.HistorialMaximo && estado.Historial.TryDequeue(out _))
+            {
+            }
+
+            total += mensajes.Count;
+        }
+
+        return total;
+    }
 
     /// <inheritdoc />
     public IReadOnlyList<UsuarioConectadoDto> GetUsuarios(string canal) =>

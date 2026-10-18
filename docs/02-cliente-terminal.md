@@ -116,7 +116,7 @@ Vale la pena detenerse en tres decisiones de diseño:
    - **El servidor respondió y rechazó el alta** (p. ej. dos terminales con el mismo nick) → se vuelve a preguntar **solo el nick**, sin reiniciar el programa, y se dice dónde.
    - **El servidor ni se alcanza** (apagado, otra URL) → el nick **no tiene la culpa**: no se vuelve a preguntar nada, se conservan nick y canal y se ofrece **reintentar con Enter** (o salir si se cierra la entrada).
 
-   Y una regla de higiene de la interfaz: los fallos se traducen a **palabras de usuario** (`MensajesError`), nunca a tipos de excepción — "HttpRequestException" no le dice nada a quien solo quiere entrar al aula; el detalle técnico se queda fuera de la pantalla (y, cuando haya logging en Fase 2, en el log).
+   Y una regla de higiene de la interfaz: los fallos se traducen a **palabras de usuario** (`MensajesError`), nunca a tipos de excepción — "HttpRequestException" no le dice nada a quien solo quiere entrar al aula; el detalle técnico se queda fuera de la pantalla (y, en el log del fichero, gracias a Serilog).
 
 Y este es el viaje completo por dentro — desde que se abre la conexión hasta que te vas:
 
@@ -372,5 +372,7 @@ Además, el **smoke E2E** arranca el servidor real y el terminal con `stdin`/`st
 | Modos de entrada | Consola real → Live + `ReadKey`; tubería → `ReadLine` + pintado incremental (pruebas y capturas) |
 | Rx | Stores con `BehaviorSubject`; el bucle **solo pinta el estado actual** cada 50 ms |
 | Configuración | `Terminal:UrlServidor` + sección `Chat` compartida; la validación real, en el servidor |
+
+> 📝 **Nota (evolución de la Fase 2):** el terminal **no se tocó** para la persistencia, y esa es precisamente la conclusión que conviene retener. Sigue recibiendo `MensajeNuevo` y pidiendo el historial exactamente igual que en la Fase 1; lo único que cambió es que el historial que llega al conectar procede ahora de SQLite en lugar de morirse con el servidor. El contrato compartido resistió completo. La parte que sí cambió vive en el servidor: [4. La persistencia con SQLite](04-persistencia.md).
 
 Con el terminal listo, el siguiente cliente es la web: [Blazor WebAssembly con la estética de Discord y su store central](03-cliente-blazor.md), con la misma capa reactiva sobre el mismo hub.

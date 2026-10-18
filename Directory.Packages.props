@@ -50,6 +50,27 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- ══════════════ Persistencia (Fase 2: SQLite + EF Core) ══════════════ -->
+    <!-- EF Core alineado en 10.0.13 con la línea de ASP.NET Core/SignalR del proyecto
+         (la Tienda usa 10.0.12; aquí se sube al mismo parche 10.0.13 por coherencia) -->
+
+    <!-- Núcleo del ORM: DbContext, DbSets y el proveedor relacional -->
+    <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.13" />
+
+    <!-- Proveedor SQLite: la base de datos embebida en un solo fichero, sin servidor.
+         Trae dos transitivos que conviene conocer: Microsoft.Data.Sqlite.Core (el
+         gestor de conexión) y SQLitePCLRaw.bundle_e_sqlite3 (el MOTOR nativo de SQLite) -->
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.13" />
+
+    <!-- Herramientas de diseño (dotnet ef migrations add...). SOLO desarrollo:
+         PrivateAssets evita que se empaquete junto con el proyecto -->
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.13">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageVersion>
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- ══════════════ Testing (NUnit, estilo Tienda) ══════════════ -->
     <PackageVersion Include="NUnit" Version="4.6.1" />
     <PackageVersion Include="NUnit3TestAdapter" Version="6.3.0" />

@@ -31,4 +31,11 @@
     <ProjectReference Include="..\AulaChatNet.Shared\AulaChatNet.Shared.csproj" />
   </ItemGroup>
 
+  <!--
+    Favicon: wwwroot/favicon.ico (copia del maestro resources/icon-app.ico).
+    No hay que declarar nada: el propio SDK mete todo wwwroot\** como static
+    web asset en tiempo de evaluación, así que se sirve en /favicon.ico y sale
+    en la publicación sin MSBuild a medida.
+  -->
+
 </Project>

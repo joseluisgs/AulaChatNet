@@ -1,8 +1,11 @@
 using System.Text;
 using AulaChatNet.Server.Infrastructures;
+using AulaChatNet.Server.Persistencia;
 using AulaChatNet.Server.Services;
 using AulaChatNet.Shared.Configuracion;
 using AulaChatNet.Shared.Constantes;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Serilog;
 using Serilog.Events;
 
@@ -30,6 +33,11 @@ var configuration = builder.Configuration;
 
 // Opciones tipadas del chat (sección "Chat") + store en memoria (singleton)
 services.AddChatServices(configuration);
+
+// Persistencia (Fase 2): SQLite + EF Core. Registra la fábrica de contextos y
+// el repositorio de mensajes; la carpeta de la base de datos se crea aquí si
+// no existe (SQLite crea el fichero, pero no su carpeta).
+services.AddPersistencia(configuration);
 
 // SignalR (realtime) + CORS (para el cliente Blazor en desarrollo)
 services.AddChatSignalR();
@@ -109,6 +117,78 @@ PrintStartupInfo(configuration);
 
 try
 {
+    // Persistencia al arrancar (Fase 2). Se usa Migrate() y no EnsureCreated():
+    // Migrate() aplica SOLO lo que falta y conserva los datos existentes;
+    // EnsureCreated() recrearía el esquema y borraría el historial guardado.
+    // Se usa un servicio con scope porque el DbContext es de corta vida.
+    var persistencia = app.Services.CreateScope().ServiceProvider
+        .GetRequiredService<IDbContextFactory<AulaChatContexto>>();
+
+    var opcionesPersistencia = app.Services.GetRequiredService<IOptions<PersistenciaConfig>>().Value;
+
+    // Un único contexto desechable para toda la fase de arranque (borrado + migración)
+    await using var contexto = await persistencia.CreateDbContextAsync();
+
+    // Limpieza opcional: si la clave está activa, se BORRA la base de datos
+    // entera antes de migrar, para empezar con el historial vacío. Está pensada
+    // para desarrollo. El porqué es una clave explícita y no una regla por
+    // entorno está explicado en PersistenciaConfig.LimpiarAlArrancar.
+    if (opcionesPersistencia.LimpiarAlArrancar)
+    {
+        var borrada = await contexto.Database.EnsureDeletedAsync();
+        Log.Warning(
+            "🧹 Arranque limpio (LimpiarAlArrancar=true): base de datos {Estado}. El historial empieza vacío.",
+            borrada ? "borrada y recreada" : "no existía, se crea vacía");
+    }
+
+    if (opcionesPersistencia.MigrarAutomaticamente)
+    {
+        var migraciones = await contexto.Database.GetPendingMigrationsAsync();
+
+        if (migraciones.Any())
+        {
+            await contexto.Database.MigrateAsync();
+            Log.Information(
+                "💾 Base de datos migrada en {Ruta} ({Pendientes} migraciones aplicadas)",
+                opcionesPersistencia.Ruta, migraciones.Count());
+        }
+        else
+        {
+            Log.Information("💾 Base de datos al día en {Ruta}", opcionesPersistencia.Ruta);
+        }
+    }
+    else
+    {
+        // Sin migraciones no hay tablas. Si además se pidió limpiar, el borrado
+        // deja la BD sin esquema, así que se avisa alto y claro.
+        Log.Warning(
+            "💾 Migraciones automáticas DESACTIVADAS (MigrarAutomaticamente=false): " +
+            "la base de datos en {Ruta} puede estar desactualizada{Extra}",
+            opcionesPersistencia.Ruta,
+            opcionesPersistencia.LimpiarAlArrancar
+                ? " (Y con LimpiarAlArrancar=true se borró sin recrear el esquema: la app fallará)"
+                : string.Empty);
+    }
+
+    // Precarga del historial (Fase 2): se traen los últimos mensajes de cada
+    // canal de la BD a la caché en memoria, ANTES de aceptar conexiones, para
+    // que el primer cliente que entre ya vea el historial. Se usa el ChatStore
+    // concreto (no la interfaz) porque PrecargarAsync es un detalle de
+    // implementación de la persistencia, no del contrato del hub.
+    // Si algo falla (p. ej. esquema sin migrar), se avisa y se arranca con la
+    // caché vacía: una precarga no debe tumbar el servidor.
+    try
+    {
+        var store = app.Services.GetRequiredService<ChatStore>();
+        var precargados = await store.PrecargarAsync(opcionesPersistencia.PreloadMensajes);
+        Log.Information("📚 Historial precargado: {N} mensajes desde la base de datos", precargados);
+    }
+    catch (Exception ex)
+    {
+        Log.Warning(ex,
+            "No se pudo precargar el historial (¿esquema sin migrar?); se arranca con la caché vacía");
+    }
+
     app.Run();
 }
 catch (Exception ex)

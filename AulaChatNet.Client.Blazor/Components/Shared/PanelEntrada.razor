@@ -20,6 +20,13 @@
 
 <div class="entrada">
     <div class="entrada-tarjeta">
+        @* Icono de la app: vive en wwwroot/resources/, que es lo ÚNICO que el
+           navegador puede pedir — cualquier fichero fuera de wwwroot da 404,
+           por eso aquí hay una copia y no se enlaza resources/ de la raíz. *@
+        <img class="entrada-icono"
+             src="resources/icon-app.png"
+             alt="AulaChatNet"
+             width="76" height="76" />
         <div class="entrada-logo"># AulaChatNet</div>
         <p class="entrada-sub">Chat del aula en tiempo real con SignalR y Rx.NET</p>
 
