@@ -29,6 +29,7 @@
     --dc-verde: #43b581;        /* en línea */
     --dc-naranja: #faa61a;      /* reconectando / avisos */
     --dc-rojo: #f04747;         /* errores / caído */
+    --dc-fucsia: #eb459e;       /* marca de privado (🔒 y "para/de quien") */
     --dc-hora: #72767d;         /* timestamps */
     --dc-hover: rgba(79, 84, 92, 0.3);
     --dc-borde: #202225;
@@ -437,6 +438,7 @@ body {
     padding: 4px 8px;
     margin: 0 -8px;
     border-radius: 4px;
+    position: relative; /* el "+" y el selector de reacciones se posicionan contra la FILA */
 }
 
 .mensaje:hover {
@@ -475,6 +477,127 @@ body {
     color: var(--dc-suave);
     font-style: italic;
     font-size: 13px;
+}
+
+/* Mensaje privado: MISMA fila que un mensaje normal —misma hora, mismo
+   avatar, mismo nombre en su color— con el 🔒 rosa y el "para/de quien".
+   El fondo solo se marca un pelín al pasar el ratón: un privado no debe
+   gritar en medio de la charla, pero sí poder distinguirse a la primera */
+.mensaje.privado:hover {
+    background: rgba(235, 69, 158, 0.08);
+}
+
+.privado-marca {
+    color: var(--dc-fucsia);
+    font-size: 12px;
+    margin-right: 6px;
+    cursor: help; /* su title lleva la nota completa: "no se guarda" */
+}
+
+/* ==========================================================================
+   6b. Reacciones a los mensajes: chips debajo del texto —con el tuyo
+   resaltado— y el "+" que asoma al pasar el ratón por la fila. La lista de
+   emoji es CERRADA (Shared/Helpers/EmojisReaccion): el selector solo pinta
+   los seis que el servidor admite, y pulsar un chip o el "+" es un
+   INTERRUPTOR — lo que tú pusiste, lo quitas.
+   ========================================================================== */
+
+.reacciones {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 4px;
+}
+
+.chip-reaccion {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 7px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: var(--dc-oscuro);
+    color: var(--dc-texto);
+    font-size: 12px;
+    cursor: pointer;
+}
+
+/* El borde al pasar el ratón avisa de que el chip es un interruptor */
+.chip-reaccion:hover {
+    border-color: var(--dc-gris-medio);
+}
+
+/* Tu propio chip, resaltado con el color de la casa (mismo border que Discord) */
+.chip-reaccion.mia {
+    border-color: var(--dc-blurple);
+    background: rgba(88, 101, 242, 0.18);
+}
+
+.chip-emoji {
+    font-size: 14px;
+}
+
+.chip-contador {
+    font-weight: 600;
+}
+
+/* El "+" de la fila: invisible hasta el hover del mensaje —y mientras el
+   selector siga abierto, para poder cruzar el ratón sin perderlo */
+.acciones-fila {
+    position: absolute;
+    top: -12px;
+    right: 8px;
+    display: none;
+}
+
+.mensaje:hover .acciones-fila,
+.acciones-fila.abierta {
+    display: flex;
+}
+
+.boton-reaccion {
+    width: 26px;
+    height: 24px;
+    border: 1px solid var(--dc-gris-medio);
+    border-radius: 6px;
+    background: var(--dc-fondo);
+    color: var(--dc-suave);
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.boton-reaccion:hover {
+    color: var(--dc-texto);
+    border-color: var(--dc-gris);
+}
+
+/* El selector: los seis emoji de la lista cerrada, junto al "+" */
+.selector-reacciones {
+    position: absolute;
+    top: -12px;
+    right: 44px;
+    display: flex;
+    gap: 2px;
+    padding: 4px;
+    background: var(--dc-oscuro);
+    border: 1px solid var(--dc-gris-medio);
+    border-radius: 8px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
+    z-index: 5;
+}
+
+.opcion-reaccion {
+    border: none;
+    background: transparent;
+    border-radius: 6px;
+    padding: 2px 5px;
+    font-size: 18px;
+    cursor: pointer;
+}
+
+.opcion-reaccion:hover {
+    background: var(--dc-hover);
 }
 
 /* ==========================================================================
@@ -537,6 +660,55 @@ body {
     padding: 6px 4px 0;
 }
 
+/* Chip "Privado a X": marca el modo abierto y se puede cerrar con ✕.
+   No es un error, así que va en gris — no en rojo, que ya significa fallo */
+.chip-privado {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    color: var(--dc-suave);
+    font-size: 12px;
+    padding: 2px 4px 6px;
+}
+
+.chip-privado b {
+    color: var(--dc-fucsia);
+    font-weight: 600;
+}
+
+.chip-cerrar {
+    background: transparent;
+    border: 0;
+    color: var(--dc-suave);
+    cursor: pointer;
+    font-size: 12px;
+    padding: 0 4px;
+}
+
+.chip-cerrar:hover {
+    color: var(--dc-texto);
+}
+
+/* Nota de que los privados no se guardan: gris y letra pequeña A PROPÓSITO.
+   Un aviso repetido en cada envío deja de leerse a la segunda vez, así que
+   solo aparece mientras se está preparando uno — nunca en la charla normal */
+.caja-nota {
+    color: var(--dc-suave);
+    font-size: 11px;
+    padding: 6px 4px 0;
+}
+
+/* Línea de "está escribiendo...": encima del input, gris y en cursiva para
+   que se lea como un estado y no como un mensaje. La store la apaga sola a
+   los pocos segundos sin señal renovada, así que no hay nada que cerrar */
+.caja-escribiendo {
+    color: var(--dc-suave);
+    font-size: 12px;
+    font-style: italic;
+    padding: 0 4px 4px;
+}
+
 /* ==========================================================================
    8. Columna de usuarios (conectados del canal actual)
    ========================================================================== */
@@ -570,6 +742,31 @@ body {
 .usuario:hover {
     background: var(--dc-hover);
     color: var(--dc-texto);
+}
+
+/* Clic para escribirle un privado: el cursor cambia y el 🔒 aparece SOLO
+   al pasar el ratón, para no convertir la lista en un muro de candados.
+   EL HUECO ESTÁ EN TODAS LAS FILAS, también en la tuya: el ::after es un
+   elemento de la fila aunque tenga opacidad 0, y si solo se reservara en
+   las clicable, el punto verde de tu propia fila se pintaría más a la
+   derecha y la columna de puntos quedaría escalonada. Con ancho FIJO el
+   emoji no puede cambiar el hueco de una fila a otra */
+.usuario.clicable {
+    cursor: pointer;
+}
+
+.usuario::after {
+    content: "🔒";
+    flex-shrink: 0;
+    width: 14px;
+    text-align: center;
+    font-size: 11px;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
+.usuario.clicable:hover::after {
+    opacity: 0.9;
 }
 
 .usuario-nombre {

@@ -41,6 +41,22 @@ public abstract record Comando
     /// <param name="NombreCanal">Canal a consultar (null = el canal actual).</param>
     public sealed record Usuarios(string? NombreCanal = null) : Comando;
 
+    /// <summary>
+    /// /privado quien texto: mensaje privado a UNA persona de tu canal.
+    /// No se difunde al resto y no se guarda: es efímero.
+    /// </summary>
+    /// <param name="Destinatario">Nombre de quien lo recibe (en tu canal actual).</param>
+    /// <param name="Texto">Contenido del mensaje (mismo límite que un mensaje normal).</param>
+    public sealed record Privado(string Destinatario, string Texto) : Comando;
+
+    /// <summary>
+    /// /reaccion emoji: alterna una reacción sobre el último mensaje del
+    /// canal (en la web, sobre el mensaje elegido con el ratón).
+    /// Pulsar la misma reacción otra vez la quita: es un interruptor.
+    /// </summary>
+    /// <param name="Emoji">Emoji escrito por el usuario; lo valida de la lista cerrada cada cliente y el servidor.</param>
+    public sealed record Reaccion(string Emoji) : Comando;
+
     /// <summary>/reconectar: volver a entrar si la conexión se perdió (la terminal asocia además la tecla R).</summary>
     public sealed record Reconectar : Comando;
 

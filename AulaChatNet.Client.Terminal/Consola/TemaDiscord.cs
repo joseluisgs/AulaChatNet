@@ -44,6 +44,14 @@ public static class TemaDiscord
     public static readonly Color Rojo = Color.FromHex("#f44336");
 
     /// <summary>
+    /// Rosa de acento: marca lo PRIVADO (🔒 y el "para/de quien"). Se elige
+    /// aparte de los demás a propósito: el verde ya significa "en línea" y el
+    /// rojo ya significa "error", así que un privado pintado con esos dos
+    /// colores mentiría sobre lo que el color significa en el resto de la app.
+    /// </summary>
+    public static readonly Color Fucsia = Color.FromHex("#eb459e");
+
+    /// <summary>
     /// Colores vivos legibles sobre fondo oscuro; el nick se pinta con uno
     /// de ellos según su hash. Sin blancos ni negros (se perderían en el fondo).
     /// </summary>

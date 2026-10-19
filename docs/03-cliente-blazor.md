@@ -434,7 +434,7 @@ Detalles de implementación que valen la pena:
 
 ## 3.7. Los comandos / también en la web
 
-Los 9 comandos de la terminal (`/ayuda`, `/canales`, `/canal`, `/nick`, `/usuarios`, `/reconectar`, `/sesion`, `/limpiar`, `/salir`) **también existen en la web**, y la parte bonita es que el parser **no se ha escrito dos veces**:
+Los 11 comandos de la terminal (`/ayuda`, `/canales`, `/canal`, `/nick`, `/usuarios`, `/privado`, `/reaccion`, `/reconectar`, `/sesion`, `/limpiar`, `/salir`) **también existen en la web**, y la parte bonita es que el parser **no se ha escrito dos veces**:
 
 | Pieza | Vive en | Quién la usa |
 |-------|---------|--------------|
@@ -480,6 +480,14 @@ Comandos disponibles:
 /ayuda [comando] — Esta ayuda, o la de un comando concreto
 /canales — Lista los canales disponibles y cuánta gente hay en cada uno
 /canal <nombre> — Cambia de canal (p. ej. /canal daw)
+/nick <nombre> — Cambia tu nombre en caliente (p. ej. /nick Ana2)
+/usuarios [canal] — Conectados de tu canal o de otro (p. ej. /usuarios daw)
+/privado <quien> <texto> — Mensaje privado a alguien de tu canal (efímero, no se guarda)
+/reaccion <emoji> — Pone un emoji en el último mensaje del canal; pulsarlo otra vez lo quita
+/reconectar — Vuelve a entrar si se perdió la conexión
+/sesion [borrar] — Ver la sesión guardada o borrarla (útil en aulas compartidas)
+/limpiar — Limpia la vista local de mensajes (el historial sigue en el servidor)
+/salir — Desconectar y cerrar la sesión
 ```
 
 **`/canales`** (el tuyo con `● actual`) y **`/usuarios`**:
@@ -568,13 +576,13 @@ La web tiene su propia suite (bUnit + NUnit + FluentAssertions + Moq), con el mi
 | `ListaUsuariosTests` / `MensajeItemTests` / `AvatarTests` | Filas de conectados, mensajes (sistema vs normal, hora local) y avatares con respaldo |
 | `ChatTests` | La página cambia de mitad según `EnSesion` |
 | `CajaMensajeTests` | Validación de campo, envío y **despacho de comandos** |
-| `ProcesadorComandosTests` | Los 9 comandos: avisos correctos, validación de canal, `/sesion`, `/salir`… |
+| `ProcesadorComandosTests` | Los comandos: avisos correctos, validación de canal, `/sesion`, `/salir`, y de la Fase 3 el `/privado` y el `/reaccion` (objetivo, validación sin red y traducción de errores) |
 
 El truco de los tests de componentes es la **`StoreFalsa`**: en lugar de una conexión a SignalR real, expone `BehaviorSubject` que el test "menea" para simular lo que llegaría del servidor, y deja verificar las llamadas con Moq. A un componente no le importa de dónde vienen los datos: **le importa cómo los pinta y qué le dice al pulsar**. Los "valores actuales" (`Canal`, `EstadoValor`…) se resuelven en el momento de la llamada contra el sujeto correspondiente, así que "menear" el flujo desde el test se refleja al instante.
 
 > 📝 **Nota:** un detalle de Moq aprendido a golpe: `It.Is<T>(x => x is Tipo)` no compila (CS8122) porque los árboles de expresión no admiten `is`; en su lugar se verifica sobre `_procesador.Invocations[0].Arguments[0]`, que es lo que de verdad se invocó.
 
-Y más allá de los tests unitarios, la verificación de esta fase se hizo en **navegador de verdad** contra el servidor real: los 9 comandos tecleados en la caja (incluido `/limpiar` con sus 6 mensajes borrados y `/salir` volviendo al panel) y la carrera del nick duplicado con dos pestañas. La misma filosofía que en la terminal: **probar la app como la usaría el alumno**.
+Y más allá de los tests unitarios, la verificación de esta fase se hizo en **navegador de verdad** contra el servidor real: los comandos de la época (los 9 de la Fase 1) tecleados en la caja (incluido `/limpiar` con sus 6 mensajes borrados y `/salir` volviendo al panel) y la carrera del nick duplicado con dos pestañas. La misma filosofía que en la terminal: **probar la app como la usaría el alumno**.
 
 ## 3.12. Resumen del punto
 
