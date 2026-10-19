@@ -1,5 +1,6 @@
 using AulaChatNet.Server.Hubs;
 using AulaChatNet.Server.Models;
+using AulaChatNet.Server.Persistencia;
 using AulaChatNet.Server.Services;
 using AulaChatNet.Shared.Configuracion;
 using AulaChatNet.Shared.Constantes;
@@ -42,6 +43,13 @@ public class ChatHubTests
     /// </summary>
     private List<Envio> _aTodos = null!;
 
+    /// <summary>
+    /// Eventos emitidos a una conexión CONCRETA (Clients.Client), que es el
+    /// único destino posible de un mensaje privado. Compartido por todos los
+    /// hubs del test: el emisor y el receptor son conexiones distintas.
+    /// </summary>
+    private Dictionary<string, List<Envio>> _porConexion = null!;
+
     [SetUp]
     public void Setup()
     {
@@ -55,6 +63,7 @@ public class ChatHubTests
         _logger = new Mock<ILogger<ChatHub>>();
         _grupos = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
         _aTodos = [];
+        _porConexion = new Dictionary<string, List<Envio>>(StringComparer.OrdinalIgnoreCase);
     }
 
     // ── Dobles de SignalR ──
@@ -82,7 +91,13 @@ public class ChatHubTests
         clientes.Setup(c => c.Caller).Returns(proxyCaller.Object);
         clientes.Setup(c => c.All).Returns(CrearProxy(_aTodos).Object);
         clientes.Setup(c => c.Group(It.IsAny<string>()))
-            .Returns<string>(nombre => CrearProxy(ObtenerCanal(porCanal, nombre)).Object);
+            .Returns<string>(nombre => CrearProxy(ObtenerLista(porCanal, nombre)).Object);
+
+        // Clients.Client(connectionId): el destino de los mensajes privados.
+        // Sin esto, un hub que emitiera a una conexión concreta recibiría un
+        // proxy nulo de Moq y el test no comprobaría NADA de a quién llegó.
+        clientes.Setup(c => c.Client(It.IsAny<string>()))
+            .Returns<string>(id => CrearProxy(ObtenerLista(_porConexion, id)).Object);
 
         var hub = new ChatHub(_store, Options.Create(_config), _logger.Object)
         {
@@ -131,8 +146,11 @@ public class ChatHubTests
     private bool EstaEnGrupo(string connectionId, string grupo) =>
         _grupos.TryGetValue(grupo, out var miembros) && miembros.Contains(connectionId);
 
-    /// <summary>Devuelve (creándola si hace falta) la lista de eventos de un canal.</summary>
-    private static List<Envio> ObtenerCanal(Dictionary<string, List<Envio>> porCanal, string nombre)
+    /// <summary>
+    /// Devuelve (creándola si hace falta) la lista de eventos registrados
+    /// bajo una clave: un CANAL o una CONEXIÓN, según qué dicte el test.
+    /// </summary>
+    private static List<Envio> ObtenerLista(Dictionary<string, List<Envio>> porCanal, string nombre)
     {
         if (!porCanal.TryGetValue(nombre, out var lista))
             porCanal[nombre] = lista = [];
@@ -220,7 +238,7 @@ public class ChatHubTests
         await hub.ConnectAsync("Ana");
 
         // Assert
-        var eventos = ObtenerCanal(porCanal, General);
+        var eventos = ObtenerLista(porCanal, General);
 
         var avisos = eventos.Where(e => e.Metodo == ChatHubEventos.MensajeNuevo).ToArray();
         avisos.Should().ContainSingle();
@@ -245,7 +263,7 @@ public class ChatHubTests
         await hub.ConnectAsync("Ana", "#smr");
 
         // Assert: #general no debe recibir nada
-        ObtenerCanal(porCanal, General).Should().BeEmpty();
+        ObtenerLista(porCanal, General).Should().BeEmpty();
     }
 
     [Test]
@@ -433,8 +451,8 @@ public class ChatHubTests
         // Arrange
         var (hub, _, porCanal) = CrearHub("conn-1");
         await hub.ConnectAsync("Ana");
-        ObtenerCanal(porCanal, General).Clear();
-        ObtenerCanal(porCanal, Smr).Clear();
+        ObtenerLista(porCanal, General).Clear();
+        ObtenerLista(porCanal, Smr).Clear();
 
         // Act
         var error = await hub.CambiarCanalAsync("#smr");
@@ -442,20 +460,20 @@ public class ChatHubTests
         // Assert
         error.Should().BeNull();
 
-        var salida = ObtenerCanal(porCanal, General)
+        var salida = ObtenerLista(porCanal, General)
             .Where(e => e.Metodo == ChatHubEventos.MensajeNuevo).ToArray();
         salida.Should().ContainSingle();
         ((MensajeDto)salida[0].Argumentos[0]).Texto.Should().Be("Ana ha salido del canal");
 
-        var entrada = ObtenerCanal(porCanal, Smr)
+        var entrada = ObtenerLista(porCanal, Smr)
             .Where(e => e.Metodo == ChatHubEventos.MensajeNuevo).ToArray();
         entrada.Should().ContainSingle();
         ((MensajeDto)entrada[0].Argumentos[0]).Texto.Should().Be("Ana se ha unido al canal");
 
         // Ambos canales reciben su lista actualizada
-        ObtenerCanal(porCanal, General)
+        ObtenerLista(porCanal, General)
             .Should().Contain(e => e.Metodo == ChatHubEventos.ListaUsuariosActualizada);
-        ObtenerCanal(porCanal, Smr)
+        ObtenerLista(porCanal, Smr)
             .Should().Contain(e => e.Metodo == ChatHubEventos.ListaUsuariosActualizada);
     }
 
@@ -527,14 +545,14 @@ public class ChatHubTests
         // Arrange
         var (hub, _, porCanal) = CrearHub("conn-1");
         await hub.ConnectAsync("Ana");
-        ObtenerCanal(porCanal, General).Clear();
+        ObtenerLista(porCanal, General).Clear();
 
         // Act
         var error = await hub.CambiarCanalAsync("#GENERAL"); // mayúsculas
 
         // Assert
         error.Should().BeNull();
-        ObtenerCanal(porCanal, General).Should().BeEmpty();
+        ObtenerLista(porCanal, General).Should().BeEmpty();
     }
 
     #endregion
@@ -547,7 +565,7 @@ public class ChatHubTests
         // Arrange
         var (hub, _, porCanal) = CrearHub("conn-1");
         await hub.ConnectAsync("Ana");
-        ObtenerCanal(porCanal, General).Clear();
+        ObtenerLista(porCanal, General).Clear();
 
         // Act
         var error = await hub.CambiarNickAsync("Ana2");
@@ -555,7 +573,7 @@ public class ChatHubTests
         // Assert
         error.Should().BeNull();
 
-        var avisos = ObtenerCanal(porCanal, General)
+        var avisos = ObtenerLista(porCanal, General)
             .Where(e => e.Metodo == ChatHubEventos.MensajeNuevo).ToArray();
         avisos.Should().ContainSingle();
         var mensaje = (MensajeDto)avisos[0].Argumentos[0];
@@ -563,7 +581,7 @@ public class ChatHubTests
         mensaje.Tipo.Should().Be(TipoMensaje.Sistema);
 
         // El panel de conectados se actualiza con el nombre nuevo
-        var listas = ObtenerCanal(porCanal, General)
+        var listas = ObtenerLista(porCanal, General)
             .Where(e => e.Metodo == ChatHubEventos.ListaUsuariosActualizada).ToArray();
         listas.Should().ContainSingle();
 
@@ -640,14 +658,14 @@ public class ChatHubTests
         // Arrange
         var (hub, _, porCanal) = CrearHub("conn-1");
         await hub.ConnectAsync("Ana");
-        ObtenerCanal(porCanal, General).Clear();
+        ObtenerLista(porCanal, General).Clear();
 
         // Act: mayúsculas distintas, mismo nombre
         var error = await hub.CambiarNickAsync("ANA");
 
         // Assert
         error.Should().BeNull();
-        ObtenerCanal(porCanal, General).Should().BeEmpty();
+        ObtenerLista(porCanal, General).Should().BeEmpty();
     }
 
     #endregion
@@ -674,7 +692,7 @@ public class ChatHubTests
         // Arrange
         var (hub, _, porCanal) = CrearHub("conn-1");
         await hub.ConnectAsync("Ana", "#smr");
-        ObtenerCanal(porCanal, Smr).Clear();
+        ObtenerLista(porCanal, Smr).Clear();
 
         // Act
         var error = await hub.SendAsync("Buenas a todos");
@@ -682,7 +700,7 @@ public class ChatHubTests
         // Assert
         error.Should().BeNull();
 
-        var difundidos = ObtenerCanal(porCanal, Smr)
+        var difundidos = ObtenerLista(porCanal, Smr)
             .Where(e => e.Metodo == ChatHubEventos.MensajeNuevo).ToArray();
         difundidos.Should().ContainSingle();
 
@@ -692,7 +710,7 @@ public class ChatHubTests
         mensaje.Tipo.Should().Be(TipoMensaje.Normal);
 
         // #general no debe recibir nada
-        ObtenerCanal(porCanal, General).Should().BeEmpty();
+        ObtenerLista(porCanal, General).Should().BeEmpty();
     }
 
     [Test]
@@ -743,6 +761,240 @@ public class ChatHubTests
 
     #endregion
 
+    #region EnviarPrivadoAsync Tests
+
+    [Test]
+    public async Task EnviarPrivadoAsync_ConexionNoRegistrada_DevuelveError()
+    {
+        // Arrange
+        var (hub, _, _) = CrearHub("conn-5");
+
+        // Act: alguien que no se ha dado de alta intenta escribir en privado
+        var error = await hub.EnviarPrivadoAsync("Luis", "Hola");
+
+        // Assert
+        error.Should().Be("No estás registrado en el canal, vuelve a conectarte");
+        _porConexion.Should().BeEmpty();
+    }
+
+    [Test]
+    public async Task EnviarPrivadoAsync_AUnCompaneroDeCanal_LosLlegaALosDos()
+    {
+        // Arrange
+        var (ana, alAna, _) = CrearHub("conn-ana");
+        var (luis, _, _) = CrearHub("conn-luis");
+        await ana.ConnectAsync("Ana");
+        await luis.ConnectAsync("Luis");
+
+        // Act
+        var error = await ana.EnviarPrivadoAsync("Luis", "¿nos vemos en el recreo?");
+
+        // Assert: lo recibe el destinatario, por Clients.Client...
+        error.Should().BeNull();
+
+        var recibidos = ObtenerLista(_porConexion, "conn-luis")
+            .Where(e => e.Metodo == ChatHubEventos.PrivadoRecibido).ToArray();
+        recibidos.Should().ContainSingle();
+
+        // ...y el emisor lo recibe por Clients.Caller, con el MISMO objeto
+        // (mismo Id): el eco lo pinta el servidor, no lo inventa el cliente
+        var ecos = alAna.Where(e => e.Metodo == ChatHubEventos.PrivadoRecibido).ToArray();
+        ecos.Should().ContainSingle();
+        ecos[0].Argumentos[0].Should().Be(recibidos[0].Argumentos[0]);
+
+        var privado = (MensajePrivadoDto)recibidos[0].Argumentos[0];
+        privado.Emisor.Should().Be("Ana");
+        privado.Destinatario.Should().Be("Luis");
+        privado.Texto.Should().Be("¿nos vemos en el recreo?");
+    }
+
+    [Test]
+    public async Task EnviarPrivadoAsync_AUnCompanero_NoLlegaNiAlCanalNiATerceros()
+    {
+        // Arrange: un tercero conectado en la MISMA sala no debe enterarse
+        var (ana, _, porCanal) = CrearHub("conn-ana");
+        var (luis, _, _) = CrearHub("conn-luis");
+        var (roberto, alRoberto, _) = CrearHub("conn-roberto");
+
+        await ana.ConnectAsync("Ana");
+        await luis.ConnectAsync("Luis");
+        await roberto.ConnectAsync("Roberto");
+        ObtenerLista(porCanal, General).Clear();
+
+        // Act
+        await ana.EnviarPrivadoAsync("Luis", "Confidencia");
+
+        // Assert: ni al GRUPO del canal...
+        ObtenerLista(porCanal, General)
+            .Where(e => e.Metodo == ChatHubEventos.PrivadoRecibido).Should().BeEmpty();
+
+        // ...ni a la conexión del tercero
+        alRoberto.Where(e => e.Metodo == ChatHubEventos.PrivadoRecibido).Should().BeEmpty();
+    }
+
+    [Test]
+    public async Task EnviarPrivadoAsync_DosHomonimosEnDistintosCanales_SoloAlcanzaAlDelTuyo()
+    {
+        // Arrange: Luis en #general y OTRO Luis en #smr. Sin mirar el canal,
+        // "Luis" no identifica a una persona, y eso es lo que comprueba test
+        var (ana, _, _) = CrearHub("conn-ana");
+        var (luisGeneral, _, _) = CrearHub("conn-luis-general");
+        var (luisSmr, _, _) = CrearHub("conn-luis-smr");
+
+        await ana.ConnectAsync("Ana");
+        await luisGeneral.ConnectAsync("Luis");
+        await luisSmr.ConnectAsync("Luis", "#smr");
+
+        // Act: Ana está en #general, así que su privado es para el Luis de SU sala
+        var error = await ana.EnviarPrivadoAsync("luis", "Para el de mi sala");
+
+        // Assert
+        error.Should().BeNull();
+        ObtenerLista(_porConexion, "conn-luis-general")
+            .Where(e => e.Metodo == ChatHubEventos.PrivadoRecibido).Should().ContainSingle();
+        ObtenerLista(_porConexion, "conn-luis-smr").Should().BeEmpty();
+    }
+
+    [Test]
+    public async Task EnviarPrivadoAsync_AAlguienDeOtroCanal_DevuelveErrorDeDestino()
+    {
+        // Arrange: Ana en #general y Luis en #smr: no se pueden hablar
+        var (ana, _, _) = CrearHub("conn-ana");
+        var (luis, _, _) = CrearHub("conn-luis");
+        await ana.ConnectAsync("Ana");
+        await luis.ConnectAsync("Luis", "#smr");
+
+        // Act
+        var error = await ana.EnviarPrivadoAsync("Luis", "Hola");
+
+        // Assert
+        error.Should().Be(_config.ErrorPrivadoSinDestino("Luis"));
+        _porConexion.Should().BeEmpty();
+    }
+
+    [Test]
+    public async Task EnviarPrivadoAsync_AUnNombreInexistente_DevuelveErrorDeDestino()
+    {
+        // Arrange
+        var (hub, _, _) = CrearHub("conn-1");
+        await hub.ConnectAsync("Ana");
+
+        // Act
+        var error = await hub.EnviarPrivadoAsync("Maria", "¿Estás ahí?");
+
+        // Assert
+        error.Should().Be(_config.ErrorPrivadoSinDestino("Maria"));
+        _porConexion.Should().BeEmpty();
+    }
+
+    [Test]
+    public async Task EnviarPrivadoAsync_AUnoMismo_DevuelveErrorSinBuscarDestino()
+    {
+        // Arrange
+        var (hub, _, _) = CrearHub("conn-1");
+        await hub.ConnectAsync("Ana");
+
+        // Act
+        var error = await hub.EnviarPrivadoAsync("ana", "Hola, soy yo");
+
+        // Assert: el nombre se compara sin distinguir mayúsculas, como todo
+        error.Should().Be(_config.ErrorPrivadoAUnoMismo);
+        _porConexion.Should().BeEmpty();
+    }
+
+    [Test]
+    [TestCase("")]
+    [TestCase("   ")]
+    [TestCase(null)]
+    public async Task EnviarPrivadoAsync_SinDestinatario_DevuelveError(string? destino)
+    {
+        // Arrange: el parser no deja pasar esto, pero el hub es PÚBLICO y
+        // cualquiera puede invocarlo a pelo, así que se defiende solo
+        var (hub, _, _) = CrearHub("conn-1");
+        await hub.ConnectAsync("Ana");
+
+        // Act
+        var error = await hub.EnviarPrivadoAsync(destino, "Hola");
+
+        // Assert
+        error.Should().Be(_config.ErrorPrivadoDestinoVacio);
+        _porConexion.Should().BeEmpty();
+    }
+
+    [Test]
+    public async Task EnviarPrivadoAsync_TextoVacio_DevuelveElMismoErrorQueUnMensaje()
+    {
+        // Arrange
+        var (ana, _, _) = CrearHub("conn-ana");
+        var (luis, _, _) = CrearHub("conn-luis");
+        await ana.ConnectAsync("Ana");
+        await luis.ConnectAsync("Luis");
+
+        // Act: un privado se valida EXACTAMENTE igual que un mensaje normal
+        var error = await ana.EnviarPrivadoAsync("Luis", "   ");
+
+        // Assert
+        error.Should().Be(_config.ErrorMensajeVacio);
+        _porConexion.Should().BeEmpty();
+    }
+
+    [Test]
+    public async Task EnviarPrivadoAsync_MensajeCorrecto_NoEntraEnElHistorialDelCanal()
+    {
+        // Arrange
+        var (ana, _, _) = CrearHub("conn-ana");
+        var (luis, _, _) = CrearHub("conn-luis");
+        await ana.ConnectAsync("Ana");
+        await luis.ConnectAsync("Luis");
+
+        var antes = _store.GetHistorial(General).Count;
+
+        // Act
+        await ana.EnviarPrivadoAsync("Luis", "Esto es una confidencia");
+
+        // Assert: el historial sigue igual que al principio — ni una fila
+        // más, y ninguna que contenga el texto. Sin esto, quien entre después
+        // en #general se encontraría los privados de los demás.
+        _store.GetHistorial(General).Should().HaveCount(antes);
+        _store.GetHistorial(General)
+            .Should().NotContain(m => m.Texto.Contains("confidencia", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Test]
+    public async Task EnviarPrivadoAsync_MensajeCorrecto_NoEntraEnLaColaDeEscritura()
+    {
+        // Arrange: el MISMO store que el de producción con persistencia (Fase 2),
+        // que es el único camino que lleva mensajes a SQLite
+        _store = new ChatStore(Options.Create(_config), new Mock<IMensajesRepository>().Object);
+
+        var (ana, _, _) = CrearHub("conn-ana");
+        var (luis, _, _) = CrearHub("conn-luis");
+        await ana.ConnectAsync("Ana");
+        await luis.ConnectAsync("Luis");
+
+        // Las uniones de los dos SÍ se encolan (son mensajes de sistema del
+        // canal): se vacía la cola para que lo que venga después sea solo
+        // culpa de lo que se prueba aquí
+        while (_store.ColaEscritura.TryRead(out _))
+        {
+        }
+
+        // Act
+        await ana.EnviarPrivadoAsync("Luis", "Esto no debe tocar el disco");
+
+        // Assert: la cola sigue vacía — el privado no ha llegado ni a la
+        // puerta de la base de datos...
+        _store.ColaEscritura.TryRead(out _).Should().BeFalse();
+
+        // ...y un mensaje normal del canal SÍ se encola. Sin este contraste,
+        // el test aprobaría también con la cola rota, y eso sería peor
+        await ana.SendAsync("Mensaje normal del canal");
+        _store.ColaEscritura.TryRead(out var pendiente).Should().BeTrue();
+        pendiente.Mensaje.Texto.Should().Be("Mensaje normal del canal");
+    }
+
+    #endregion
+
     #region OnDisconnectedAsync Tests
 
     [Test]
@@ -751,13 +1003,13 @@ public class ChatHubTests
         // Arrange
         var (hub, _, porCanal) = CrearHub("conn-1");
         await hub.ConnectAsync("Ana", "#smr");
-        ObtenerCanal(porCanal, Smr).Clear();
+        ObtenerLista(porCanal, Smr).Clear();
 
         // Act
         await hub.OnDisconnectedAsync(null);
 
         // Assert
-        var avisos = ObtenerCanal(porCanal, Smr)
+        var avisos = ObtenerLista(porCanal, Smr)
             .Where(e => e.Metodo == ChatHubEventos.MensajeNuevo).ToArray();
         avisos.Should().ContainSingle();
 
@@ -765,12 +1017,12 @@ public class ChatHubTests
         salida.Texto.Should().Be("Ana ha salido del canal");
         salida.Tipo.Should().Be(TipoMensaje.Sistema);
 
-        ObtenerCanal(porCanal, Smr)
+        ObtenerLista(porCanal, Smr)
             .Should().Contain(e => e.Metodo == ChatHubEventos.ListaUsuariosActualizada);
         _store.GetUsuarios(Smr).Should().BeEmpty();
 
         // Otros canales no se enteran
-        ObtenerCanal(porCanal, General).Should().BeEmpty();
+        ObtenerLista(porCanal, General).Should().BeEmpty();
     }
 
     [Test]
@@ -813,14 +1065,14 @@ public class ChatHubTests
         // Arrange
         var (hub, _, porCanal) = CrearHub("conn-1");
         await hub.ConnectAsync("Ana");
-        ObtenerCanal(porCanal, General).Clear();
+        ObtenerLista(porCanal, General).Clear();
 
         // Act: caída por excepción (corte de red...)
         Func<Task> acto = async () => await hub.OnDisconnectedAsync(new Exception("Corte de red"));
 
         // Assert
         await acto.Should().NotThrowAsync();
-        ObtenerCanal(porCanal, General)
+        ObtenerLista(porCanal, General)
             .Should().Contain(e => e.Metodo == ChatHubEventos.MensajeNuevo);
     }
 

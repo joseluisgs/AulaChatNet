@@ -51,12 +51,108 @@ public static class ParserComandos
             "/canal" => CrearCanal(argumento),
             "/nick" or "/nickname" => CrearNick(argumento),
             "/usuarios" or "/quienes" => new Comando.Usuarios(argumento),
+
+            // Los alias del privado NO se escriben "a pelo" aquí: salen de
+            // Privados, la MISMA lista que usa EmpiezaPrivado (que la web
+            // necesita para enseñar la nota mientras el usuario teclea)
+            _ when EsNombrePrivado(nombre) => CrearPrivado(argumento),
+
             "/reconectar" or "/reconnect" => new Comando.Reconectar(),
             "/sesion" => CrearSesion(argumento),
             "/limpiar" or "/clear" => new Comando.Limpiar(),
             "/salir" or "/exit" or "/quit" => new Comando.Salir(),
             _ => new Comando.Desconocido(partes[0])
         };
+    }
+
+    /// <summary>
+    /// true si la línea va a ser un privado, aunque aún no lleve destino
+    /// escrito. La web la usa para enseñar la nota de que no se guarda
+    /// MIENTRAS el usuario teclea, sin duplicar los alias fuera de aquí.
+    /// </summary>
+    /// <param name="linea">Línea que se está escribiendo (puede ser null).</param>
+    /// <returns>true si empieza por un alias de privado seguido de espacio o de nada.</returns>
+    public static bool EmpiezaPrivado(string? linea)
+    {
+        var texto = (linea ?? string.Empty).TrimStart();
+
+        foreach (var alias in Privados)
+        {
+            if (!texto.StartsWith(alias, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            // El alias debe ser una palabra COMPLETA: "/mpp hola" no es un
+            // privado mal escrito, es un comando desconocido
+            var despues = texto.Length == alias.Length ? ' ' : texto[alias.Length];
+
+            return despues is ' ' or '\t';
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// A quién se le está escribiendo en la línea actual, AUNQUE todavía no
+    /// lleve texto — algo que <see cref="Parse"/> devuelve como inválido. La
+    /// web necesita ese nombre antes: es lo que pone en el chip "Privado a X"
+    /// mientras el usuario sigue tecleando, y lo único que permite cerrarlo.
+    /// </summary>
+    /// <param name="linea">Línea que se está escribiendo (puede ser null).</param>
+    /// <returns>El destinatario tecleado, o null si aún no hay ninguno.</returns>
+    public static string? DestinatarioDePrivado(string? linea)
+    {
+        var texto = (linea ?? string.Empty).TrimStart();
+
+        foreach (var alias in Privados)
+        {
+            if (!texto.StartsWith(alias, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            // Todo lo que va tras el alias, recortado: la primera palabra es
+            // el destinatario, el resto será el mensaje (si llega)
+            var resto = texto[alias.Length..].Trim();
+
+            return resto.Length == 0
+                ? null
+                : resto.Split(' ', 2, StringSplitOptions.TrimEntries)[0];
+        }
+
+        return null;
+    }
+
+    /// <summary>Alias del comando de privado, en minúsculas: fuente única.</summary>
+    private static readonly string[] Privados = ["/privado", "/mp", "/dm"];
+
+    /// <summary>true si ese primer token (ya en minúsculas) es un comando de privado.</summary>
+    private static bool EsNombrePrivado(string nombre) =>
+        Privados.Contains(nombre, StringComparer.Ordinal);
+
+    /// <summary>
+    /// Construye el comando de privado: el argumento es "quien texto", así
+    /// que se parte en DOS por el primer espacio. Si falta cualquiera de los
+    /// dos no se manda nada a la red: devuelve el uso correcto para que el
+    /// usuario lo aprenda sin mirar la ayuda entera.
+    /// </summary>
+    /// <param name="argumento">Texto escrito tras /privado (puede ser null).</param>
+    /// <returns>Comando de privado o comando inválido con su uso.</returns>
+    private static Comando CrearPrivado(string? argumento)
+    {
+        if (string.IsNullOrWhiteSpace(argumento))
+            return new Comando.Invalido(
+                "Falta el destinatario y el texto",
+                "Usa: /privado <quien> <texto> (p. ej. /privado Ana ¿nos vemos?)");
+
+        // Mismo corte que el de la línea entera: primer espacio separa al
+        // destinatario del texto, que puede contener todos los que quiera
+        var partes = argumento.Split(' ', 2,
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        if (partes.Length < 2)
+            return new Comando.Invalido(
+                "Falta el texto del mensaje privado",
+                "Usa: /privado <quien> <texto> (p. ej. /privado Ana ¿nos vemos?)");
+
+        return new Comando.Privado(partes[0], partes[1]);
     }
 
     /// <summary>

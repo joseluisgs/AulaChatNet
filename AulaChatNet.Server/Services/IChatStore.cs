@@ -95,6 +95,20 @@ public interface IChatStore
     ConexionChat? GetConexion(string connectionId);
 
     /// <summary>
+    /// Busca la conexión de una persona DENTRO de un canal (para los mensajes
+    /// privados): es el paso inverso a <see cref="GetConexion"/>.
+    /// </summary>
+    /// <param name="canal">Canal canónico en el que debe estar esa persona.</param>
+    /// <param name="usuario">Nombre buscado (se normaliza como en el alta).</param>
+    /// <returns>
+    /// El connectionId de esa conexión, o null si en ESE canal no hay nadie
+    /// con ese nombre. El filtro lleva el canal a propósito: los nombres solo
+    /// son únicos dentro de una sala, así que sin el canal el resultado sería
+    /// ambiguo. El connectionId no sale nunca del servidor.
+    /// </returns>
+    string? GetConnectionId(string canal, string usuario);
+
+    /// <summary>
     /// Elimina a un usuario al desconectar, liberando su nombre en su canal.
     /// </summary>
     /// <param name="connectionId">Identificador de la conexión SignalR.</param>

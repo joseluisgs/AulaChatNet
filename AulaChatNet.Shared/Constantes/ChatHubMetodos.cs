@@ -24,4 +24,10 @@ public static class ChatHubMetodos
     /// cualquiera solo a quien lo pregunta: ObtenerUsuariosAsync(canal).
     /// </summary>
     public const string ObtenerUsuarios = "ObtenerUsuariosAsync";
+
+    /// <summary>
+    /// Método para enviar un mensaje a UNA persona concreta de tu canal:
+    /// EnviarPrivadoAsync(destinatario, texto). NO se difunde al grupo.
+    /// </summary>
+    public const string EnviarPrivado = "EnviarPrivadoAsync";
 }

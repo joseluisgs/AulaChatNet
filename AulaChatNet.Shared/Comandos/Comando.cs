@@ -41,6 +41,14 @@ public abstract record Comando
     /// <param name="NombreCanal">Canal a consultar (null = el canal actual).</param>
     public sealed record Usuarios(string? NombreCanal = null) : Comando;
 
+    /// <summary>
+    /// /privado quien texto: mensaje privado a UNA persona de tu canal.
+    /// No se difunde al resto y no se guarda: es efímero.
+    /// </summary>
+    /// <param name="Destinatario">Nombre de quien lo recibe (en tu canal actual).</param>
+    /// <param name="Texto">Contenido del mensaje (mismo límite que un mensaje normal).</param>
+    public sealed record Privado(string Destinatario, string Texto) : Comando;
+
     /// <summary>/reconectar: volver a entrar si la conexión se perdió (la terminal asocia además la tecla R).</summary>
     public sealed record Reconectar : Comando;
 

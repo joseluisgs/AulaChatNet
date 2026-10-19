@@ -321,6 +321,98 @@ public class ChatHub(IChatStore store, IOptions<ChatConfig> opciones, ILogger<Ch
     }
 
     /// <summary>
+    /// Envía un mensaje a UNA persona concreta del canal del emisor, sin que
+    /// lo vea nadie más. Es el CUARTO destino de SignalR del proyecto:
+    /// <c>Group</c> (todo el canal), <c>Caller</c> (solo el que pregunta) y
+    /// <c>All</c> (todos) ya estaban; este va a dos conexiones concretas.
+    ///
+    /// <remarks>
+    /// Cuatro reglas que sostienen la privacidad de este método, y que
+    /// conviene leer juntas porque son las que lo hacen seguro:
+    /// <list type="number">
+    /// <item>El destinatario se busca <b>dentro del canal del emisor</b>: los
+    /// nombres solo son únicos en una sala, así que sin ese filtro dos
+    /// personas distintas podrían llamarse igual en salas distintas.</item>
+    /// <item><b>No se llama a <c>AddMensaje</c></b>: el privado no entra en el
+    /// historial de canal ni en su cola de escritura, de modo que quien entre
+    /// después no se lo puede encontrar.</item>
+    /// <item><b>No se persiste</b>: sin autenticación, el nombre que dejaste
+    /// libre al reiniciar lo puede coger cualquiera y se llevaría tus
+    /// mensajes privados. Efímero es la única opción honesta.</item>
+    /// <item>El eco al autor sale del MISMO servidor: las dos partes reciben
+    /// el mismo objeto en el mismo orden, sin montar la vista a mano.</item>
+    /// </list>
+    /// </remarks>
+    /// </summary>
+    /// <param name="destinatario">Nombre de quien lo recibe (en el canal del emisor).</param>
+    /// <param name="texto">Texto escrito (misma validación que un mensaje normal).</param>
+    /// <returns>null si todo fue correcto; el mensaje de error si no.</returns>
+    public async Task<string?> EnviarPrivadoAsync(string? destinatario, string? texto)
+    {
+        var conexion = store.GetConexion(Context.ConnectionId);
+
+        if (conexion is null)
+        {
+            logger.LogWarning(
+                "Privado rechazado: la conexión {ConnectionId} no está registrada",
+                Context.ConnectionId);
+
+            return "No estás registrado en el canal, vuelve a conectarte";
+        }
+
+        destinatario = destinatario?.Trim() ?? string.Empty;
+
+        if (destinatario.Length == 0)
+            return Config.ErrorPrivadoDestinoVacio;
+
+        // Mismo nombre solo en mayúsculas: es la misma persona (el store
+        // compara igual cuando da de alta, así que las dos reglas cuadran)
+        if (string.Equals(conexion.Usuario, destinatario, StringComparison.OrdinalIgnoreCase))
+            return Config.ErrorPrivadoAUnoMismo;
+
+        texto = texto?.Trim() ?? string.Empty;
+
+        var error = Config.ValidarMensaje(texto);
+
+        if (error is not null)
+        {
+            logger.LogWarning(
+                "Privado rechazado de {Usuario}: {Error}", conexion.Usuario, error);
+
+            return error;
+        }
+
+        // El canal del emisor decide a quién se puede hablar: nadie de otra
+        // sala (y null significa "no hay nadie con ese nombre AQUÍ")
+        var connectionIdDestino = store.GetConnectionId(conexion.Canal, destinatario);
+
+        if (connectionIdDestino is null)
+        {
+            logger.LogWarning(
+                "Privado rechazado de {Usuario} a {Destinatario}: sin destino en {Canal}",
+                conexion.Usuario, destinatario, conexion.Canal);
+
+            return Config.ErrorPrivadoSinDestino(destinatario);
+        }
+
+        var mensaje = new MensajePrivadoDto(
+            Guid.NewGuid(), conexion.Usuario, destinatario, texto, DateTime.UtcNow);
+
+        // Se loguea la longitud, no el contenido (mismo criterio que SendAsync:
+        // los logs pueden verse personas no autorizadas)
+        logger.LogInformation(
+            "{Usuario} envía un privado de {Longitud} caracteres a {Destinatario} ({Canal})",
+            conexion.Usuario, texto.Length, destinatario, conexion.Canal);
+
+        // Primero al destinatario y después el eco al autor (Clients.Caller):
+        // un único emisor, dos destinos concretos, jamás Clients.Group
+        await Clients.Client(connectionIdDestino).SendAsync(ChatHubEventos.PrivadoRecibido, mensaje);
+        await Clients.Caller.SendAsync(ChatHubEventos.PrivadoRecibido, mensaje);
+
+        return null;
+    }
+
+    /// <summary>
     /// Desconexión: si el usuario ya estaba registrado, se despide en su
     /// nombre dentro de SU canal y se actualiza su lista de conectados.
     /// </summary>

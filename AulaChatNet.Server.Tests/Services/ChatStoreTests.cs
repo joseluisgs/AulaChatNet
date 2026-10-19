@@ -479,4 +479,91 @@ public class ChatStoreTests
     }
 
     #endregion
+
+    #region GetConnectionId Tests
+
+    [Test]
+    public void GetConnectionId_UsuarioConectado_DevuelveSuConexion()
+    {
+        // Arrange
+        _store.AddUsuario(General, "Ana", "conn-1");
+
+        // Act: el paso inverso de GetConexion, para los mensajes privados
+        var connectionId = _store.GetConnectionId(General, "Ana");
+
+        // Assert
+        connectionId.Should().Be("conn-1");
+    }
+
+    [Test]
+    [TestCase("ana")]
+    [TestCase("ANA")]
+    [TestCase("  Ana  ")]
+    public void GetConnectionId_NombreConOtrasMayusculasOEspacios_DevuelveLaMismaConexion(string buscado)
+    {
+        // Arrange: el store normaliza al registrar, y debe normalizar también
+        // al buscar — si no, "ANA" y "Ana" serían dos personas distintas
+        _store.AddUsuario(General, "Ana", "conn-1");
+
+        // Act
+        var connectionId = _store.GetConnectionId(General, buscado);
+
+        // Assert
+        connectionId.Should().Be("conn-1");
+    }
+
+    [Test]
+    public void GetConnectionId_EnOtroCanal_DevuelveNull()
+    {
+        // Arrange: Ana está en #general, no en #smr
+        _store.AddUsuario(General, "Ana", "conn-1");
+
+        // Act
+        var connectionId = _store.GetConnectionId(Smr, "Ana");
+
+        // Assert: los nombres solo identifican dentro de SU sala
+        connectionId.Should().BeNull();
+    }
+
+    [Test]
+    public void GetConnectionId_DosHomonimosEnDistintosCanales_DevuelveElDelCanalDado()
+    {
+        // Arrange
+        _store.AddUsuario(General, "Luis", "conn-general");
+        _store.AddUsuario(Smr, "Luis", "conn-smr");
+
+        // Act
+        var enGeneral = _store.GetConnectionId(General, "Luis");
+        var enSmr = _store.GetConnectionId(Smr, "Luis");
+
+        // Assert: cada Luis es una persona distinta, y el canal lo decide
+        enGeneral.Should().Be("conn-general");
+        enSmr.Should().Be("conn-smr");
+    }
+
+    [Test]
+    public void GetConnectionId_UsuarioNoConectado_DevuelveNull()
+    {
+        // Act
+        var connectionId = _store.GetConnectionId(General, "Maria");
+
+        // Assert
+        connectionId.Should().BeNull();
+    }
+
+    [Test]
+    public void GetConnectionId_ConexionDadaDeBaja_YaNoAparece()
+    {
+        // Arrange
+        _store.AddUsuario(General, "Ana", "conn-1");
+        _store.RemoveUsuario("conn-1");
+
+        // Act: nadie puede escribirle a alguien que ya salió
+        var connectionId = _store.GetConnectionId(General, "Ana");
+
+        // Assert
+        connectionId.Should().BeNull();
+    }
+
+    #endregion
 }

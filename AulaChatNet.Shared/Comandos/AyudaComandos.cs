@@ -19,6 +19,22 @@ public sealed record ComandoAyuda(string Sintaxis, string Descripcion);
 /// </summary>
 public static class AyudaComandos
 {
+    /// <summary>
+    /// Nota que los DOS clientes muestran al abrir un privado: avisa de que
+    /// es un mensaje efímero. Vive aquí, y no en cada cliente, por la misma
+    /// razón que las descripciones de la ayuda — así los dos dicen
+    /// literalmente lo mismo y no puede divergir.
+    ///
+    /// <remarks>
+    /// Se muestra UNA vez (al abrir el privado en la web, en el primer
+    /// /privado de la sesión en la terminal), nunca con cada envío: lo que
+    /// se repite deja de leerse, y en la terminal cada aviso empuja mensajes
+    /// reales fuera de la pantalla.
+    /// </remarks>
+    /// </summary>
+    public const string NotaPrivados =
+        "Los privados son efímeros: no se guardan en el servidor ni salen en el historial";
+
     /// <summary>Comandos y su descripción, en el orden en que se muestran.</summary>
     public static IReadOnlyList<ComandoAyuda> Comandos { get; } =
     [
@@ -27,6 +43,7 @@ public static class AyudaComandos
         new("/canal <nombre>", "Cambia de canal (p. ej. /canal daw)"),
         new("/nick <nombre>", "Cambia tu nombre en caliente (p. ej. /nick Ana2)"),
         new("/usuarios [canal]", "Conectados de tu canal o de otro (p. ej. /usuarios daw)"),
+        new("/privado <quien> <texto>", "Mensaje privado a alguien de tu canal (efímero, no se guarda)"),
         new("/reconectar", "Vuelve a entrar si se perdió la conexión"),
         new("/sesion [borrar]", "Ver la sesión guardada o borrarla (útil en aulas compartidas)"),
         new("/limpiar", "Limpia la vista local de mensajes (el historial sigue en el servidor)"),

@@ -291,6 +291,29 @@ public class ChatStore(IOptions<ChatConfig> opciones, IMensajesRepository? repos
             : null;
 
     /// <inheritdoc />
+    public string? GetConnectionId(string canal, string usuario)
+    {
+        var clave = Normalizar(usuario);
+
+        // Búsqueda lineal a propósito: el mapa está indexado por connectionId
+        // (es la única clave que existe), en un aula hay decenas de conectados
+        // y una tabla de equivalencia extra significaría un SEGUNDO sitio donde
+        // mantener la unicidad de nombres, con el riesgo de que las dos se
+        // descuadren. Filtrar por canal no es pereza: es lo que hace que el
+        // nombre identifique a una sola persona.
+        foreach (var conexion in _conexiones)
+        {
+            if (string.Equals(conexion.Value.Canal, canal, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(Normalizar(conexion.Value.Datos.Usuario), clave, StringComparison.Ordinal))
+            {
+                return conexion.Key;
+            }
+        }
+
+        return null;
+    }
+
+    /// <inheritdoc />
     public ConexionChat? RemoveUsuario(string connectionId)
     {
         if (!_conexiones.TryRemove(connectionId, out var conexion))

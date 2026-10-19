@@ -12,6 +12,7 @@ namespace AulaChatNet.Shared.Constantes;
 /// - <see cref="ListaUsuariosActualizada"/> → se emite tras cada entrada Y cada desconexión
 /// - <see cref="HistorialRecibido"/> → solo al cliente que se conecta (mensajes anteriores)
 /// - <see cref="EstadisticasActualizadas"/> → a TODOS: total de conectados y conteo por sala
+/// - <see cref="PrivadoRecibido"/> → SOLO al que lo envía y a quien lo recibe
 /// </remarks>
 /// </summary>
 public static class ChatHubEventos
@@ -37,4 +38,11 @@ public static class ChatHubEventos
     /// Argumento: EstadisticasDto.
     /// </summary>
     public const string EstadisticasActualizadas = "EstadisticasActualizadas";
+
+    /// <summary>
+    /// Entrega un mensaje privado SOLO a las dos personas implicadas: al que
+    /// lo escribe (eco, para que su interfaz lo pinte) y al destinatario.
+    /// Nunca llega al resto del canal. Argumento: MensajePrivadoDto.
+    /// </summary>
+    public const string PrivadoRecibido = "PrivadoRecibido";
 }
