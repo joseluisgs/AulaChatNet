@@ -396,4 +396,50 @@ public class ParserComandosTests
     }
 
     #endregion
+
+    #region Reaccion Tests
+
+    [Test]
+    [TestCase("/reaccion 👍", "👍")]
+    [TestCase("/react 😂", "😂")]           // alias corto
+    [TestCase("/REACCION ❤️", "❤️")]        // mayúsculas dan igual
+    [TestCase("  /reaccion   👍  ", "👍")]   // espacios sobrantes
+    public void Parse_ReaccionConEmoji_DevuelveReaccion(string entrada, string esperado)
+    {
+        // Act
+        var comando = ParserComandos.Parse(entrada);
+
+        // Assert
+        comando.Should().BeOfType<Comando.Reaccion>()
+            .Which.Emoji.Should().Be(esperado);
+    }
+
+    [Test]
+    public void Parse_ReaccionConTextoSobrante_SeQuedaConElPrimerToken()
+    {
+        // Act: "/reaccion 👍 hola" — el emoji manda y el resto se ignora
+        // en lugar de romper el comando
+        var comando = ParserComandos.Parse("/reaccion 👍 hola");
+
+        // Assert
+        comando.Should().BeOfType<Comando.Reaccion>()
+            .Which.Emoji.Should().Be("👍");
+    }
+
+    [Test]
+    [TestCase("/reaccion")]
+    [TestCase("/reaccion   ")]
+    [TestCase("/react")]
+    public void Parse_ReaccionSinEmoji_DevuelveInvalidoConElUso(string entrada)
+    {
+        // Act: sin emoji no se manda nada a la red, y el uso se enseña ya
+        var comando = ParserComandos.Parse(entrada);
+
+        // Assert
+        var invalido = comando.Should().BeOfType<Comando.Invalido>().Subject;
+        invalido.Motivo.Should().Contain("emoji");
+        invalido.Uso.Should().Contain("/reaccion <emoji>");
+    }
+
+    #endregion
 }

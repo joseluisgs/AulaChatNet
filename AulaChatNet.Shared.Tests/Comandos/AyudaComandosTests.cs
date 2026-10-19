@@ -23,6 +23,17 @@ public class AyudaComandosTests
     }
 
     [Test]
+    public void Comandos_IncluyeElDeReaccion()
+    {
+        // Act: esta fila es la que pinta el menú de ARRANQUE de la terminal
+        // y la ayuda de la web: si no está, el alumno nunca descubre el comando
+        var sintaxis = AyudaComandos.Comandos.Select(c => c.Sintaxis);
+
+        // Assert
+        sintaxis.Should().Contain("/reaccion <emoji>");
+    }
+
+    [Test]
     public void Comandos_TodosLlevanSintaxisYDescripcion()
     {
         // Assert: un comando sin descripción es un comando que nadie va a
@@ -41,6 +52,17 @@ public class AyudaComandosTests
         // Assert: uno solo, y su descripción avisa de que no se guarda
         encontrados.Should().ContainSingle()
             .Which.Descripcion.Should().Contain("no se guarda");
+    }
+
+    [Test]
+    public void Buscar_TemaReaccion_EncuentraElComandoYSuAlternar()
+    {
+        // Act: lo que responde "/ayuda reaccion"
+        var encontrados = AyudaComandos.Buscar("reaccion");
+
+        // Assert: uno solo, y su descripción explica que se puede quitar
+        encontrados.Should().ContainSingle()
+            .Which.Descripcion.Should().Contain("lo quita");
     }
 
     [Test]

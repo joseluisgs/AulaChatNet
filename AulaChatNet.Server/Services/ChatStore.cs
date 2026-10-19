@@ -4,6 +4,7 @@ using AulaChatNet.Server.Models;
 using AulaChatNet.Server.Persistencia;
 using AulaChatNet.Shared.Configuracion;
 using AulaChatNet.Shared.Dtos;
+using AulaChatNet.Shared.Helpers;
 using Microsoft.Extensions.Options;
 
 namespace AulaChatNet.Server.Services;
@@ -182,8 +183,11 @@ public class ChatStore(IOptions<ChatConfig> opciones, IMensajesRepository? repos
 
         // Cola circular: al superar el límite configurado, el más antiguo
         // sale del historial (el bucle contempla que el límite sea pequeño).
-        while (estado.Historial.Count > Config.HistorialMaximo && estado.Historial.TryDequeue(out _))
+        // Lo que se va del historial se lleva SUS reacciones: una reacción
+        // sobre un mensaje que ya no se puede ver es basura con dueño perdido.
+        while (estado.Historial.Count > Config.HistorialMaximo && estado.Historial.TryDequeue(out var fuera))
         {
+            estado.Reacciones.TryRemove(fuera.Id, out _);
         }
 
         // Persistencia (Fase 2): si hay repositorio, se encola para guardarla
@@ -198,6 +202,126 @@ public class ChatStore(IOptions<ChatConfig> opciones, IMensajesRepository? repos
     /// <inheritdoc />
     public IReadOnlyList<MensajeDto> GetHistorial(string canal) =>
         _canales.TryGetValue(canal, out var estado) ? estado.Historial.ToArray() : [];
+
+    /// <inheritdoc />
+    public ReaccionesMensajeDto? AlternarReaccion(
+        string canal, Guid idMensaje, string emoji, string usuario)
+    {
+        if (!_canales.TryGetValue(canal, out var estado))
+            return null;
+
+        // El mensaje debe seguir en la caché Y ser de una persona: los avisos
+        // de sistema ("Ana se ha unido") no son mensajes a los que se reaccione.
+        // Búsqueda lineal a propósito: la caché está limitada a HistorialMaximo
+        // mensajes, y un segundo índice significaría mantener dos sitios al día.
+        var mensaje = estado.Historial.FirstOrDefault(m => m.Id == idMensaje);
+
+        if (mensaje is null || mensaje.Tipo == TipoMensaje.Sistema)
+            return null;
+
+        var porEmoji = estado.Reacciones.GetOrAdd(
+            idMensaje, _ => new ConcurrentDictionary<string, ConcurrentDictionary<string, string>>(StringComparer.Ordinal));
+        var personas = porEmoji.GetOrAdd(emoji, _ => new ConcurrentDictionary<string, string>(StringComparer.Ordinal));
+
+        var clave = Normalizar(usuario);
+
+        // Si la persona ya había puesto ESTE emoji, se lo quita: el gesto es
+        // un interruptor, y la decisión la toca el servidor — los clientes
+        // solo invocan. El alta/dictamen es atómico (TryAdd) porque el hub
+        // atiende a varias personas a la vez.
+        if (!personas.TryAdd(clave, usuario))
+        {
+            // Borrado POR CLAVE: la clave YA es la forma normalizada de la
+            // persona, así que identifica a un individuo con seguridad. Si
+            // alguien vuelve con otra grafía ("Ana" y "ANA" son la misma),
+            // el borrado par clave/valor no encontraría el valor guardado
+            // (que es la grafía original) y la reacción no se quitaría.
+            personas.TryRemove(clave, out _);
+
+            // Si ese emoji se quedó SIN NADIE, desaparece el chip entero.
+            // Hay que mirar que esté vacío: la protección par clave/valor solo
+            // garantiza que el diccionario siga siendo el mismo, NO que esté
+            // vacío. Sin esta comprobación, cuando Ana se deshiciera de SU
+            // chip con Luis todavía dentro, el emoji entero se iría y la
+            // reacción de Luis desaparecería de todas las pantallas.
+            // La quita sigue protegida: nunca se borra un emoji que otro ya
+            // esté rellenando de nuevo con otra persona.
+            if (personas.IsEmpty)
+            {
+                porEmoji.TryRemove(
+                    new KeyValuePair<string, ConcurrentDictionary<string, string>>(emoji, personas));
+            }
+        }
+
+        var reacciones = CrearDto(idMensaje, porEmoji);
+
+        // Sin ningún chip, el mensaje no necesita entrada: se libera la
+        // memoria y el cliente, al recibir la lista vacía, borra la fila
+        if (reacciones.Reacciones.Count == 0)
+        {
+            estado.Reacciones.TryRemove(
+                new KeyValuePair<Guid, ConcurrentDictionary<string, ConcurrentDictionary<string, string>>>(
+                    idMensaje, porEmoji));
+        }
+
+        return reacciones;
+    }
+
+    /// <inheritdoc />
+    public IReadOnlyList<ReaccionesMensajeDto> GetReacciones(string canal)
+    {
+        if (!_canales.TryGetValue(canal, out var estado))
+            return [];
+
+        return estado.Reacciones
+            .Select(par => CrearDto(par.Key, par.Value))
+            .Where(dto => dto.Reacciones.Count > 0)
+            .ToArray();
+    }
+
+    /// <summary>
+    /// Monta el DTO que sale del servidor para UN mensaje: los chips en el
+    /// orden FIJO de la lista cerrada (el chip no debe "baile" al añadirse)
+    /// y las personas de cada chip ordenadas alfabéticamente.
+    /// </summary>
+    /// <param name="idMensaje">Mensaje al que pertenecen.</param>
+    /// <param name="porEmoji">Índice interno emoji → personas del mensaje.</param>
+    /// <returns>Estado completo de las reacciones del mensaje.</returns>
+    private static ReaccionesMensajeDto CrearDto(
+        Guid idMensaje,
+        ConcurrentDictionary<string, ConcurrentDictionary<string, string>> porEmoji)
+    {
+        var reacciones = porEmoji
+            .Select(par => new ReaccionDto(
+                par.Key,
+                par.Value.Values
+                    .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+                    .ToArray()))
+            .OrderBy(r => PosicionEnLista(r.Emoji))
+            .ToArray();
+
+        return new ReaccionesMensajeDto(idMensaje, reacciones);
+    }
+
+    /// <summary>
+    /// Sitio de un emoji en la lista cerrada: así los chips se pintan siempre
+    /// en el mismo orden. Un emoji fuera de la lista (no debería existir)
+    /// va al final en lugar de romper nada.
+    /// </summary>
+    /// <param name="emoji">Emoji a situar.</param>
+    /// <returns>Posición del emoji en la lista cerrada; int.MaxValue si no está.</returns>
+    private static int PosicionEnLista(string emoji)
+    {
+        var admitidos = EmojisReaccion.Admitidos;
+
+        for (var i = 0; i < admitidos.Count; i++)
+        {
+            if (string.Equals(admitidos[i], emoji, StringComparison.Ordinal))
+                return i;
+        }
+
+        return int.MaxValue;
+    }
 
     /// <summary>
     /// Lector de la cola de escritura en segundo plano (Fase 2). Lo consume el
@@ -249,9 +373,11 @@ public class ChatStore(IOptions<ChatConfig> opciones, IMensajesRepository? repos
                 estado.Historial.Enqueue(mensaje);
 
             // Misma poda que AddMensaje, por si acaso (debería ser innecesario
-            // porque tope ya limita lo pedido)
-            while (estado.Historial.Count > Config.HistorialMaximo && estado.Historial.TryDequeue(out _))
+            // porque tope ya limita lo pedido). Las reacciones vacían con él,
+            // aunque al precargar nunca puede haber ninguna todavía.
+            while (estado.Historial.Count > Config.HistorialMaximo && estado.Historial.TryDequeue(out var fuera))
             {
+                estado.Reacciones.TryRemove(fuera.Id, out _);
             }
 
             total += mensajes.Count;

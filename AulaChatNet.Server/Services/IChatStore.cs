@@ -114,4 +114,28 @@ public interface IChatStore
     /// <param name="connectionId">Identificador de la conexión SignalR.</param>
     /// <returns>La conexión que acaba de salir, o null si no estaba registrada.</returns>
     ConexionChat? RemoveUsuario(string connectionId);
+
+    /// <summary>
+    /// ALTERNA una reacción de una persona sobre un mensaje del canal:
+    /// si ya la tenía, se la quita; si no, se la pone.
+    /// </summary>
+    /// <param name="canal">Canal canónico donde está (o estaba) el mensaje.</param>
+    /// <param name="idMensaje">Identificador del mensaje reaccionado.</param>
+    /// <param name="emoji">Emoji YA canónico (el hub lo valida con EmojisReaccion antes de llamar aquí).</param>
+    /// <param name="usuario">Persona que reacciona (se guarda con el nombre visible de ese momento).</param>
+    /// <returns>
+    /// El estado COMPLETO de las reacciones del mensaje tras el alterna —
+    /// vacío si ya no queda ninguna — o null si el mensaje no está en la
+    /// caché del canal o es un mensaje de sistema (a esos no se reacciona).
+    /// </returns>
+    ReaccionesMensajeDto? AlternarReaccion(string canal, Guid idMensaje, string emoji, string usuario);
+
+    /// <summary>
+    /// Devuelve el estado de las reacciones de los mensajes del canal que
+    /// siguen en el historial: el snapshot que recibe quien se conecta o
+    /// cambia de canal, para que también vea los chips de mensajes antiguos.
+    /// </summary>
+    /// <param name="canal">Canal canónico.</param>
+    /// <returns>Un DTO por mensaje con al menos una reacción; vacío si no hay ninguna.</returns>
+    IReadOnlyList<ReaccionesMensajeDto> GetReacciones(string canal);
 }

@@ -109,6 +109,10 @@ public class ChatHub(IChatStore store, IOptions<ChatConfig> opciones, ILogger<Ch
         // 1) Historial del canal SOLO a este cliente: no se satura a los demás
         await Clients.Caller.SendAsync(ChatHubEventos.HistorialRecibido, store.GetHistorial(canalCanonico));
 
+        // 1b) Reacciones de ese historial SOLO a este cliente: quien llega
+        //     tarde también ve los chips de los mensajes que siguen vivos
+        await Clients.Caller.SendAsync(ChatHubEventos.ReaccionesRecibidas, store.GetReacciones(canalCanonico));
+
         // 2) "X se ha unido al canal" a los miembros del canal (también al que entra)
         var mensaje = MensajesSistema.UsuarioUnido(usuario);
         store.AddMensaje(canalCanonico, mensaje);
@@ -184,6 +188,10 @@ public class ChatHub(IChatStore store, IOptions<ChatConfig> opciones, ILogger<Ch
         // Historial del nuevo canal SOLO al que cambia (antes del aviso de
         // entrada, para que no se pinte dos veces la unión)
         await Clients.Caller.SendAsync(ChatHubEventos.HistorialRecibido, store.GetHistorial(canalNuevo));
+
+        // Reacciones del nuevo canal SOLO al que cambia: los chips de los
+        // mensajes que trae su historial (mismo orden: tras el historial)
+        await Clients.Caller.SendAsync(ChatHubEventos.ReaccionesRecibidas, store.GetReacciones(canalNuevo));
 
         // Aviso de ENTRADA en el nuevo canal
         var entrada = MensajesSistema.UsuarioUnido(conexion.Usuario);
@@ -361,6 +369,79 @@ public class ChatHub(IChatStore store, IOptions<ChatConfig> opciones, ILogger<Ch
 
         await Clients.OthersInGroup(conexion.Canal).SendAsync(
             ChatHubEventos.Escribiendo, conexion.Usuario);
+
+        return null;
+    }
+
+    /// <summary>
+    /// Alterna una reacción sobre un mensaje del canal del usuario: si ya la
+    /// tenía, se la quita; si no, se la pone. Difunde el estado COMPLETO del
+    /// mensaje a <c>Clients.Group</c> — el emisor incluido, porque él también
+    /// debe ver su propio chip (a diferencia de la señal de escritura, aquí
+    /// la noticia es para todos).
+    ///
+    /// <remarks>
+    /// Cuatro reglas que sostienen este método y que conviene leer juntas:
+    /// <list type="number">
+    /// <item>El emoji se valida contra la lista CERRADA de
+    /// <see cref="EmojisReaccion"/>: de la red llega lo que quiera, y sin
+    /// esa puerta cualquier texto libre ensuciaría el canal para todos.</item>
+    /// <item>Solo se reacciona a mensajes NORMALES que sigan en la caché del
+    /// canal del emisor: los avisos de sistema no lo son, y lo que salió de
+    /// la caché circular ya no se puede reaccionar.</item>
+    /// <item><b>No se llama a <c>AddMensaje</c> ni se persiste nada</b>: una
+    /// reacción no es un mensaje y no debe entrar en el historial de SQLite.
+    /// Sin autenticación, el nombre que dejaste libre al reiniciar lo puede
+    /// coger cualquiera y se llevaría tus reacciones: efímero, como los
+    /// privados.</item>
+    /// <item>El servidor es la ÚNICA fuente de verdad: el cliente solo
+    /// invoca, y el estado que pinta viene del evento, nunca de un cálculo
+    /// propio — así no hay dos pantallas que puedan discrepar.</item>
+    /// </list>
+    /// </remarks>
+    /// </summary>
+    /// <param name="idMensaje">Identificador del mensaje a reaccionar.</param>
+    /// <param name="emoji">Emoji escrito por el cliente (se canoniciza y se valida aquí).</param>
+    /// <returns>null si el alterna fue correcto; el mensaje de error si no.</returns>
+    public async Task<string?> ReaccionarAsync(Guid idMensaje, string? emoji)
+    {
+        var conexion = store.GetConexion(Context.ConnectionId);
+
+        if (conexion is null)
+        {
+            logger.LogWarning(
+                "Reacción rechazada: la conexión {ConnectionId} no está registrada",
+                Context.ConnectionId);
+
+            return "No estás registrado en el canal, vuelve a conectarte";
+        }
+
+        var canonico = EmojisReaccion.Canonico(emoji);
+
+        if (canonico is null)
+        {
+            logger.LogWarning(
+                "Reacción rechazada de {Usuario}: emoji no admitido", conexion.Usuario);
+
+            return $"Emoji no admitido. Usa: {EmojisReaccion.ListaLegible}";
+        }
+
+        var estado = store.AlternarReaccion(conexion.Canal, idMensaje, canonico, conexion.Usuario);
+
+        if (estado is null)
+        {
+            logger.LogWarning(
+                "Reacción rechazada de {Usuario}: el mensaje {IdMensaje} no está en {Canal}",
+                conexion.Usuario, idMensaje, conexion.Canal);
+
+            return "Ese mensaje ya no está en el canal";
+        }
+
+        logger.LogInformation(
+            "{Usuario} reacciona {Emoji} al mensaje {IdMensaje} en {Canal}",
+            conexion.Usuario, canonico, idMensaje, conexion.Canal);
+
+        await Clients.Group(conexion.Canal).SendAsync(ChatHubEventos.ReaccionActualizada, estado);
 
         return null;
     }

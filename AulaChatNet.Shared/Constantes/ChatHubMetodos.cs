@@ -37,4 +37,12 @@ public static class ChatHubMetodos
     /// resto de tu canal, que es quien decide cuánto dura en pantalla.
     /// </summary>
     public const string Escribiendo = "EscribiendoAsync";
+
+    /// <summary>
+    /// Método para reaccionar a un mensaje: ReaccionarAsync(idMensaje, emoji).
+    /// El servidor ALTERNA (si ya tenías ese emoji, te lo quita), valida que
+    /// el emoji esté en la lista cerrada de Shared y difunde el estado del
+    /// mensaje a todo el canal — también a ti, para que veas tu propio chip.
+    /// </summary>
+    public const string Reaccionar = "ReaccionarAsync";
 }

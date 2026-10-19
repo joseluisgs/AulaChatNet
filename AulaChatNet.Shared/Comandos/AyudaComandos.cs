@@ -44,6 +44,7 @@ public static class AyudaComandos
         new("/nick <nombre>", "Cambia tu nombre en caliente (p. ej. /nick Ana2)"),
         new("/usuarios [canal]", "Conectados de tu canal o de otro (p. ej. /usuarios daw)"),
         new("/privado <quien> <texto>", "Mensaje privado a alguien de tu canal (efímero, no se guarda)"),
+        new("/reaccion <emoji>", "Pone un emoji en el último mensaje del canal; pulsarlo otra vez lo quita"),
         new("/reconectar", "Vuelve a entrar si se perdió la conexión"),
         new("/sesion [borrar]", "Ver la sesión guardada o borrarla (útil en aulas compartidas)"),
         new("/limpiar", "Limpia la vista local de mensajes (el historial sigue en el servidor)"),

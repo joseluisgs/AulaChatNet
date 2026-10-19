@@ -57,6 +57,7 @@ public static class ParserComandos
             // necesita para enseñar la nota mientras el usuario teclea)
             _ when EsNombrePrivado(nombre) => CrearPrivado(argumento),
 
+            "/reaccion" or "/react" => CrearReaccion(argumento),
             "/reconectar" or "/reconnect" => new Comando.Reconectar(),
             "/sesion" => CrearSesion(argumento),
             "/limpiar" or "/clear" => new Comando.Limpiar(),
@@ -153,6 +154,28 @@ public static class ParserComandos
                 "Usa: /privado <quien> <texto> (p. ej. /privado Ana ¿nos vemos?)");
 
         return new Comando.Privado(partes[0], partes[1]);
+    }
+
+    /// <summary>
+    /// Construye el comando de reacción: el argumento es SOLO el emoji, y se
+    /// queda con la primera palabra por si alguien escribe "/reaccion 👍
+    /// hola" — el resto se ignora en lugar de romper. Que el emoji esté en
+    /// la lista cerrada lo comprueban después el cliente (para avisar ya) y
+    /// el servidor (para no fiarse de nadie), no el parser: aquí solo se
+    /// decide la FORMA de la línea.
+    /// </summary>
+    /// <param name="argumento">Texto escrito tras /reaccion (puede ser null).</param>
+    /// <returns>Comando de reacción o comando inválido con su uso.</returns>
+    private static Comando CrearReaccion(string? argumento)
+    {
+        if (string.IsNullOrWhiteSpace(argumento))
+            return new Comando.Invalido(
+                "Falta el emoji de la reacción",
+                "Usa: /reaccion <emoji> (p. ej. /reaccion 👍)");
+
+        var partes = argumento.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        return new Comando.Reaccion(partes[0]);
     }
 
     /// <summary>
