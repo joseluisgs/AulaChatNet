@@ -9,34 +9,43 @@
 @inject IChatStore Store
 
 <header class="barra">
-    @* Icono de la app: mismo fichero que el panel de entrada (wwwroot/resources) *@
-    <img class="barra-icono"
-         src="resources/icon-app.png"
-         alt="AulaChatNet"
-         width="28" height="28" />
-    <span class="barra-logo"># AulaChatNet</span>
-    <span class="barra-separador">·</span>
-    <span class="barra-nick">@(_nick ?? "…")</span>
-    <span class="barra-separador">·</span>
-    <span class="barra-canal">@(_canal ?? "…")</span>
-    <span class="punto @(Punto.Clase)" title="@Punto.Texto"></span>
-    <span class="barra-estado">@Punto.Texto</span>
+    @* Fila de estado: identidad, punto, gente y botones. El error NO va
+       aquí — medido, un mensaje de 91 caracteres ocupaba 531 px dentro de
+       una fila que necesita 1100 px, y se llevaba los botones fuera de la
+       ventana (Salir acababa en el px 1100 de una ventana de 838). *@
+    <div class="barra-fila">
+        @* Icono de la app: mismo fichero que el panel de entrada (wwwroot/resources) *@
+        <img class="barra-icono"
+             src="resources/icon-app.png"
+             alt="AulaChatNet"
+             width="28" height="28" />
+        <span class="barra-logo"># AulaChatNet</span>
+        <span class="barra-separador">·</span>
+        <span class="barra-nick">@(_nick ?? "…")</span>
+        <span class="barra-separador">·</span>
+        <span class="barra-canal">@(_canal ?? "…")</span>
+        <span class="punto @(Punto.Clase)" title="@Punto.Texto"></span>
+        <span class="barra-estado">@Punto.Texto</span>
 
-    <span class="barra-contador">
-        @_usuarios.Count en la sala · @_estadisticas.TotalConectados en total
-    </span>
+        <span class="barra-contador">
+            @_usuarios.Count en la sala · @_estadisticas.TotalConectados en total
+        </span>
 
+        @if (_estado == EstadoConexion.Desconectado)
+        {
+            <button type="button" class="boton-secundario" @onclick="ReconectarAsync">Reconectar</button>
+        }
+
+        <button type="button" class="boton-secundario" @onclick="SalirAsync">Salir</button>
+    </div>
+
+    @* Mensaje de error en SU línea, a todo el ancho: la fila de arriba queda
+       intacta y el texto entero cabe (531 px de texto frente a 806 px
+       disponibles), incluso el más largo de 121 caracteres. *@
     @if (_error is not null)
     {
-        <span class="barra-error">@_error</span>
+        <div class="barra-error">@_error</div>
     }
-
-    @if (_estado == EstadoConexion.Desconectado)
-    {
-        <button type="button" class="boton-secundario" @onclick="ReconectarAsync">Reconectar</button>
-    }
-
-    <button type="button" class="boton-secundario" @onclick="SalirAsync">Salir</button>
 </header>
 
 @code {

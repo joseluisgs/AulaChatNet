@@ -274,14 +274,25 @@ body {
     height: 100vh;
 }
 
+/* Cabecera: DOS bloques apilados. La fila de siempre (48 px) y, solo si hay
+   fallo, el mensaje de error debajo a todo el ancho. El error vive FUERA de
+   la fila porque dentro desbordaba y se llevaba los botones por delante. */
 .barra {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    background: var(--dc-oscuro);
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
+    flex-shrink: 0;
+}
+
+/* Fila de estado: idéntica a lo que había antes del arreglo */
+.barra-fila {
     display: flex;
     align-items: center;
     gap: 10px;
     height: 48px;
     padding: 0 16px;
-    background: var(--dc-oscuro);
-    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
     flex-shrink: 0;
 }
 
@@ -325,10 +336,14 @@ body {
     text-overflow: ellipsis;
 }
 
+/* El error ocupa SU línea, sin restricción de ancho: no puede cortar la fila
+   ni dejar nada fuera de la ventana. Medido en ventana de 838 px: 531 px de
+   texto frente a 806 px disponibles, cabe en UNA línea (el más largo, de 121
+   caracteres, también). Si aun así no cupiera, aquí sí puede partirse. */
 .barra-error {
     color: var(--dc-rojo);
     font-size: 13px;
-    white-space: nowrap;
+    padding: 0 16px 6px;
 }
 
 /* ==========================================================================
