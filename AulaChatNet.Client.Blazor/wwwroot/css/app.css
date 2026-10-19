@@ -628,13 +628,21 @@ body {
 }
 
 /* Clic para escribirle un privado: el cursor cambia y el 🔒 aparece SOLO
-   al pasar el ratón, para no convertir la lista en un muro de candados */
+   al pasar el ratón, para no convertir la lista en un muro de candados.
+   EL HUECO ESTÁ EN TODAS LAS FILAS, también en la tuya: el ::after es un
+   elemento de la fila aunque tenga opacidad 0, y si solo se reservara en
+   las clicable, el punto verde de tu propia fila se pintaría más a la
+   derecha y la columna de puntos quedaría escalonada. Con ancho FIJO el
+   emoji no puede cambiar el hueco de una fila a otra */
 .usuario.clicable {
     cursor: pointer;
 }
 
-.usuario.clicable::after {
+.usuario::after {
     content: "🔒";
+    flex-shrink: 0;
+    width: 14px;
+    text-align: center;
     font-size: 11px;
     opacity: 0;
     transition: opacity 0.15s;
