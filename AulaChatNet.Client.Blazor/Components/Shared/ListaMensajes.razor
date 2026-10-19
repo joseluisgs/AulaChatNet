@@ -20,7 +20,10 @@
         }
         else if (fila.Mensaje is { } mensaje)
         {
-            <MensajeItem Mensaje="mensaje" @key="mensaje.Id" />
+            <MensajeItem Mensaje="mensaje"
+                         Reacciones="ChipsDe(mensaje.Id)"
+                         Nick="@_nick"
+                         @key="mensaje.Id" />
         }
     }
 
@@ -35,16 +38,20 @@
 @code {
     private IReadOnlyList<MensajeDto> _mensajes = [];
     private IReadOnlyList<MensajePrivadoDto> _privados = [];
+    private IReadOnlyDictionary<Guid, ReaccionesMensajeDto> _reacciones = new Dictionary<Guid, ReaccionesMensajeDto>();
+    private string? _nick;
     private IReadOnlyList<FilaChat> _filas = [];
 
     private IDisposable? _suscripcion;
     private IDisposable? _suscripcionPrivados;
+    private IDisposable? _suscripcionReacciones;
+    private IDisposable? _suscripcionNick;
 
     // Marcador: "hay que bajar el scroll" — se consume en OnAfterRender
     // (el DOM solo ya está listo a partir de AHÍ, antes no)
     private bool _pendienteBajar;
 
-    /// <summary>Dos suscripciones: canal y privados (esta última solo SE AÑADE).</summary>
+    /// <summary>Cuatro suscripciones: canal, privados, reacciones y nick.</summary>
     protected override void OnInitialized()
     {
         _suscripcion = Store.Mensajes.Subscribe(mensajes =>
@@ -58,7 +65,30 @@
             _privados = privados;
             Recalcular();
         });
+
+        // Las reacciones NO reordenan nada (el orden de las filas no
+        // cambia), así que con repintar basta — y sin bajar el scroll: una
+        // reacción no debe arrastrar la vista de quien estaba leyendo
+        _suscripcionReacciones = Store.Reacciones.Subscribe(reacciones =>
+        {
+            _reacciones = reacciones;
+            _ = InvokeAsync(StateHasChanged);
+        });
+
+        // El nick decide qué chip sale resaltado como propio; llega tarde
+        // (tras el alta) y puede cambiar con /nick, así que también se suscribe
+        _suscripcionNick = Store.Nick.Subscribe(nick =>
+        {
+            _nick = nick;
+            _ = InvokeAsync(StateHasChanged);
+        });
     }
+
+    /// <summary>Chips de UN mensaje: los del mapa de reacciones, o vacío.</summary>
+    /// <param name="idMensaje">Mensaje a mirar.</param>
+    /// <returns>Sus reacciones actuales (lista vacía si no tiene ninguna).</returns>
+    private IReadOnlyList<ReaccionDto> ChipsDe(Guid idMensaje) =>
+        _reacciones.TryGetValue(idMensaje, out var estado) ? estado.Reacciones : [];
 
     /// <summary>
     /// Vuelve a ordenar las dos vistas juntas y pide un repintado: es el
@@ -82,10 +112,12 @@
         await JS.InvokeVoidAsync("aulachat.abajo", "lista-mensajes");
     }
 
-    /// <summary>Libera las dos suscripciones cuando el componente se destruye.</summary>
+    /// <summary>Libera las cuatro suscripciones cuando el componente se destruye.</summary>
     public void Dispose()
     {
         _suscripcion?.Dispose();
         _suscripcionPrivados?.Dispose();
+        _suscripcionReacciones?.Dispose();
+        _suscripcionNick?.Dispose();
     }
 }

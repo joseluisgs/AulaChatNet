@@ -58,6 +58,103 @@ public class VistaChatTests
 
     #endregion
 
+    #region Reacciones Tests
+
+    [Test]
+    public void LineaMensajeMarkup_ConReacciones_PintaElChipConContadorYNombres()
+    {
+        // Arrange
+        var mensaje = Mensaje("Ana", "Buenas a todos");
+        var reacciones = new Dictionary<Guid, ReaccionesMensajeDto>
+        {
+            [mensaje.Id] = new(mensaje.Id,
+            [
+                new ReaccionDto("👍", ["Ana", "Bruno"]),
+                new ReaccionDto("😂", ["Luis"])
+            ])
+        };
+
+        // Act
+        var linea = VistaChat.LineaMensajeMarkup(mensaje, reacciones);
+
+        // Assert: los chips van al final, en gris y con la frase compartida
+        linea.Should().Contain("👍 2 (Ana, Bruno)");
+        linea.Should().Contain("😂 1 (Luis)");
+        linea.Should().Contain("[grey]");
+    }
+
+    [Test]
+    public void LineaMensajeMarkup_SinReaccionesParaEseMensaje_LaLineaNoLlevaChip()
+    {
+        // Arrange: hay reacciones, pero de OTRO mensaje
+        var mensaje = Mensaje("Ana", "Buenas a todos");
+        var reacciones = new Dictionary<Guid, ReaccionesMensajeDto>
+        {
+            [Guid.NewGuid()] = new(Guid.NewGuid(), [new ReaccionDto("👍", ["Luis"])])
+        };
+
+        // Act
+        var linea = VistaChat.LineaMensajeMarkup(mensaje, reacciones);
+
+        // Assert: el chip de nadie se cuela en una fila que no es la suya
+        linea.Should().NotContain("👍");
+    }
+
+    [Test]
+    public void LineaMensajeMarkup_ConNombresConCorchetes_LosEscapa()
+    {
+        // Arrange: en Spectre, un "[" sin escapar se comería el formato
+        var mensaje = Mensaje("Ana", "Buenas a todos");
+        var reacciones = new Dictionary<Guid, ReaccionesMensajeDto>
+        {
+            [mensaje.Id] = new(mensaje.Id, [new ReaccionDto("👍", ["[Ana]"])])
+        };
+
+        // Act
+        var linea = VistaChat.LineaMensajeMarkup(mensaje, reacciones);
+
+        // Assert: [[ y ]] son los corchetes literales de Spectre (mismo
+        // escape que usa EditorLinea), y el nombre sale a la vista del usuario
+        linea.Should().Contain("[[Ana]]");
+    }
+
+    [Test]
+    public void LineaMensajeMarkup_MensajeDeSistema_NuncaLlevaChips()
+    {
+        // Arrange: defensa en profundidad — aunque alguien pasara un mapa
+        // con entrada para un aviso, los de sistema no se pintan reaccionados
+        var aviso = Mensaje("Ana", "Ana se ha unido al canal", TipoMensaje.Sistema);
+        var reacciones = new Dictionary<Guid, ReaccionesMensajeDto>
+        {
+            [aviso.Id] = new(aviso.Id, [new ReaccionDto("👍", ["Luis"])])
+        };
+
+        // Act
+        var linea = VistaChat.LineaMensajeMarkup(aviso, reacciones);
+
+        // Assert
+        linea.Should().NotContain("👍");
+    }
+
+    [Test]
+    public void LineaMarkup_FilaPrivada_IgnoraLasReacciones()
+    {
+        // Arrange: los privados no se reaccionan, y el mapa no debe tocarlos
+        var privado = Privado("Ana", "Luis", "¿nos vemos?");
+        var reacciones = new Dictionary<Guid, ReaccionesMensajeDto>
+        {
+            [privado.Id] = new(privado.Id, [new ReaccionDto("👍", ["Luis"])])
+        };
+
+        // Act
+        var linea = VistaChat.LineaMarkup(new FilaChat(true, null, privado), yo: "Ana", reacciones);
+
+        // Assert
+        linea.Should().NotContain("👍");
+    }
+
+    #endregion
+
     #region LineaPrivadoMarkup Tests
 
     [Test]

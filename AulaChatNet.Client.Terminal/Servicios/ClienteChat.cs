@@ -46,6 +46,12 @@ public class ClienteChat : IDisposable
     private readonly BehaviorSubject<string?> _canalActual = new(null);
     private readonly BehaviorSubject<EstadoConexion> _estado = new(EstadoConexion.Desconectado);
 
+    // Reacciones por mensaje: el servidor manda el estado COMPLETO de cada
+    // mensaje, así que aquí solo se REEMPLAZA la entrada que cambia. La
+    // clave es el Id del mensaje (GUID), el mismo que identifica la fila
+    private readonly BehaviorSubject<IReadOnlyDictionary<Guid, ReaccionesMensajeDto>> _reacciones =
+        new(new Dictionary<Guid, ReaccionesMensajeDto>());
+
     // "Está escribiendo...": por un lado QUIÉN (con caducidad sola, dentro
     // del seguimiento) y por otro el muestreo de las TECLAS propias, que
     // convierte cada pulsación en como mucho una señal por segundo
@@ -128,7 +134,39 @@ public class ClienteChat : IDisposable
             // Con él se vacía también el seguimiento: nadie de la sala
             // anterior debe asomar en la nueva ni un instante
             _seguimiento.Limpiar();
+
+            // Y las reacciones también: el snapshot del nuevo canal llegará
+            // acto seguido por su propio evento y rellenará el mapa de cero
+            _reacciones.OnNext(new Dictionary<Guid, ReaccionesMensajeDto>());
         });
+
+        // Reacciones de UN mensaje: estado COMPLETO que manda el servidor —
+        // aquí solo se reemplaza la entrada de ese mensaje, o se borra si la
+        // lista llega vacía (alguien quitó la última reacción)
+        _conexion.On<ReaccionesMensajeDto>(ChatHubEventos.ReaccionActualizada, estado =>
+        {
+            var nuevas = new Dictionary<Guid, ReaccionesMensajeDto>(_reacciones.Value);
+
+            if (estado.Reacciones.Count == 0)
+                nuevas.Remove(estado.IdMensaje);
+            else
+                nuevas[estado.IdMensaje] = estado;
+
+            _reacciones.OnNext(nuevas);
+        });
+
+        // Snapshot al entrar o cambiar de canal: REEMPLAZA el mapa entero,
+        // para que no sobreviva ningún chip del canal anterior
+        _conexion.On<IReadOnlyList<ReaccionesMensajeDto>>(
+            ChatHubEventos.ReaccionesRecibidas, lista =>
+            {
+                var nuevas = new Dictionary<Guid, ReaccionesMensajeDto>();
+
+                foreach (var estado in lista)
+                    nuevas[estado.IdMensaje] = estado;
+
+                _reacciones.OnNext(nuevas);
+            });
 
         // ── Ciclo de vida de la conexión → punto de estado de la cabecera ──
         _conexion.Reconnecting += _ =>
@@ -165,6 +203,13 @@ public class ClienteChat : IDisposable
     public IObservable<IReadOnlyList<MensajeDto>> Mensajes => _mensajes;
 
     /// <summary>
+    /// Reacciones por mensaje del canal actual (clave: Id del mensaje). Se
+    /// repinta desde el valor —igual que el resto de la TUI— y el chip de un
+    /// mensaje que ya no está en pantalla simplemente no se pinta.
+    /// </summary>
+    public IObservable<IReadOnlyDictionary<Guid, ReaccionesMensajeDto>> Reacciones => _reacciones;
+
+    /// <summary>
     /// Privados recibidos y enviados: viven SOLO en este cliente, porque el
     /// servidor no los guarda. Por eso no hay evento de "historial de
     /// privados": lo que ves es todo lo que hay.
@@ -187,6 +232,9 @@ public class ClienteChat : IDisposable
 
     /// <summary>Último valor de la vista de mensajes (BehaviorSubject lo guarda).</summary>
     public IReadOnlyList<MensajeDto> VistaMensajes => _mensajes.Value;
+
+    /// <summary>Último valor de las reacciones por mensaje (lo lee el pintado de filas).</summary>
+    public IReadOnlyDictionary<Guid, ReaccionesMensajeDto> VistaReacciones => _reacciones.Value;
 
     /// <summary>Último valor de la vista de privados.</summary>
     public IReadOnlyList<MensajePrivadoDto> VistaPrivados => _privados.Value;
@@ -352,6 +400,27 @@ public class ClienteChat : IDisposable
                 _senalEscritura.Envio();
 
             return error;
+        }
+        catch (Exception)
+        {
+            // Mismo traductor que EnviarAsync: sin conexión, error en español
+            return ErrorSinConexion;
+        }
+    }
+
+    /// <summary>
+    /// Alterna una reacción sobre un mensaje del canal actual. El eco vuelve
+    /// por el evento <c>ReaccionActualizada</c>: la vista se pinta SOLO
+    /// desde ahí, igual que con los mensajes — el cliente no calcula nada.
+    /// </summary>
+    /// <param name="idMensaje">Mensaje a reaccionar.</param>
+    /// <param name="emoji">Emoji YA validado contra la lista cerrada por el llamador (el servidor vuelve a validar).</param>
+    /// <returns>null si todo fue correcto; el error del servidor o de conexión si no.</returns>
+    public async Task<string?> ReaccionarAsync(Guid idMensaje, string emoji)
+    {
+        try
+        {
+            return await _conexion.InvokeAsync<string?>(ChatHubMetodos.Reaccionar, idMensaje, emoji);
         }
         catch (Exception)
         {
@@ -546,6 +615,7 @@ public class ClienteChat : IDisposable
         _estadisticas.Dispose();
         _canalActual.Dispose();
         _estado.Dispose();
+        _reacciones.Dispose();
 
         // El seguimiento de escritura también: su latido de caducidad vive
         // en un temporizador que debe pararse con la store

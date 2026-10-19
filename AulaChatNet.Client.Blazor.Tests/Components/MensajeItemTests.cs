@@ -16,7 +16,13 @@ namespace AulaChatNet.Client.Blazor.Tests.Components;
 public class MensajeItemTests : BunitContext
 {
     [SetUp]
-    public void SetUp() => Services.AddSingleton(new ChatConfig());
+    public void SetUp()
+    {
+        // ChatConfig para el avatar y la store falsa porque la fila pinta
+        // ahora el componente de reacciones, que habla con la store
+        Services.AddSingleton(new ChatConfig());
+        Services.AddSingleton(StoreFalsa.Crear().Objeto);
+    }
 
     [Test]
     public void MensajeNormal_PintaNombreColorHoraYTexto()

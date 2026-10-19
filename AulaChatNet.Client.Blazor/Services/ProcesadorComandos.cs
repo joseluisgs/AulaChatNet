@@ -2,6 +2,7 @@ using AulaChatNet.Client.Blazor.State;
 using AulaChatNet.Shared.Comandos;
 using AulaChatNet.Shared.Configuracion;
 using AulaChatNet.Shared.Dtos;
+using AulaChatNet.Shared.Helpers;
 
 namespace AulaChatNet.Client.Blazor.Services;
 
@@ -85,6 +86,16 @@ public class ProcesadorComandos(IChatStore store, ChatConfig config, ISesionStor
 
                 break;
 
+            case Comando.Reaccion { Emoji: var emoji }:
+                var errorReaccion = await ReaccionarAsync(emoji);
+
+                // Sin error no se dice nada: el chip aparece solo cuando el
+                // servidor difunde el estado del mensaje
+                if (errorReaccion is not null)
+                    store.Aviso(errorReaccion);
+
+                break;
+
             case Comando.Reconectar:
                 store.Aviso(await CrearTextoReconectarAsync());
                 break;
@@ -115,6 +126,30 @@ public class ProcesadorComandos(IChatStore store, ChatConfig config, ISesionStor
                 store.Aviso($"{invalido.Motivo}\n{invalido.Uso}");
                 break;
         }
+    }
+
+    /// <summary>
+    /// /reaccion emoji: sobre el ÚLTIMO mensaje de una persona del canal
+    /// (mismo criterio que la terminal). El emoji se valida contra la lista
+    /// cerrada ANTES de tocar la red — el servidor vuelve a validar, porque
+    /// de la red llega lo que quiera.
+    /// </summary>
+    /// <param name="emoji">Emoji escrito por el usuario.</param>
+    /// <returns>null si el alterna salió bien; el error, si no.</returns>
+    private async Task<string?> ReaccionarAsync(string emoji)
+    {
+        var canonico = EmojisReaccion.Canonico(emoji);
+
+        if (canonico is null)
+            return $"Emoji no admitido. Usa: {EmojisReaccion.ListaLegible}";
+
+        // Solo mensajes de PERSONA: a los avisos de sistema no se les reacciona
+        var ultimo = store.VistaMensajes.LastOrDefault(m => m.Tipo == TipoMensaje.Normal);
+
+        if (ultimo is null)
+            return "No hay mensajes que reaccionar en este canal.";
+
+        return await store.ReaccionarAsync(ultimo.Id, canonico);
     }
 
     /// <summary>

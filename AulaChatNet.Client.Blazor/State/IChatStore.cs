@@ -23,6 +23,14 @@ public interface IChatStore : IDisposable
     IObservable<IReadOnlyList<MensajeDto>> Mensajes { get; }
 
     /// <summary>
+    /// Reacciones por mensaje del canal actual (clave: Id del mensaje). El
+    /// servidor manda el estado COMPLETO de cada mensaje, así que el
+    /// componente solo REEMPLAZA la fila que cambia — o la borra si la
+    /// lista llega vacía (alguien quitó la última reacción).
+    /// </summary>
+    IObservable<IReadOnlyDictionary<Guid, ReaccionesMensajeDto>> Reacciones { get; }
+
+    /// <summary>
     /// Mensajes privados recibidos y enviados: solo SE AÑADEN (nunca se
     /// reemplazan, porque el servidor no guarda ninguno). Vive aparte de
     /// <see cref="Mensajes"/> para que el historial del canal no pueda
@@ -69,6 +77,12 @@ public interface IChatStore : IDisposable
 
     /// <summary>Último valor del canal canónico en el que estamos (null hasta conectar).</summary>
     string? Canal { get; }
+
+    /// <summary>Último valor de la lista de mensajes del canal actual (lo lee el comando /reaccion).</summary>
+    IReadOnlyList<MensajeDto> VistaMensajes { get; }
+
+    /// <summary>Último valor de las reacciones por mensaje del canal actual.</summary>
+    IReadOnlyDictionary<Guid, ReaccionesMensajeDto> VistaReacciones { get; }
 
     /// <summary>Último valor de la lista de conectados del canal actual.</summary>
     IReadOnlyList<UsuarioConectadoDto> VistaUsuarios { get; }
@@ -131,6 +145,17 @@ public interface IChatStore : IDisposable
     /// <param name="texto">Texto ya recortado.</param>
     /// <returns>null si fue correcto; el error del servidor o de conexión si no.</returns>
     Task<string?> EnviarPrivadoAsync(string destinatario, string texto);
+
+    /// <summary>
+    /// Alterna una reacción sobre un mensaje del canal actual (el mismo
+    /// gesto quita lo que ya tenías). El eco vuelve por el evento de
+    /// reacción actualizada: la vista se pinta SOLO desde ahí, igual que
+    /// con los mensajes del canal.
+    /// </summary>
+    /// <param name="idMensaje">Mensaje a reaccionar (el de la fila elegida).</param>
+    /// <param name="emoji">Emoji YA validado contra la lista cerrada por el llamador (el servidor vuelve a validar).</param>
+    /// <returns>null si fue correcto; el error del servidor o de conexión si no.</returns>
+    Task<string?> ReaccionarAsync(Guid idMensaje, string emoji);
 
     /// <summary>Cambia al canal dado (el historial nuevo llega después por evento).</summary>
     /// <param name="canal">Canal de destino.</param>

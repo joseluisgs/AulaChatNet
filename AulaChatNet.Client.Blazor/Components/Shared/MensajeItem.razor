@@ -6,6 +6,12 @@
     /// <summary>Mensaje a pintar.</summary>
     [Parameter] public MensajeDto Mensaje { get; set; } = default!;
 
+    /// <summary>Chips de reacción actuales del mensaje (vacío si no tiene ninguno).</summary>
+    [Parameter] public IReadOnlyList<ReaccionDto> Reacciones { get; set; } = [];
+
+    /// <summary>Nick local, para resaltar el chip propio (null sin sesión).</summary>
+    [Parameter] public string? Nick { get; set; }
+
     /// <summary>
     /// Hora local de quien mira: el servidor guarda UTC (regla de oro:
     /// guardar UTC, convertir SOLO al presentar) — sin esta conversión la
@@ -42,6 +48,10 @@ else
         <div class="mensaje-cuerpo">
             <span class="mensaje-nombre" style="color: @ColorNombre">@Mensaje.Usuario</span>
             <span class="mensaje-texto">@Mensaje.Texto</span>
+
+            @* Los chips y el "+" de reaccionar: solo a los mensajes de
+               persona (los avisos de sistema no se reaccionan) *@
+            <ReaccionesMensaje IdMensaje="@Mensaje.Id" Reacciones="@Reacciones" Nick="@Nick" />
         </div>
     </div>
 }

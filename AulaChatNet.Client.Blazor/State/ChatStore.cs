@@ -43,6 +43,12 @@ public class ChatStore : IChatStore
     private readonly BehaviorSubject<bool> _enSesion = new(false);
     private readonly BehaviorSubject<string?> _destinatarioPrivado = new(null);
 
+    // Reacciones por mensaje: el servidor manda el estado COMPLETO de cada
+    // mensaje, así que aquí solo se REEMPLAZA la entrada que cambia. La
+    // clave es el Id del mensaje (GUID), el mismo que identifica la fila
+    private readonly BehaviorSubject<IReadOnlyDictionary<Guid, ReaccionesMensajeDto>> _reacciones =
+        new(new Dictionary<Guid, ReaccionesMensajeDto>());
+
     // "Está escribiendo...": por un lado QUIÉN, con su caducidad dentro del
     // seguimiento, y por otro el muestreo de las TECLAS propias, que convierte
     // cada pulsación en como mucho una señal por segundo
@@ -133,7 +139,39 @@ public class ChatStore : IChatStore
             // Con él se vacía también el seguimiento: nadie de la sala
             // anterior debe asomar en la nueva ni un instante
             _seguimiento.Limpiar();
+
+            // Y las reacciones también: el snapshot del nuevo canal llegará
+            // acto seguido por su propio evento y rellenará el mapa de cero
+            _reacciones.OnNext(new Dictionary<Guid, ReaccionesMensajeDto>());
         });
+
+        // Reacciones de UN mensaje: estado COMPLETO que manda el servidor —
+        // aquí solo se reemplaza la entrada de ese mensaje, o se borra si la
+        // lista llega vacía (alguien quitó la última reacción)
+        _conexion.On<ReaccionesMensajeDto>(ChatHubEventos.ReaccionActualizada, estado =>
+        {
+            var nuevas = new Dictionary<Guid, ReaccionesMensajeDto>(_reacciones.Value);
+
+            if (estado.Reacciones.Count == 0)
+                nuevas.Remove(estado.IdMensaje);
+            else
+                nuevas[estado.IdMensaje] = estado;
+
+            _reacciones.OnNext(nuevas);
+        });
+
+        // Snapshot al entrar o cambiar de canal: REEMPLAZA el mapa entero,
+        // para que no sobreviva ningún chip del canal anterior
+        _conexion.On<IReadOnlyList<ReaccionesMensajeDto>>(
+            ChatHubEventos.ReaccionesRecibidas, lista =>
+            {
+                var nuevas = new Dictionary<Guid, ReaccionesMensajeDto>();
+
+                foreach (var estado in lista)
+                    nuevas[estado.IdMensaje] = estado;
+
+                _reacciones.OnNext(nuevas);
+            });
 
         // ── Ciclo de vida de la conexión → punto de la barra ──
         _conexion.Reconnecting += _ =>
@@ -171,6 +209,9 @@ public class ChatStore : IChatStore
     public IObservable<IReadOnlyList<MensajeDto>> Mensajes => _mensajes;
 
     /// <inheritdoc />
+    public IObservable<IReadOnlyDictionary<Guid, ReaccionesMensajeDto>> Reacciones => _reacciones;
+
+    /// <inheritdoc />
     public IObservable<IReadOnlyList<MensajePrivadoDto>> Privados => _privados;
 
     /// <inheritdoc />
@@ -199,6 +240,12 @@ public class ChatStore : IChatStore
 
     /// <inheritdoc />
     public string? Canal => _canalActual.Value;
+
+    /// <inheritdoc />
+    public IReadOnlyList<MensajeDto> VistaMensajes => _mensajes.Value;
+
+    /// <inheritdoc />
+    public IReadOnlyDictionary<Guid, ReaccionesMensajeDto> VistaReacciones => _reacciones.Value;
 
     /// <inheritdoc />
     public IReadOnlyList<UsuarioConectadoDto> VistaUsuarios => _usuarios.Value;
@@ -307,6 +354,22 @@ public class ChatStore : IChatStore
         catch (Exception)
         {
             // Mismo traductor que EnviarAsync: sin conexión, error en español
+            return ErrorSinConexion;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<string?> ReaccionarAsync(Guid idMensaje, string emoji)
+    {
+        try
+        {
+            // El eco vuelve por REACCION ACTUALIZADA: la vista se pinta SOLO
+            // desde ahí, igual que con los mensajes — el cliente no calcula nada
+            return await _conexion.InvokeAsync<string?>(
+                ChatHubMetodos.Reaccionar, idMensaje, emoji);
+        }
+        catch (Exception)
+        {
             return ErrorSinConexion;
         }
     }
@@ -428,6 +491,7 @@ public class ChatStore : IChatStore
         _mensajes.OnNext([]);
         _usuarios.OnNext([]);
         _privados.OnNext([]); // y los privados menos: no hay servidor que los vuelva a traer
+        _reacciones.OnNext(new Dictionary<Guid, ReaccionesMensajeDto>()); // ni chips de nadie
 
         // Y nadie de la sesión anterior debe seguir "escribiendo"
         _seguimiento.Limpiar();
@@ -537,6 +601,7 @@ public class ChatStore : IChatStore
         _estado.Dispose();
         _enSesion.Dispose();
         _destinatarioPrivado.Dispose();
+        _reacciones.Dispose();
 
         // El seguimiento de escritura también: su latido de caducidad vive en
         // un temporizador que debe pararse con la store

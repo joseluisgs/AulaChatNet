@@ -57,6 +57,10 @@ public class StoreFalsa
     /// <summary>Flujo de quienes están escribiendo en el canal.</summary>
     public BehaviorSubject<IReadOnlyList<string>> Escribiendo { get; } = new([]);
 
+    /// <summary>Flujo de reacciones por mensaje del canal (chip por emoji).</summary>
+    public BehaviorSubject<IReadOnlyDictionary<Guid, ReaccionesMensajeDto>> Reacciones { get; } =
+        new(new Dictionary<Guid, ReaccionesMensajeDto>());
+
     /// <summary>El objeto que se registra en los servicios del componente.</summary>
     public IChatStore Objeto => _mock.Object;
 
@@ -75,6 +79,7 @@ public class StoreFalsa
         _mock.Setup(s => s.EnSesion).Returns(EnSesion);
         _mock.Setup(s => s.DestinatarioPrivado).Returns(DestinatarioPrivado);
         _mock.Setup(s => s.Escribiendo).Returns(Escribiendo);
+        _mock.Setup(s => s.Reacciones).Returns(Reacciones);
         _mock.Setup(s => s.Canales).Returns(canales);
 
         // Valores actuales: leídos del SUJETO en cada llamada (lazy), así
@@ -83,6 +88,8 @@ public class StoreFalsa
         _mock.Setup(s => s.EstadoValor).Returns(() => Estado.Value);
         _mock.Setup(s => s.VistaUsuarios).Returns(() => Usuarios.Value);
         _mock.Setup(s => s.VistaPrivados).Returns(() => Privados.Value);
+        _mock.Setup(s => s.VistaMensajes).Returns(() => Mensajes.Value);
+        _mock.Setup(s => s.VistaReacciones).Returns(() => Reacciones.Value);
         _mock.Setup(s => s.EstadisticasActuales).Returns(() => Estadisticas.Value);
     }
 

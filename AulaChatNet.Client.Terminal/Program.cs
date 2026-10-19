@@ -551,6 +551,18 @@ async Task ProcesarLinea(string linea)
 
             break;
 
+        case Comando.Reaccion { Emoji: var emojiReaccion }:
+            // El eco vuelve por REACCION ACTUALIZADA (la fila se repinta con
+            // su chip): aquí solo importa si fue rechazado
+            error = await ProcesarReaccionAsync(emojiReaccion);
+
+            if (error is not null)
+                PublicarLinea($"[red]✗ {Markup.Escape(error)}[/]");
+            else if (enVivo)
+                salidas.Clear(); // la reacción se ve en su fila, sin salida
+
+            break;
+
         case Comando.Reconectar:
             // Solo tiene sentido con la conexión caída: si la reconexión
             // automática aún va en marcha o ya estamos dentro, se avisa
@@ -609,6 +621,27 @@ async Task ProcesarLinea(string linea)
                 $"[grey]{Markup.Escape(invalido.Uso)}[/]");
             break;
     }
+}
+
+// /reaccion emoji: en terminal no hay ratón con el que elegir mensaje, así
+// que el objetivo es el ÚLTIMO mensaje de una persona del canal. El emoji se
+// valida contra la lista cerrada ANTES de tocar la red (el servidor vuelve a
+// validar, porque de la red llega lo que quiera); la reacción misma viaja
+// por el MISMO hub que todos los clientes.
+async Task<string?> ProcesarReaccionAsync(string emoji)
+{
+    var canonico = EmojisReaccion.Canonico(emoji);
+
+    if (canonico is null)
+        return $"Emoji no admitido. Usa: {EmojisReaccion.ListaLegible}";
+
+    // Solo mensajes de PERSONA: a los avisos de sistema no se les reacciona
+    var ultimo = cliente.VistaMensajes.LastOrDefault(m => m.Tipo == TipoMensaje.Normal);
+
+    if (ultimo is null)
+        return "No hay mensajes que reaccionar en este canal.";
+
+    return await cliente.ReaccionarAsync(ultimo.Id, canonico);
 }
 
 // /sesion [borrar]: ver qué hay guardado en el perfil o borrarlo (en aulas
@@ -915,7 +948,7 @@ static IRenderable CrearZonaMensajes(
 
     var filas = filasChat
         .Skip(desde)
-        .Select(f => (IRenderable)new Markup(VistaChat.LineaMarkup(f, yo)))
+        .Select(f => (IRenderable)new Markup(VistaChat.LineaMarkup(f, yo, cliente.VistaReacciones)))
         .ToList();
 
     if (salidas.Count > 0)
@@ -1033,10 +1066,10 @@ static async Task<string?> CambiarNickAsync(ClienteChat cliente, ChatConfig chat
 }
 
 // Pinta un mensaje recibido en el modo MODO TUBERÍA (el en vivo construye
-// las filas con LineaMensajeMarkup y repinta la zona entera).
-// Pinta un mensaje recibido en el modo MODO TUBERÍA (el en vivo construye
 // las filas con VistaChat y repinta la zona entera). La fórmula vive en
 // VistaChat para que los DOS modos usen exactamente la misma — y para que
-// se pueda testear sin consola.
+// se pueda testear sin consola. Sin chips de reacción a propósito: este
+// modo imprime en scroll, y una línea impresa no se puede retocar cuando
+// llega el evento de reacción (la vista en vivo sí repinta la fila entera).
 static void PintarMensaje(MensajeDto mensaje) =>
     AnsiConsole.MarkupLine(VistaChat.LineaMensajeMarkup(mensaje));

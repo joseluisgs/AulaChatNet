@@ -3,6 +3,7 @@ using AulaChatNet.Client.Blazor.State;
 using AulaChatNet.Shared.Comandos;
 using AulaChatNet.Shared.Configuracion;
 using AulaChatNet.Shared.Dtos;
+using AulaChatNet.Shared.Helpers;
 using FluentAssertions;
 using Moq;
 
@@ -440,6 +441,86 @@ public class ProcesadorComandosTests
         _store.Mock.Verify(s => s.Aviso(It.IsAny<string>()), Times.Never);
         _store.Mock.Verify(s => s.LimpiarVista(), Times.Never);
         _store.Mock.Verify(s => s.CerrarAsync(), Times.Never);
+    }
+
+    #endregion
+
+    #region Reaccion Tests
+
+    [Test]
+    public async Task ReaccionAlUltimoMensaje_InvocaAlServerConSuId()
+    {
+        // Arrange: dos mensajes en la vista; el objetivo es el ÚLTIMO de persona
+        var primero = new MensajeDto(Guid.NewGuid(), "Ana", "Hola", DateTime.UtcNow, TipoMensaje.Normal);
+        var ultimo = new MensajeDto(Guid.NewGuid(), "Bruno", "¿Tal?", DateTime.UtcNow, TipoMensaje.Normal);
+        _store.Mensajes.OnNext([primero, ultimo]);
+
+        // Act
+        await _procesador.EjecutarAsync(new Comando.Reaccion("👍"));
+
+        // Assert: el mismo gesto que el chip del ratón, con el ID correcto
+        _store.Mock.Verify(s => s.ReaccionarAsync(ultimo.Id, "👍"), Times.Once);
+        _store.Mock.Verify(s => s.Aviso(It.IsAny<string>()), Times.Never);
+    }
+
+    [Test]
+    public async Task ReaccionConEmojiFueraDeLaLista_SeAvisaSinTocarLaRed()
+    {
+        // Act: 🔥 es bonito, pero no está en la lista cerrada
+        await _procesador.EjecutarAsync(new Comando.Reaccion("🔥"));
+
+        // Assert: se explica el error Y se enseña la lista, sin invocar nada
+        _store.Mock.Verify(s => s.ReaccionarAsync(It.IsAny<Guid>(), It.IsAny<string>()), Times.Never);
+        _store.Mock.Verify(s => s.Aviso(It.Is<string>(t =>
+            t.Contains("Emoji no admitido") && t.Contains("👍"))), Times.Once);
+    }
+
+    [Test]
+    public async Task ReaccionSinMensajes_AvisaQueNoHayNadaQueReaccionar()
+    {
+        // Arrange: vista vacía (nunca se entró en un canal)
+        _store.Mensajes.OnNext([]);
+
+        // Act
+        await _procesador.EjecutarAsync(new Comando.Reaccion("👍"));
+
+        // Assert
+        _store.Mock.Verify(s => s.Aviso(It.Is<string>(t =>
+            t.Contains("No hay mensajes"))), Times.Once);
+    }
+
+    [Test]
+    public async Task ReaccionASoloAvisosDeSistema_NoCuentaComoMensaje()
+    {
+        // Arrange: la vista solo tiene el aviso de unión (no es de persona)
+        var aviso = new MensajeDto(
+            Guid.NewGuid(), MensajesSistema.Autor, "Luis se ha unido al canal",
+            DateTime.UtcNow, TipoMensaje.Sistema);
+        _store.Mensajes.OnNext([aviso]);
+
+        // Act
+        await _procesador.EjecutarAsync(new Comando.Reaccion("👍"));
+
+        // Assert: a los avisos no se les reacciona
+        _store.Mock.Verify(s => s.ReaccionarAsync(It.IsAny<Guid>(), It.IsAny<string>()), Times.Never);
+        _store.Mock.Verify(s => s.Aviso(It.Is<string>(t =>
+            t.Contains("No hay mensajes"))), Times.Once);
+    }
+
+    [Test]
+    public async Task ReaccionConErrorDelServer_SeAvisaEnLaVista()
+    {
+        // Arrange: el servidor rechaza (mensaje ya fuera de la caché)
+        _store.Mensajes.OnNext(
+            [new MensajeDto(Guid.NewGuid(), "Ana", "Hola", DateTime.UtcNow, TipoMensaje.Normal)]);
+        _store.Mock.Setup(s => s.ReaccionarAsync(It.IsAny<Guid>(), It.IsAny<string>()))
+            .ReturnsAsync("Ese mensaje ya no está en el canal");
+
+        // Act
+        await _procesador.EjecutarAsync(new Comando.Reaccion("👍"));
+
+        // Assert
+        _store.Mock.Verify(s => s.Aviso("Ese mensaje ya no está en el canal"), Times.Once);
     }
 
     #endregion
