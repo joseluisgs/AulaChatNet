@@ -15,10 +15,6 @@
     <PackageReference Include="Serilog.Sinks.Console" />
     <PackageReference Include="Serilog.Sinks.File" />
 
-    <!-- Alojamiento del cliente Blazor WASM: UseBlazorFrameworkFiles sirve
-         el runtime _framework (wasm, dll, brotli) que genera el proyecto cliente -->
-    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" />
-
     <!-- ════════ Persistencia (Fase 2) ════════ -->
     <!-- EF Core + SQLite: la base de datos vive en UN fichero embebido, sin servidor -->
     <PackageReference Include="Microsoft.EntityFrameworkCore" />
@@ -30,11 +26,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- El servidor es AGNÓSTICO: no conoce a ningún cliente. Solo expone lo
+         que todos consumen (hub SignalR + GET /estadisticas); la web se arranca
+         y se sirve en su propio proceso (5031) y el terminal corre en consola. -->
     <ProjectReference Include="..\AulaChatNet.Shared\AulaChatNet.Shared.csproj" />
-
-    <!-- El servidor ALOJA el cliente Blazor WASM: sirve su wwwroot (index.html,
-         el runtime _framework y el css) desde la misma URL que el hub, sin CORS -->
-    <ProjectReference Include="..\AulaChatNet.Client.Blazor\AulaChatNet.Client.Blazor.csproj" />
   </ItemGroup>
 
 </Project>
