@@ -22,6 +22,14 @@ public interface IChatStore : IDisposable
     /// <summary>Vista del canal actual: historial reemplazado + mensajes en vivo.</summary>
     IObservable<IReadOnlyList<MensajeDto>> Mensajes { get; }
 
+    /// <summary>
+    /// Mensajes privados recibidos y enviados: solo SE AÑADEN (nunca se
+    /// reemplazan, porque el servidor no guarda ninguno). Vive aparte de
+    /// <see cref="Mensajes"/> para que el historial del canal no pueda
+    /// contenerlos, ni hoy ni al cargarlo del disco.
+    /// </summary>
+    IObservable<IReadOnlyList<MensajePrivadoDto>> Privados { get; }
+
     /// <summary>Conectados del canal ACTUAL (evento que llega solo a tu grupo).</summary>
     IObservable<IReadOnlyList<UsuarioConectadoDto>> Usuarios { get; }
 
@@ -44,6 +52,15 @@ public interface IChatStore : IDisposable
     /// </summary>
     IObservable<bool> EnSesion { get; }
 
+    /// <summary>
+    /// Persona elegida en la lista de conectados para escribirle un privado
+    /// (null = no se está preparando ninguno). No es estado de SignalR sino
+    /// de la UI, y vive aquí por lo mismo que <see cref="EnSesion"/>: es lo
+    /// que comparten los componentes, y los componentes no se hablan entre
+    /// ellos — hablan con la store.
+    /// </summary>
+    IObservable<string?> DestinatarioPrivado { get; }
+
     /// <summary>Canales disponibles, en el orden de la configuración.</summary>
     IReadOnlyList<string> Canales { get; }
 
@@ -55,6 +72,9 @@ public interface IChatStore : IDisposable
 
     /// <summary>Último valor de la lista de conectados del canal actual.</summary>
     IReadOnlyList<UsuarioConectadoDto> VistaUsuarios { get; }
+
+    /// <summary>Último valor de la lista de privados de ESTA sesión.</summary>
+    IReadOnlyList<MensajePrivadoDto> VistaPrivados { get; }
 
     /// <summary>Último valor de las estadísticas globales (total y por sala).</summary>
     EstadisticasDto EstadisticasActuales { get; }
@@ -78,6 +98,14 @@ public interface IChatStore : IDisposable
     void LimpiarVista();
 
     /// <summary>
+    /// Pide escribir un privado a esa persona: la caja de texto se prellena
+    /// con el comando y muestra la nota de que no se guarda. El clic viene
+    /// de la lista de conectados, que no puede tocar la caja directamente.
+    /// </summary>
+    /// <param name="destinatario">Nombre de la persona elegida (ya validado por el llamador).</param>
+    void PrepararPrivado(string destinatario);
+
+    /// <summary>
     /// Abre la conexión y da de alta al usuario en un canal.
     /// </summary>
     /// <param name="usuario">Nombre ya recortado y validado por el llamador.</param>
@@ -93,6 +121,16 @@ public interface IChatStore : IDisposable
     /// <param name="texto">Texto ya recortado.</param>
     /// <returns>null si fue correcto; el error del servidor o de conexión si no.</returns>
     Task<string?> EnviarAsync(string texto);
+
+    /// <summary>
+    /// Envía un mensaje a UNA persona del canal actual. El eco vuelve por el
+    /// evento de privado recibido: la vista se pinta SOLO desde ahí, igual
+    /// que con los mensajes del canal.
+    /// </summary>
+    /// <param name="destinatario">Nombre de quien lo recibe (validado por el llamador).</param>
+    /// <param name="texto">Texto ya recortado.</param>
+    /// <returns>null si fue correcto; el error del servidor o de conexión si no.</returns>
+    Task<string?> EnviarPrivadoAsync(string destinatario, string texto);
 
     /// <summary>Cambia al canal dado (el historial nuevo llega después por evento).</summary>
     /// <param name="canal">Canal de destino.</param>

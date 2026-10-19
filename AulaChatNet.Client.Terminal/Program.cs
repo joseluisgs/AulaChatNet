@@ -8,6 +8,7 @@ using AulaChatNet.Client.Terminal.Sesion;
 using AulaChatNet.Shared.Configuracion;
 using AulaChatNet.Shared.Constantes;
 using AulaChatNet.Shared.Dtos;
+using AulaChatNet.Shared.Helpers;
 using Microsoft.Extensions.Configuration;
 using Serilog;
 using Spectre.Console;
@@ -252,6 +253,11 @@ string? error = null;
 // Índice del primer mensaje visible tras /limpiar en la vista en vivo
 var mostrarDesde = 0;
 
+// ¿Ya se ha enseñado esta sesión la nota de que los privados son efímeros?
+// Una sola vez a propósito: repetirla con cada envío la convierte en ruido,
+// y en la terminal cada aviso empuja mensajes reales fuera de la pantalla
+var notaPrivadosMostrada = false;
+
 Console.CancelKeyPress += (_, args) =>
 {
     args.Cancel = true; // no matamos el proceso mientras escribe algo
@@ -290,6 +296,30 @@ else
             PintarMensaje(lista[i]);
 
         pintados = lista;
+    });
+
+    // Los privados son SOLO de este cliente: nunca se reemplazan (no hay
+    // historial que cargar), así que basta con imprimir los que llegan.
+    // Se pinta por separado del canal porque el servidor no los emite al
+    // grupo: es una segunda tubería que solo tiene derecho a ver el dueño.
+    IReadOnlyList<MensajePrivadoDto> pintadosPrivados = [];
+
+    using var suscripcionPrivados = cliente.Privados.Subscribe(lista =>
+    {
+        for (var i = pintadosPrivados.Count; i < lista.Count; i++)
+        {
+            // El aviso sale con el PRIMERO de la sesión (el que se envía o
+            // el que llega: da igual, es el mismo "aquí no se guarda nada")
+            if (!notaPrivadosMostrada)
+            {
+                notaPrivadosMostrada = true;
+                AnsiConsole.MarkupLine($"[grey]{Markup.Escape(AyudaComandos.NotaPrivados)}[/]");
+            }
+
+            AnsiConsole.MarkupLine(VistaChat.LineaPrivadoMarkup(lista[i], nickActual));
+        }
+
+        pintadosPrivados = lista;
     });
 
     while (!salir)
@@ -364,8 +394,18 @@ async Task BucleEnVivo()
                 raiz["Cabecera"].Update(
                     new Markup(CabeceraComoMarkup(cliente, nickActual, canalActual)));
 
+                // 1.5) El aviso de efímero sale con el PRIMER privado de la
+                //      sesión —enviado o recibido, da igual— y solo una vez.
+                //      Se añade a las salidas (abajo de la zona) en lugar de
+                //      imprimirse en el scroll: el lienzo no tiene scroll.
+                if (!notaPrivadosMostrada && cliente.VistaPrivados.Count > 0)
+                {
+                    notaPrivadosMostrada = true;
+                    salidas.Add(new Markup($"[grey]{Markup.Escape(AyudaComandos.NotaPrivados)}[/]"));
+                }
+
                 // 2) Zona de mensajes: lo que toque ver + salida del último comando
-                raiz["Mensajes"].Update(CrearZonaMensajes(cliente, mostrarDesde, salidas));
+                raiz["Mensajes"].Update(CrearZonaMensajes(cliente, nickActual, mostrarDesde, salidas));
 
                 // 3) Pie fijo: contadores + línea de input con cursor.
                 //    Con la conexión caída (reintentos agotados) la fila de
@@ -493,6 +533,19 @@ async Task ProcesarLinea(string linea)
             PublicarContenido(await CrearContenidoUsuariosAsync(cliente, chat, canalConsulta));
             break;
 
+        case Comando.Privado { Destinatario: var destinatario, Texto: var textoPrivado }:
+            // El servidor responde con un eco por PRIVADO RECIBIDO, que es
+            // quien pinta la fila (igual que con los mensajes del canal):
+            // aquí solo importa si fue rechazado
+            error = await cliente.EnviarPrivadoAsync(destinatario, textoPrivado);
+
+            if (error is not null)
+                PublicarLinea($"[red]✗ {Markup.Escape(error)}[/]");
+            else if (enVivo)
+                salidas.Clear(); // un privado correcto deja la salida anterior, como un mensaje
+
+            break;
+
         case Comando.Reconectar:
             // Solo tiene sentido con la conexión caída: si la reconexión
             // automática aún va en marcha o ya estamos dentro, se avisa
@@ -528,7 +581,11 @@ async Task ProcesarLinea(string linea)
                 AnsiConsole.Clear();
 
             salidas.Clear();
-            mostrarDesde = cliente.VistaMensajes.Count; // solo lo que llegue después
+
+            // El recuento es sobre la vista COMBINADA (canal + privados):
+            // /limpiar oculta lo que había, incluidos los privados, porque
+            // el índice se lee sobre la misma lista que pinta la zona
+            mostrarDesde = CombinadorChat.Combinar(cliente.VistaMensajes, cliente.VistaPrivados).Count;
             break;
 
         case Comando.Salir:
@@ -834,43 +891,26 @@ static string EstadoComoMarkup(ClienteChat cliente)
            Conectados.ConteosPorSala(cliente.Canales, est, cliente.Canal);
 }
 
-// Una línea de mensaje como markup (la MISMA fórmula en los dos modos):
-// sistema con hora y en gris cursiva; normal con hora, iniciales entre
-// corchetes y nombre con su color derivado. El servidor marca en UTC (la
-// regla de oro: guardar UTC, convertir SOLO al presentar), así que aquí se
-// pasa a la hora local del que mira — sin esto, la terminal enseñaría otra
-// hora. Los mensajes de sistema TAMBIÉN llevan hora: en un aula se quiere
-// saber cuándo se fue alguien (Discord y Slack lo hacen igual).
-static string LineaMensajeMarkup(MensajeDto mensaje)
+// Contenido de la zona de mensajes de la vista en vivo: la cronología
+// combinada (canal + privados) + la salida del último comando, si la hay.
+static IRenderable CrearZonaMensajes(
+    ClienteChat cliente, string yo, int mostrarDesde, List<IRenderable> salidas)
 {
-    var hora = $"{mensaje.Timestamp.ToLocalTime():HH:mm}";
-
-    if (mensaje.Tipo == TipoMensaje.Sistema)
-        return $"[grey]{hora}[/] [grey italic]· {Markup.Escape(mensaje.Texto)}[/]";
-
-    var hex = TemaDiscord.ColorDe(mensaje.Usuario).ToMarkup();
-    var iniciales = TemaDiscord.Iniciales(mensaje.Usuario);
-
-    return $"[grey]{hora}[/] " +
-           $"[{hex}][[{iniciales}]][/] " +
-           $"[{hex}]{Markup.Escape(mensaje.Usuario)}[/]: {Markup.Escape(mensaje.Texto)}";
-}
-
-// Contenido de la zona de mensajes de la vista en vivo: últimas líneas
-// visibles + la salida del último comando, si la hay.
-static IRenderable CrearZonaMensajes(ClienteChat cliente, int mostrarDesde, List<IRenderable> salidas)
-{
-    var lista = cliente.VistaMensajes;
+    // Canal + privados en UNA sola cronología: sin esto, un privado de las
+    // 10:15 quedaría por debajo de un mensaje del canal de las 10:20,
+    // porque el canal llega reemplazado (historial) y el privado llega
+    // a su propio ritmo
+    var filasChat = CombinadorChat.Combinar(cliente.VistaMensajes, cliente.VistaPrivados);
 
     // La zona recorta por abajo y queremos ver SIEMPRE lo último: nos
     // quedamos con las últimas N líneas del alto disponible (margen por si
     // un mensaje largo ocupa dos filas al envolverse)
     var alto = Math.Max(6, AnsiConsole.Console.Profile.Height - 8);
-    var desde = Math.Clamp(Math.Max(mostrarDesde, lista.Count - alto), 0, lista.Count);
+    var desde = Math.Clamp(Math.Max(mostrarDesde, filasChat.Count - alto), 0, filasChat.Count);
 
-    var filas = lista
+    var filas = filasChat
         .Skip(desde)
-        .Select(m => (IRenderable)new Markup(LineaMensajeMarkup(m)))
+        .Select(f => (IRenderable)new Markup(VistaChat.LineaMarkup(f, yo)))
         .ToList();
 
     if (salidas.Count > 0)
@@ -981,5 +1021,9 @@ static async Task<string?> CambiarNickAsync(ClienteChat cliente, ChatConfig chat
 
 // Pinta un mensaje recibido en el modo MODO TUBERÍA (el en vivo construye
 // las filas con LineaMensajeMarkup y repinta la zona entera).
+// Pinta un mensaje recibido en el modo MODO TUBERÍA (el en vivo construye
+// las filas con VistaChat y repinta la zona entera). La fórmula vive en
+// VistaChat para que los DOS modos usen exactamente la misma — y para que
+// se pueda testear sin consola.
 static void PintarMensaje(MensajeDto mensaje) =>
-    AnsiConsole.MarkupLine(LineaMensajeMarkup(mensaje));
+    AnsiConsole.MarkupLine(VistaChat.LineaMensajeMarkup(mensaje));

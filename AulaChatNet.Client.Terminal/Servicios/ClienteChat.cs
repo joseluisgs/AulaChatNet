@@ -17,6 +17,8 @@ namespace AulaChatNet.Client.Terminal.Servicios;
 /// <list type="bullet">
 /// <item><see cref="Mensajes"/> → la vista del canal actual: se REEMPLAZA con
 /// el historial al entrar/cambiar de canal y se AÑADE con cada MensajeNuevo.</item>
+    /// <item><see cref="Privados"/>: los mensajes privados, que solo SE AÑADEN
+    /// y nunca se reemplazan, porque el servidor no guarda ninguno.</item>
 /// <item><see cref="Usuarios"/> → conectados del canal actual.</item>
 /// <item><see cref="Estadisticas"/> → total de conectados y reparto por SALA
 /// (evento global: la línea de estado sabe cuánta gente hay y dónde).</item>
@@ -38,6 +40,7 @@ public class ClienteChat : IDisposable
     private readonly ChatConfig _config;
 
     private readonly BehaviorSubject<IReadOnlyList<MensajeDto>> _mensajes = new([]);
+    private readonly BehaviorSubject<IReadOnlyList<MensajePrivadoDto>> _privados = new([]);
     private readonly BehaviorSubject<IReadOnlyList<UsuarioConectadoDto>> _usuarios = new([]);
     private readonly BehaviorSubject<EstadisticasDto> _estadisticas = new(new EstadisticasDto(0, []));
     private readonly BehaviorSubject<string?> _canalActual = new(null);
@@ -84,6 +87,15 @@ public class ClienteChat : IDisposable
             _mensajes.OnNext([.. _mensajes.Value, mensaje]);
         });
 
+        // Privados: SOLO llegan a los dos implicados (el servidor los emite a
+        // dos conexiones concretas, nunca al grupo). Se añaden a SU propia
+        // lista y no a la del canal, de modo que el historial de la sala
+        // jamás los contiene — ni hoy ni cuando se cargue del disco.
+        _conexion.On<MensajePrivadoDto>(ChatHubEventos.PrivadoRecibido, privado =>
+        {
+            _privados.OnNext([.. _privados.Value, privado]);
+        });
+
         _conexion.On<IReadOnlyList<UsuarioConectadoDto>>(
             ChatHubEventos.ListaUsuariosActualizada, lista => _usuarios.OnNext(lista));
 
@@ -127,6 +139,13 @@ public class ClienteChat : IDisposable
     /// <summary>Vista actual del canal: historial + mensajes en vivo.</summary>
     public IObservable<IReadOnlyList<MensajeDto>> Mensajes => _mensajes;
 
+    /// <summary>
+    /// Privados recibidos y enviados: viven SOLO en este cliente, porque el
+    /// servidor no los guarda. Por eso no hay evento de "historial de
+    /// privados": lo que ves es todo lo que hay.
+    /// </summary>
+    public IObservable<IReadOnlyList<MensajePrivadoDto>> Privados => _privados;
+
     /// <summary>Conectados del canal actual.</summary>
     public IObservable<IReadOnlyList<UsuarioConectadoDto>> Usuarios => _usuarios;
 
@@ -143,6 +162,9 @@ public class ClienteChat : IDisposable
 
     /// <summary>Último valor de la vista de mensajes (BehaviorSubject lo guarda).</summary>
     public IReadOnlyList<MensajeDto> VistaMensajes => _mensajes.Value;
+
+    /// <summary>Último valor de la vista de privados.</summary>
+    public IReadOnlyList<MensajePrivadoDto> VistaPrivados => _privados.Value;
 
     /// <summary>Último valor de la lista de conectados.</summary>
     public IReadOnlyList<UsuarioConectadoDto> VistaUsuarios => _usuarios.Value;
@@ -235,6 +257,29 @@ public class ClienteChat : IDisposable
         {
             // Conexión caída: InvokeAsync LANZA en vez de devolver el error
             // del servidor, así que lo convertimos al mismo patrón string?
+            return ErrorSinConexion;
+        }
+    }
+
+    /// <summary>
+    /// Envía un mensaje privado a UNA persona del canal actual. El eco del
+    /// propio mensaje vuelve por el evento <c>PrivadoRecibido</c>: la vista
+    /// se pinta SOLO desde ahí, igual que con los mensajes del canal, para
+    /// que los dos casos sigan el mismo camino.
+    /// </summary>
+    /// <param name="destinatario">Nombre de quien lo recibe (validado por el llamador).</param>
+    /// <param name="texto">Texto ya recortado.</param>
+    /// <returns>null si todo fue correcto; el error del servidor o de conexión si no.</returns>
+    public async Task<string?> EnviarPrivadoAsync(string destinatario, string texto)
+    {
+        try
+        {
+            return await _conexion.InvokeAsync<string?>(
+                ChatHubMetodos.EnviarPrivado, destinatario, texto);
+        }
+        catch (Exception)
+        {
+            // Mismo traductor que EnviarAsync: sin conexión, error en español
             return ErrorSinConexion;
         }
     }
@@ -420,6 +465,7 @@ public class ClienteChat : IDisposable
     public void Dispose()
     {
         _mensajes.Dispose();
+        _privados.Dispose();
         _usuarios.Dispose();
         _estadisticas.Dispose();
         _canalActual.Dispose();

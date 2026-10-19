@@ -1,6 +1,10 @@
 @* Columna izquierda: los conectados del canal ACTUAL, con el punto verde
    de Discord. Este listado viene del evento de GRUPO (solo llega a tu sala);
-   el total GLOBAL vive en la barra superior, en formato de cifra. *@
+   el total GLOBAL vive en la barra superior, en formato de cifra.
+
+   Hacer clic en alguien es la forma WEB de abrirle un privado (en terminal
+   se teclea /privado). Como los componentes no se hablan entre sí, el clic
+   no va a la caja de texto: va a la store, que es lo que comparten. *@
 @implements IDisposable
 @inject IChatStore Store
 
@@ -9,9 +13,15 @@
 
     @foreach (var usuario in _usuarios)
     {
-        <div class="usuario" @key="usuario.Usuario">
-            <Avatar Usuario="@usuario.Usuario" Tamano="24" />
-            <span class="usuario-nombre">@usuario.Usuario</span>
+        var nombre = usuario.Usuario;
+        var esYo = EsYo(nombre);
+
+        <div class="usuario @(esYo ? string.Empty : "clicable")"
+             @key="nombre"
+             title="@(esYo ? "ese eres tú" : "clic para escribirle un mensaje privado")"
+             @onclick="() => AbrirPrivado(nombre)">
+            <Avatar Usuario="@nombre" Tamano="24" />
+            <span class="usuario-nombre">@nombre</span>
             <span class="punto conectado" title="en línea"></span>
         </div>
     }
@@ -24,9 +34,12 @@
 
 @code {
     private IReadOnlyList<UsuarioConectadoDto> _usuarios = [];
-    private IDisposable? _suscripcion;
+    private string? _yo;
 
-    /// <summary>Suscripción a los conectados de tu canal.</summary>
+    private IDisposable? _suscripcion;
+    private IDisposable? _suscripcionNick;
+
+    /// <summary>Dos suscripciones: los conectados de la sala y mi propio nombre.</summary>
     protected override void OnInitialized()
     {
         _suscripcion = Store.Usuarios.Subscribe(lista =>
@@ -34,8 +47,36 @@
             _usuarios = lista;
             _ = InvokeAsync(StateHasChanged);
         });
+
+        // Mi nombre hace falta para dos cosas: no ofrecerme un privado a mí
+        // mismo (el servidor lo rechazaría) y no marcarme como "clicable"
+        _suscripcionNick = Store.Nick.Subscribe(nick =>
+        {
+            _yo = nick;
+            _ = InvokeAsync(StateHasChanged);
+        });
     }
 
-    /// <summary>Libera la suscripción cuando el componente se destruye.</summary>
-    public void Dispose() => _suscripcion?.Dispose();
+    /// <summary>true si ese nombre es el mío (sin distinguir mayúsculas).</summary>
+    private bool EsYo(string nombre) =>
+        string.Equals(nombre, _yo, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Abre un privado a esa persona: solo se pide a la store que prepare el
+    /// destinatario, y la caja de texto se encarga del resto. Un privado a ti
+    /// mismo ni se pide: no tiene sentido, y el servidor lo rechazaría.
+    /// </summary>
+    /// <param name="nombre">Persona elegida.</param>
+    private void AbrirPrivado(string nombre)
+    {
+        if (!EsYo(nombre))
+            Store.PrepararPrivado(nombre);
+    }
+
+    /// <summary>Libera las dos suscripciones cuando el componente se destruye.</summary>
+    public void Dispose()
+    {
+        _suscripcion?.Dispose();
+        _suscripcionNick?.Dispose();
+    }
 }

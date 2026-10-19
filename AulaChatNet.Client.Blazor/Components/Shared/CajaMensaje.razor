@@ -5,7 +5,12 @@
 
    Lo que empieza por "/" no es un mensaje: se parsea con el MISMO parser
    que la terminal (vive en Shared) y lo ejecuta el procesador de comandos
-   de la web; sus resultados salen en el flujo de mensajes como avisos. *@
+   de la web; sus resultados salen en el flujo de mensajes como avisos.
+
+   MIENTRAS la línea es un privado, salen dos cosas: el chip "Privado a X"
+   (que se puede cerrar con ✕) y la nota gris de que no se guarda. Las dos
+   se derivan del PARSE de la línea, no de una bandera aparte: así no puede
+   quedar un chip diciendo "privado a Ana" cuando la línea ya no lo es. *@
 @implements IDisposable
 @inject IChatStore Store
 @inject ChatConfig Config
@@ -13,6 +18,17 @@
 @inject IJSRuntime JS
 
 <div class="caja-envoltura">
+    @if (Destinatario is not null)
+    {
+        <div class="chip-privado">
+            <span>🔒 Privado a <b>@Destinatario</b></span>
+            <button type="button"
+                    class="chip-cerrar"
+                    title="Dejar de escribir el privado"
+                    @onclick="CancelarPrivado">✕</button>
+        </div>
+    }
+
     <form class="caja" @onsubmit="EnviarAsync" @onsubmit:preventDefault>
         <input id="caja-texto"
                class="caja-entrada"
@@ -28,6 +44,11 @@
                 title="Enviar mensaje">➤</button>
     </form>
 
+    @if (EmpiezaPrivado)
+    {
+        <p class="caja-nota">@AyudaComandos.NotaPrivados</p>
+    }
+
     @if (_error is not null)
     {
         <p class="caja-aviso">@_error</p>
@@ -38,11 +59,28 @@
     private string? _texto;
     private string? _error;
     private IDisposable? _suscripcion;
+    private IDisposable? _suscripcionPrivado;
 
     // Marcador para recuperar el foco tras enviar (se consume en OnAfterRender)
     private bool _focoPendiente;
 
-    /// <summary>Al cambiar de canal se limpia cualquier aviso de campo viejo.</summary>
+    /// <summary>
+    /// Destinatario de la línea ACTUAL, si es que lo es: se pregunta al
+    /// MISMO parser que la va a enviar, así que el chip nunca miente aunque
+    /// el usuario edite o borre el destino a mano. Se lee con
+    /// DestinatarioDePrivado y no con Parse porque mientras se teclea la
+    /// línea aún no es un comando válido — y sin chip no habría ✕ para
+    /// cancelar.
+    /// </summary>
+    private string? Destinatario => ParserComandos.DestinatarioDePrivado(_texto);
+
+    /// <summary>
+    /// true mientras la línea va a ser un privado, ANTES de que exista el
+    /// destino: es lo que decide cuándo sale la nota de que no se guarda.
+    /// </summary>
+    private bool EmpiezaPrivado => ParserComandos.EmpiezaPrivado(_texto);
+
+    /// <summary>Dos suscripciones: cambio de canal (borra avisos) y clic en la lista.</summary>
     protected override void OnInitialized()
     {
         _suscripcion = Store.CanalActual.Subscribe(nuevoCanal =>
@@ -50,6 +88,27 @@
             _error = null;
             _ = InvokeAsync(StateHasChanged);
         });
+
+        // Un clic en la lista de conectados pide escribirle: aquí se traduce
+        // en texto puesto en la caja y foco para seguir escribiendo. null es
+        // el valor inicial del sujeto, y significa "no se pidió nada": no se
+        // toca lo que el usuario estuviera escribiendo.
+        _suscripcionPrivado = Store.DestinatarioPrivado.Subscribe(quien =>
+        {
+            if (quien is null)
+                return;
+
+            _texto = $"/privado {quien} ";
+            _focoPendiente = true;
+            _ = InvokeAsync(StateHasChanged);
+        });
+    }
+
+    /// <summary>✕ del chip: se borra la línea y vuelve el placeholder normal.</summary>
+    private void CancelarPrivado()
+    {
+        _texto = "";
+        _focoPendiente = true;
     }
 
     /// <summary>
@@ -109,6 +168,10 @@
         await JS.InvokeVoidAsync("aulachat.enfocar", "caja-texto");
     }
 
-    /// <summary>Libera la suscripción cuando el componente se destruye.</summary>
-    public void Dispose() => _suscripcion?.Dispose();
+    /// <summary>Libera las dos suscripciones cuando el componente se destruye.</summary>
+    public void Dispose()
+    {
+        _suscripcion?.Dispose();
+        _suscripcionPrivado?.Dispose();
+    }
 }

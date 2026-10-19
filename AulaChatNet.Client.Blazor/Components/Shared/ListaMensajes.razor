@@ -1,17 +1,30 @@
-@* Historial del canal: lo pinta la store (mensajes en vivo) y hace scroll
-   automático abajo cuando algo nuevo entra — incluido el reemplazo del
-   historial al cambiar de canal. *@
+@* Historial del canal + privados: lo pinta la store (mensajes en vivo) y hace
+   scroll automático abajo cuando algo nuevo entra — incluido el reemplazo del
+   historial al cambiar de canal.
+   Los privados NO van en otra lista aparte: se mezclan en la MISMA
+   cronología que el canal, con CombinadorChat (Shared), para que la web y la
+   terminal enseñen el mismo rato de charla en el mismo orden. *@
 @implements IDisposable
 @inject IChatStore Store
 @inject IJSRuntime JS
 
 <div class="mensajes" id="lista-mensajes">
-    @foreach (var mensaje in _mensajes)
+    @foreach (var fila in _filas)
     {
-        <MensajeItem Mensaje="mensaje" @key="mensaje.Id" />
+        @* El pattern matching no es por estética: al extraer el valor en la
+           condición, el compilador SABE que no es null y no hace falta
+           ni un "!" ni un aviso de nulabilidad *@
+        @if (fila.EsPrivado && fila.Privado is { } privado)
+        {
+            <PrivadoItem Privado="privado" @key="privado.Id" />
+        }
+        else if (fila.Mensaje is { } mensaje)
+        {
+            <MensajeItem Mensaje="mensaje" @key="mensaje.Id" />
+        }
     }
 
-    @if (_mensajes.Count == 0)
+    @if (_filas.Count == 0)
     {
         <p class="mensajes-vacio">
             Todavía no hay mensajes en este canal. ¡Sé el primero en saludar! 👋
@@ -21,21 +34,42 @@
 
 @code {
     private IReadOnlyList<MensajeDto> _mensajes = [];
+    private IReadOnlyList<MensajePrivadoDto> _privados = [];
+    private IReadOnlyList<FilaChat> _filas = [];
+
     private IDisposable? _suscripcion;
+    private IDisposable? _suscripcionPrivados;
 
     // Marcador: "hay que bajar el scroll" — se consume en OnAfterRender
     // (el DOM solo ya está listo a partir de AHÍ, antes no)
     private bool _pendienteBajar;
 
-    /// <summary>Suscripción al flujo de mensajes de la store.</summary>
+    /// <summary>Dos suscripciones: canal y privados (esta última solo SE AÑADE).</summary>
     protected override void OnInitialized()
     {
         _suscripcion = Store.Mensajes.Subscribe(mensajes =>
         {
             _mensajes = mensajes;
-            _pendienteBajar = true;
-            _ = InvokeAsync(StateHasChanged);
+            Recalcular();
         });
+
+        _suscripcionPrivados = Store.Privados.Subscribe(privados =>
+        {
+            _privados = privados;
+            Recalcular();
+        });
+    }
+
+    /// <summary>
+    /// Vuelve a ordenar las dos vistas juntas y pide un repintado: es el
+    /// único punto donde se decide el orden de la mezcla, para que el canal
+    /// y los privados no se ordenen nunca por caminos distintos.
+    /// </summary>
+    private void Recalcular()
+    {
+        _filas = CombinadorChat.Combinar(_mensajes, _privados);
+        _pendienteBajar = true;
+        _ = InvokeAsync(StateHasChanged);
     }
 
     /// <summary>Tras repintar, baja el scroll si había algo nuevo.</summary>
@@ -48,6 +82,10 @@
         await JS.InvokeVoidAsync("aulachat.abajo", "lista-mensajes");
     }
 
-    /// <summary>Libera la suscripción cuando el componente se destruye.</summary>
-    public void Dispose() => _suscripcion?.Dispose();
+    /// <summary>Libera las dos suscripciones cuando el componente se destruye.</summary>
+    public void Dispose()
+    {
+        _suscripcion?.Dispose();
+        _suscripcionPrivados?.Dispose();
+    }
 }

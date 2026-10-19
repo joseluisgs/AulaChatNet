@@ -196,6 +196,57 @@ public class ChatStoreTests
         vista[1].Texto.Should().Be("segundo aviso");
     }
 
+    [Test]
+    public void PrepararPrivado_EmiteElDestinatarioElegido()
+    {
+        // Arrange
+        using var store = new ChatStore(UrlMuerta, Config());
+
+        // Act: un clic en la lista de conectados pide escribirle a Luis
+        store.PrepararPrivado("Luis");
+
+        // Assert
+        Capturar<string?>(store.DestinatarioPrivado).Should().Be("Luis");
+    }
+
+    [Test]
+    public void PrepararPrivado_ElValorInicialEsNuloParaNoTocarLaCaja()
+    {
+        // Arrange: el sujeto arranca vacío, y así debe seguir al principio:
+        // la caja de texto no debe rellenarse sola nada más abrir la página
+        using var store = new ChatStore(UrlMuerta, Config());
+
+        // Act y assert
+        Capturar<string?>(store.DestinatarioPrivado).Should().BeNull();
+    }
+
+    [Test]
+    public async Task CerrarAsync_CierraElPrivadoQueHubieraAbierto()
+    {
+        // Arrange
+        using var store = new ChatStore(UrlMuerta, Config());
+        store.PrepararPrivado("Luis");
+
+        // Act: salir del chat (o que otra persona use este navegador)
+        await store.CerrarAsync();
+
+        // Assert: nadie debe empezar escribiéndole al que se fue
+        Capturar<string?>(store.DestinatarioPrivado).Should().BeNull();
+    }
+
+    [Test]
+    public async Task EnviarPrivado_SinConexion_DevuelveErrorDeUsuario()
+    {
+        // Arrange
+        using var store = new ChatStore(UrlMuerta, Config());
+
+        // Act
+        var error = await store.EnviarPrivadoAsync("Luis", "hola");
+
+        // Assert: palabras de usuario, jamás el tipo de la excepción
+        error.Should().Be("Sin conexión con el servidor");
+    }
+
     // ── Ayudante ──
 
     /// <summary>Lee el valor ACTUAL de un observable (el BehaviorSubject lo guarda).</summary>

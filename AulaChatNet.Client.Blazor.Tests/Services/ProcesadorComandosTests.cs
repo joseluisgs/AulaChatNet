@@ -232,6 +232,52 @@ public class ProcesadorComandosTests
 
     #endregion
 
+    #region Privado Tests
+
+    [Test]
+    public async Task Privado_LlamaAlStoreConElDestinatarioYElTexto()
+    {
+        // Arrange
+        _store.Mock.Setup(s => s.EnviarPrivadoAsync(It.IsAny<string>(), It.IsAny<string>()))
+            .ReturnsAsync((string?)null);
+
+        // Act
+        await _procesador.EjecutarAsync(new Comando.Privado("Ana", "¿nos vemos?"));
+
+        // Assert
+        _store.Mock.Verify(s => s.EnviarPrivadoAsync("Ana", "¿nos vemos?"), Times.Once);
+    }
+
+    [Test]
+    public async Task PrivadoCorrecto_NoAvisaNada_NadieQuiereUnMensajeDeConfirmacion()
+    {
+        // Arrange: el eco del privado llega por evento y lo pinta la vista
+        _store.Mock.Setup(s => s.EnviarPrivadoAsync(It.IsAny<string>(), It.IsAny<string>()))
+            .ReturnsAsync((string?)null);
+
+        // Act
+        await _procesador.EjecutarAsync(new Comando.Privado("Ana", "hola"));
+
+        // Assert
+        _store.Mock.Verify(s => s.Aviso(It.IsAny<string>()), Times.Never);
+    }
+
+    [Test]
+    public async Task PrivadoConError_DevuelveElAvisoAlFlujo()
+    {
+        // Arrange: el servidor no encuentra a nadie con ese nombre
+        _store.Mock.Setup(s => s.EnviarPrivadoAsync("Maria", It.IsAny<string>()))
+            .ReturnsAsync("No hay nadie llamado Maria conectado en tu canal");
+
+        // Act
+        await _procesador.EjecutarAsync(new Comando.Privado("Maria", "hola"));
+
+        // Assert
+        _store.Mock.Verify(s => s.Aviso(It.Is<string>(t => t.Contains("Maria"))), Times.Once);
+    }
+
+    #endregion
+
     #region Reconectar Tests
 
     [Test]

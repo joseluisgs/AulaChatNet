@@ -34,12 +34,14 @@ public class ChatStore : IChatStore
     private readonly ILogger<ChatStore> _log;
 
     private readonly BehaviorSubject<IReadOnlyList<MensajeDto>> _mensajes = new([]);
+    private readonly BehaviorSubject<IReadOnlyList<MensajePrivadoDto>> _privados = new([]);
     private readonly BehaviorSubject<IReadOnlyList<UsuarioConectadoDto>> _usuarios = new([]);
     private readonly BehaviorSubject<EstadisticasDto> _estadisticas = new(new EstadisticasDto(0, []));
     private readonly BehaviorSubject<string?> _canalActual = new(null);
     private readonly BehaviorSubject<string?> _nick = new(null);
     private readonly BehaviorSubject<EstadoConexion> _estado = new(EstadoConexion.Desconectado);
     private readonly BehaviorSubject<bool> _enSesion = new(false);
+    private readonly BehaviorSubject<string?> _destinatarioPrivado = new(null);
 
     // Último nick y canal con los que se logró registrar: la reconexión los
     // reutiliza para volver a darse de alta sin volver a preguntar al usuario
@@ -90,6 +92,14 @@ public class ChatStore : IChatStore
             _mensajes.OnNext([.. _mensajes.Value, mensaje]);
         });
 
+        // Privados: llegan SOLO a los dos implicados (el servidor los emite a
+        // dos conexiones concretas, nunca al grupo). Van a SU lista y no a la
+        // del canal: por eso el historial de la sala jamás los contiene.
+        _conexion.On<MensajePrivadoDto>(ChatHubEventos.PrivadoRecibido, privado =>
+        {
+            _privados.OnNext([.. _privados.Value, privado]);
+        });
+
         _conexion.On<IReadOnlyList<UsuarioConectadoDto>>(
             ChatHubEventos.ListaUsuariosActualizada, lista => _usuarios.OnNext(lista));
 
@@ -136,6 +146,9 @@ public class ChatStore : IChatStore
     public IObservable<IReadOnlyList<MensajeDto>> Mensajes => _mensajes;
 
     /// <inheritdoc />
+    public IObservable<IReadOnlyList<MensajePrivadoDto>> Privados => _privados;
+
+    /// <inheritdoc />
     public IObservable<IReadOnlyList<UsuarioConectadoDto>> Usuarios => _usuarios;
 
     /// <inheritdoc />
@@ -154,6 +167,9 @@ public class ChatStore : IChatStore
     public IObservable<bool> EnSesion => _enSesion;
 
     /// <inheritdoc />
+    public IObservable<string?> DestinatarioPrivado => _destinatarioPrivado;
+
+    /// <inheritdoc />
     public IReadOnlyList<string> Canales => _config.Canales;
 
     /// <inheritdoc />
@@ -161,6 +177,9 @@ public class ChatStore : IChatStore
 
     /// <inheritdoc />
     public IReadOnlyList<UsuarioConectadoDto> VistaUsuarios => _usuarios.Value;
+
+    /// <inheritdoc />
+    public IReadOnlyList<MensajePrivadoDto> VistaPrivados => _privados.Value;
 
     /// <inheritdoc />
     public EstadisticasDto EstadisticasActuales => _estadisticas.Value;
@@ -234,6 +253,21 @@ public class ChatStore : IChatStore
         {
             // Conexión caída: InvokeAsync LANZA en vez de devolver el error
             // del servidor, así que lo convertimos al mismo patrón string?
+            return ErrorSinConexion;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<string?> EnviarPrivadoAsync(string destinatario, string texto)
+    {
+        try
+        {
+            return await _conexion.InvokeAsync<string?>(
+                ChatHubMetodos.EnviarPrivado, destinatario, texto);
+        }
+        catch (Exception)
+        {
+            // Mismo traductor que EnviarAsync: sin conexión, error en español
             return ErrorSinConexion;
         }
     }
@@ -354,6 +388,11 @@ public class ChatStore : IChatStore
         // destello de ellos antes de que llegue el historial del servidor
         _mensajes.OnNext([]);
         _usuarios.OnNext([]);
+        _privados.OnNext([]); // y los privados menos: no hay servidor que los vuelva a traer
+
+        // Y se cierra el privado abierto: si otra persona entra después en
+        // este navegador, no debe empezar escribiéndole al anterior
+        _destinatarioPrivado.OnNext(null);
     }
 
     /// <inheritdoc />
@@ -362,6 +401,12 @@ public class ChatStore : IChatStore
         // Solo la vista local: el servidor guarda el historial igual que
         // antes (vuelve al cambiar de canal o reconectar)
         _mensajes.OnNext([]);
+    }
+
+    /// <inheritdoc />
+    public void PrepararPrivado(string destinatario)
+    {
+        _destinatarioPrivado.OnNext(destinatario);
     }
 
     /// <inheritdoc />
@@ -414,12 +459,14 @@ public class ChatStore : IChatStore
     public void Dispose()
     {
         _mensajes.Dispose();
+        _privados.Dispose();
         _usuarios.Dispose();
         _estadisticas.Dispose();
         _canalActual.Dispose();
         _nick.Dispose();
         _estado.Dispose();
         _enSesion.Dispose();
+        _destinatarioPrivado.Dispose();
 
         // DisposeAsync en segundo plano: estamos saliendo y no queremos
         // bloquear el hilo principal en el Dispose

@@ -73,6 +73,18 @@ public class ProcesadorComandos(IChatStore store, ChatConfig config, ISesionStor
                 store.Aviso(await CrearTextoUsuariosAsync(canalConsulta));
                 break;
 
+            case Comando.Privado { Destinatario: var destinatario, Texto: var textoPrivado }:
+                // El eco del propio mensaje vuelve por evento (privado
+                // recibido) y lo pinta la vista junto al resto: aquí solo
+                // se traducen los ERRORES, igual que en el resto de comandos
+                var errorPrivado = await store.EnviarPrivadoAsync(
+                    destinatario.Trim(), textoPrivado.Trim());
+
+                if (errorPrivado is not null)
+                    store.Aviso(errorPrivado);
+
+                break;
+
             case Comando.Reconectar:
                 store.Aviso(await CrearTextoReconectarAsync());
                 break;

@@ -29,6 +29,7 @@
     --dc-verde: #43b581;        /* en línea */
     --dc-naranja: #faa61a;      /* reconectando / avisos */
     --dc-rojo: #f04747;         /* errores / caído */
+    --dc-fucsia: #eb459e;       /* marca de privado (🔒 y "para/de quien") */
     --dc-hora: #72767d;         /* timestamps */
     --dc-hover: rgba(79, 84, 92, 0.3);
     --dc-borde: #202225;
@@ -477,6 +478,21 @@ body {
     font-size: 13px;
 }
 
+/* Mensaje privado: MISMA fila que un mensaje normal —misma hora, mismo
+   avatar, mismo nombre en su color— con el 🔒 rosa y el "para/de quien".
+   El fondo solo se marca un pelín al pasar el ratón: un privado no debe
+   gritar en medio de la charla, pero sí poder distinguirse a la primera */
+.mensaje.privado:hover {
+    background: rgba(235, 69, 158, 0.08);
+}
+
+.privado-marca {
+    color: var(--dc-fucsia);
+    font-size: 12px;
+    margin-right: 6px;
+    cursor: help; /* su title lleva la nota completa: "no se guarda" */
+}
+
 /* ==========================================================================
    7. Caja de texto (fija abajo, placeholder "Escribe un mensaje...")
    ========================================================================== */
@@ -537,6 +553,45 @@ body {
     padding: 6px 4px 0;
 }
 
+/* Chip "Privado a X": marca el modo abierto y se puede cerrar con ✕.
+   No es un error, así que va en gris — no en rojo, que ya significa fallo */
+.chip-privado {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    color: var(--dc-suave);
+    font-size: 12px;
+    padding: 2px 4px 6px;
+}
+
+.chip-privado b {
+    color: var(--dc-fucsia);
+    font-weight: 600;
+}
+
+.chip-cerrar {
+    background: transparent;
+    border: 0;
+    color: var(--dc-suave);
+    cursor: pointer;
+    font-size: 12px;
+    padding: 0 4px;
+}
+
+.chip-cerrar:hover {
+    color: var(--dc-texto);
+}
+
+/* Nota de que los privados no se guardan: gris y letra pequeña A PROPÓSITO.
+   Un aviso repetido en cada envío deja de leerse a la segunda vez, así que
+   solo aparece mientras se está preparando uno — nunca en la charla normal */
+.caja-nota {
+    color: var(--dc-suave);
+    font-size: 11px;
+    padding: 6px 4px 0;
+}
+
 /* ==========================================================================
    8. Columna de usuarios (conectados del canal actual)
    ========================================================================== */
@@ -570,6 +625,23 @@ body {
 .usuario:hover {
     background: var(--dc-hover);
     color: var(--dc-texto);
+}
+
+/* Clic para escribirle un privado: el cursor cambia y el 🔒 aparece SOLO
+   al pasar el ratón, para no convertir la lista en un muro de candados */
+.usuario.clicable {
+    cursor: pointer;
+}
+
+.usuario.clicable::after {
+    content: "🔒";
+    font-size: 11px;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
+.usuario.clicable:hover::after {
+    opacity: 0.9;
 }
 
 .usuario-nombre {

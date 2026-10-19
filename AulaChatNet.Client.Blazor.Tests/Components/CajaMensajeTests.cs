@@ -165,4 +165,103 @@ public class CajaMensajeTests : BunitContext
             .Which.Palabra.Should().Be("/magia");
         _store.Mock.Verify(s => s.EnviarAsync(It.IsAny<string>()), Times.Never);
     }
+
+    #region Privado Tests
+
+    [Test]
+    public void PrivadoCompleto_MuestraElChipConElDestinatarioYLaNota()
+    {
+        // Arrange
+        var cut = Render<CajaMensaje>();
+
+        // Act: con destino Y texto, la línea ya es un privado
+        cut.Find("input.caja-entrada").Input("/privado Ana ¿nos vemos?");
+
+        // Assert: el chip nombra a la persona y la nota avisa de lo importante
+        cut.Find(".chip-privado").TextContent.Should().Contain("Ana");
+        cut.Find(".caja-nota").TextContent.Should().Contain("no se guardan");
+    }
+
+    [Test]
+    public void PrivadoSinDestino_TodaviaNoHayChip_SiSaleLaNota()
+    {
+        // Arrange: mientras se teclea el destino, aún no hay a quién nombrar,
+        // pero el aviso de que no se guarda ya puede estar
+        var cut = Render<CajaMensaje>();
+
+        // Act
+        cut.Find("input.caja-entrada").Input("/privado ");
+
+        // Assert
+        cut.FindAll(".chip-privado").Should().BeEmpty();
+        cut.Find(".caja-nota").TextContent.Should().Contain("no se guardan");
+    }
+
+    [Test]
+    public void LineaNormal_NoMuestraNadaDePrivado()
+    {
+        // Arrange
+        var cut = Render<CajaMensaje>();
+
+        // Act: la charla normal no debe llevar ni chip ni nota
+        cut.Find("input.caja-entrada").Input("buenas a todos");
+
+        // Assert
+        cut.FindAll(".chip-privado").Should().BeEmpty();
+        cut.FindAll(".caja-nota").Should().BeEmpty();
+    }
+
+    [Test]
+    public void ClicEnLaLista_PreRellenaLaLineaConElPrivado()
+    {
+        // Arrange
+        var cut = Render<CajaMensaje>();
+
+        // Act: la lista de conectados pide escribirle a Luis
+        _store.DestinatarioPrivado.OnNext("Luis");
+
+        // Assert: queda puesto el comando, con el espacio final para seguir escribiendo
+        ((IHtmlInputElement)cut.Find("input.caja-entrada")).Value.Should().Be("/privado Luis ");
+        cut.Find(".chip-privado").TextContent.Should().Contain("Luis");
+    }
+
+    [Test]
+    public void CerrarElChip_BorraLaLineaYVuelveElPlaceholder()
+    {
+        // Arrange
+        var cut = Render<CajaMensaje>();
+        _store.DestinatarioPrivado.OnNext("Luis");
+
+        // Act
+        cut.Find(".chip-cerrar").Click();
+
+        // Assert
+        cut.FindAll(".chip-privado").Should().BeEmpty();
+        cut.FindAll(".caja-nota").Should().BeEmpty();
+        ((IHtmlInputElement)cut.Find("input.caja-entrada")).Value.Should().BeEmpty();
+    }
+
+    [Test]
+    public async Task EnviarPrivado_LoDespachaAlProcesadorYNoAlCanal()
+    {
+        // Arrange
+        var cut = Render<CajaMensaje>();
+        cut.Find("input.caja-entrada").Input("/privado Ana hola");
+
+        // Act
+        cut.Find("form").TriggerEvent("onsubmit", EventArgs.Empty);
+
+        // Assert: mismo camino que cualquier otro comando del parser
+        _procesador.Invocations.Should().HaveCount(1);
+        _procesador.Invocations[0].Arguments[0]
+            .Should().BeOfType<Comando.Privado>()
+            .Which.Destinatario.Should().Be("Ana");
+        _store.Mock.Verify(s => s.EnviarAsync(It.IsAny<string>()), Times.Never);
+
+        // Y como la línea ya se fue, el chip y la nota desaparecen
+        cut.FindAll(".chip-privado").Should().BeEmpty();
+        cut.FindAll(".caja-nota").Should().BeEmpty();
+    }
+
+    #endregion
 }

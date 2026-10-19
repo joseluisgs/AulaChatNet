@@ -1,0 +1,92 @@
+using AulaChatNet.Shared.Dtos;
+using AulaChatNet.Shared.Helpers;
+using Spectre.Console;
+
+namespace AulaChatNet.Client.Terminal.Consola;
+
+/// <summary>
+/// Fórmulas de markup de la zona de mensajes: cómo se PINTA una fila —del
+/// canal o privada— en la consola.
+///
+/// <remarks>
+/// Está separada de Program.cs por la MISMA razón que <see cref="Conectados"/>:
+/// siendo estática y pura —solo datos de entrada, cadena de salida— se testea
+/// sin red, sin consola y sin abrir la ventana, que es lo que hace
+/// <c>VistaChatTests</c>. Además concentra aquí lo que los DOS modos de
+/// entrada (lienzo en vivo y tubería de pruebas) necesitan compartir: si el
+/// pintado viviera en dos sitios, la terminal enseñaría mensajes privados
+/// distintos según cómo se hubiera arrancado.
+///
+/// QUÉ pinta cada fila y EN QUÉ ORDEN van las filas son DOS preguntas
+/// distintas: el orden lo resuelve <see cref="CombinadorChat"/> (Shared,
+/// idéntico para la terminal y para la web) y aquí solo se pinta lo que
+/// llegue ya ordenado.
+/// </remarks>
+/// </summary>
+public static class VistaChat
+{
+    /// <summary>Pinta una fila de la vista, sea del canal o privada.</summary>
+    /// <param name="fila">Fila ya ordenada por <see cref="CombinadorChat"/>.</param>
+    /// <param name="yo">Mi propio nombre: decide si el privado se pinta como "para" o como "de".</param>
+    /// <returns>Cadena de markup lista para <c>Markup</c>.</returns>
+    public static string LineaMarkup(FilaChat fila, string yo) =>
+        fila.EsPrivado
+            ? LineaPrivadoMarkup(fila.Privado!, yo)
+            : LineaMensajeMarkup(fila.Mensaje!);
+
+    /// <summary>
+    /// Una fila del canal: hora, iniciales entre corchetes y nombre con su
+    /// color derivado; los mensajes de sistema van en gris cursiva.
+    ///
+    /// <remarks>
+    /// El servidor marca en UTC (la regla de oro: guardar UTC, convertir SOLO
+    /// al presentar), así que aquí se pasa a la hora local del que mira: sin
+    /// esto, la terminal enseñaría otra hora. Los mensajes de sistema TAMBIÉN
+    /// llevan hora — en un aula se quiere saber cuándo se fue alguien, y
+    /// Discord y Slack lo hacen igual.
+    /// </remarks>
+    /// </summary>
+    /// <param name="mensaje">Mensaje del canal.</param>
+    /// <returns>Cadena de markup lista para pintar.</returns>
+    public static string LineaMensajeMarkup(MensajeDto mensaje)
+    {
+        var hora = $"{mensaje.Timestamp.ToLocalTime():HH:mm}";
+
+        if (mensaje.Tipo == TipoMensaje.Sistema)
+            return $"[grey]{hora}[/] [grey italic]· {Markup.Escape(mensaje.Texto)}[/]";
+
+        var hex = TemaDiscord.ColorDe(mensaje.Usuario).ToMarkup();
+        var iniciales = TemaDiscord.Iniciales(mensaje.Usuario);
+
+        return $"[grey]{hora}[/] " +
+               $"[{hex}][[{iniciales}]][/] " +
+               $"[{hex}]{Markup.Escape(mensaje.Usuario)}[/]: {Markup.Escape(mensaje.Texto)}";
+    }
+
+    /// <summary>
+    /// Una fila PRIVADA: misma estructura que un mensaje normal —para que se
+    /// lea igual— con el 🔒 en rosa y el contexto "para X" o "de X" según
+    /// quién lo escribió. Así se distingue a la primera sin necesidad de
+    /// cambiar el color del autor ni añadir una segunda columna.
+    /// </summary>
+    /// <param name="privado">Mensaje privado.</param>
+    /// <param name="yo">Mi nombre: si coincide con el emisor, es "para"; si no, es "de".</param>
+    /// <returns>Cadena de markup lista para pintar.</returns>
+    public static string LineaPrivadoMarkup(MensajePrivadoDto privado, string yo)
+    {
+        var hora = $"{privado.Timestamp.ToLocalTime():HH:mm}";
+
+        // El emisor es SIEMPRE el que pinta el nombre; el contexto cambia:
+        // "para Luis" si lo escribí yo, "de Ana" si me lo enviaron
+        var esMio = string.Equals(privado.Emisor, yo, StringComparison.OrdinalIgnoreCase);
+        var contexto = esMio ? $"para {privado.Destinatario}" : $"de {privado.Emisor}";
+
+        var hex = TemaDiscord.ColorDe(privado.Emisor).ToMarkup();
+        var iniciales = TemaDiscord.Iniciales(privado.Emisor);
+        var rosa = TemaDiscord.Fucsia.ToMarkup();
+
+        return $"[grey]{hora}[/] [{rosa}🔒[/] [{rosa}]{Markup.Escape(contexto)}[/] " +
+               $"[{hex}][[{iniciales}]][/] [{hex}]{Markup.Escape(privado.Emisor)}[/]: " +
+               $"{Markup.Escape(privado.Texto)}";
+    }
+}

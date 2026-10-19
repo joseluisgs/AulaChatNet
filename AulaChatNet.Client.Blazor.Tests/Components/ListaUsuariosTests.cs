@@ -2,8 +2,9 @@ using AulaChatNet.Client.Blazor.Components.Shared;
 using AulaChatNet.Shared.Configuracion;
 using AulaChatNet.Shared.Dtos;
 using Bunit;
-using Microsoft.Extensions.DependencyInjection;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
+using Moq;
 
 namespace AulaChatNet.Client.Blazor.Tests.Components;
 
@@ -84,5 +85,65 @@ public class ListaUsuariosTests : BunitContext
         // Assert: la suscripción hizo su trabajo y el repintado llegó
         cut.FindAll(".usuario").Should().HaveCount(1);
         cut.Find(".usuario-nombre").TextContent.Should().Be("María");
+    }
+
+    [Test]
+    public void ClicEnUnCompanero_PidePrepararSuPrivado()
+    {
+        // Arrange
+        var store = StoreFalsa.Crear();
+        store.Nick.OnNext("Ana");
+        store.Usuarios.OnNext(
+        [
+            new UsuarioConectadoDto("Ana", DateTime.UtcNow),
+            new UsuarioConectadoDto("Luis", DateTime.UtcNow)
+        ]);
+        Services.AddSingleton(store.Objeto);
+        Services.AddSingleton(new ChatConfig());
+        var cut = Render<ListaUsuarios>();
+
+        // Act: el segundo de la lista es Luis
+        cut.FindAll(".usuario")[1].Click();
+
+        // Assert: los componentes no se hablan entre sí, piden a la store
+        store.Mock.Verify(s => s.PrepararPrivado("Luis"), Times.Once);
+    }
+
+    [Test]
+    public void ClicEnMiPropioNombre_NoPideNada()
+    {
+        // Arrange: un privado a ti mismo no tiene sentido, y el servidor lo
+        // rechazaría — mejor no abrir siquiera la puerta
+        var store = StoreFalsa.Crear();
+        store.Nick.OnNext("Ana");
+        store.Usuarios.OnNext([new UsuarioConectadoDto("Ana", DateTime.UtcNow)]);
+        Services.AddSingleton(store.Objeto);
+        Services.AddSingleton(new ChatConfig());
+        var cut = Render<ListaUsuarios>();
+
+        // Act
+        cut.FindAll(".usuario")[0].Click();
+
+        // Assert
+        store.Mock.Verify(s => s.PrepararPrivado(It.IsAny<string>()), Times.Never);
+    }
+
+    [Test]
+    public void MismoNombreConOtrasMayusculas_SigueSiendoElMismo()
+    {
+        // Arrange: el servidor normaliza al registrar, y aquí no debe
+        // ofrecerse un privado a uno mismo aunque el nombre venga distinto
+        var store = StoreFalsa.Crear();
+        store.Nick.OnNext("Ana");
+        store.Usuarios.OnNext([new UsuarioConectadoDto("ANA", DateTime.UtcNow)]);
+        Services.AddSingleton(store.Objeto);
+        Services.AddSingleton(new ChatConfig());
+        var cut = Render<ListaUsuarios>();
+
+        // Act
+        cut.FindAll(".usuario")[0].Click();
+
+        // Assert
+        store.Mock.Verify(s => s.PrepararPrivado(It.IsAny<string>()), Times.Never);
     }
 }
