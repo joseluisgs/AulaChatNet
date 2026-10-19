@@ -222,6 +222,7 @@ La configuración vive en `appsettings.json` (con override por entorno en `appse
 | **Fase 1 · Terminal** | Spectre.Console, vista en vivo, entrada guiada, comandos, sesión y Serilog a fichero | ✅ Hecho |
 | **Fase 1 · Blazor** | Layout Discord + store reactiva estilo `NotificationStore` + comandos `/` (parser compartido) + Serilog a consola del navegador | ✅ Hecho |
 | **Fase 2 · Server** | Persistencia con SQLite + EF Core: modelo e índices, migraciones, escritura en segundo plano, precarga del historial y mantenimiento (retención + `VACUUM`) | ✅ Hecho |
+| Arquitectura | Servidor agnóstico: sin `wwwroot` ni referencia a los clientes — solo expone el hub SignalR y `GET /estadisticas`; la web corre en su DevServer (`5031`) y habla con él por `Web:UrlServidor` y CORS, que ya es obligatorio siempre | ✅ Hecho |
 | Fase 3 | Extras (moderación, reacciones) | 🔜 Futura |
 
 > 📝 **Nota:** la lógica de la Fase 2 vivió **solo en el servidor**: ni el hub ni el contrato de los clientes se movieron, porque ya estaba hecho en la Fase 1. (Verificado con `git diff 0.2.0 0.3.0`: los únicos toques en clientes de ese tramo fueron cosméticos —el icono de la app—, ni una línea de lógica.)
