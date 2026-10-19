@@ -23,7 +23,7 @@ Este punto es el hermano web del [cliente terminal](02-cliente-terminal.md): **m
 **Objetivos de aprendizaje:**
 
 - Situar qué es Blazor y WebAssembly, y por qué este cliente está hecho en C# y no en JavaScript
-- Montar una SPA con Blazor WebAssembly alojada por el servidor, sin CORS ni URLs escritas a mano
+- Montar una SPA con Blazor WebAssembly que vive en su PROPIO proceso, habla con el servidor por `Web:UrlServidor` y cruza orígenes con CORS
 - Entender qué es una store central (fuente única de verdad, estilo Pinia/Redux): cómo se comunican los componentes con ella, por qué evita los "saltos" de datos y qué aporta la reactividad frente a un singleton clásico
 - Suscribirse a `IObservable<T>` desde un componente y **liberar la suscripción** al destruirlo
 - Reutilizar lógica entre clientes: el parser de comandos vive en `Shared` y lo ejecutan los dos
@@ -76,7 +76,7 @@ Dos contras honestas que conviene conocer:
 
 ## 3.2. Qué hay dentro del proyecto
 
-El cliente es una aplicación de Blazor WebAssembly (WASM) **alojada por el servidor**: no tiene puerto propio en uso normal; el servidor del `5030` sirve tanto el hub como los archivos del cliente. La lógica está partida por responsabilidades:
+El cliente es una aplicación de Blazor WebAssembly (WASM) que corre en **su propio proceso**: el `launchSettings.json` le asigna el puerto `5031` y su DevServer sirve sus ficheros (`index.html`, el runtime y el CSS). El servidor del `5030` es agnóstico y no sabe que esta app existe: solo expone el hub y el `/estadisticas` que ella consume. La lógica está partida por responsabilidades:
 
 | Carpeta | Contenido | Ejemplo |
 |---------|-----------|---------|
@@ -102,14 +102,14 @@ El `Program.cs` del cliente hace, en orden:
 
 1. **Lee la configuración** que el propio `WebAssemblyHostBuilder` ya cargó de `wwwroot/appsettings.json`. Ojo con el detalle de seguridad: en WASM **todo lo que aquí se lee viaja al navegador**, así que solo puede haber ajustes de presentación (canales, límites, URL del avatar) — nunca secretos. La validación real la hace el servidor.
 2. **Monta Serilog** con un solo sink: `BrowserConsole`, la pestaña "Console" de las herramientas de desarrollo del navegador. Un solo `Log.Logger` que ataca por estático y, además, se registra como provider para que las stores reciban su `ILogger<T>` por DI.
-3. **Calcula la URL del servidor**: `Web:UrlServidor` vacío = **mismo origen** desde el que se sirve la app (lo normal) — así no hay CORS ni nada escrito a mano. El `HttpClient` del `GET /estadisticas` apunta ahí con un timeout corto de 3 segundos: la cifra de bienvenida es opcional, no puede frenar el arranque.
+3. **Calcula la URL del servidor**: `Web:UrlServidor` es la base del servidor (`http://localhost:5030`). Es imprescindible porque la web vive en **otro proceso y otro origen** que el servidor: sin esa URL la app buscaría el hub en el `5031` y no lo encontraría. El `HttpClient` del `GET /estadisticas` apunta ahí con un timeout corto de 3 segundos: la cifra de bienvenida es opcional, no puede frenar el arranque.
 4. **Registra los servicios** con `AddChatStores($"{baseServidor}{chat.HubRuta}")`: la URL del hub se compone desde la configuración, igual que en la terminal.
 
 ```mermaid
 flowchart TD
     H["index.html<br/>(splash + JSInterop)"] --> B["WebAssemblyHostBuilder<br/>lee wwwroot/appsettings.json"]
     B --> S["Serilog → BrowserConsole<br/>+ ILogger en DI"]
-    B --> C["HttpClient (GET /estadisticas)<br/>mismo origen, timeout 3 s"]
+    B --> C["HttpClient (GET /estadisticas)<br/>→ Web:UrlServidor (5030), timeout 3 s"]
     B --> D["AddChatStores(urlHub)<br/>stores + sesión + procesador"]
     D --> R["builder.Build().RunAsync()<br/>la página Chat pinta la entrada"]
 
@@ -121,7 +121,7 @@ flowchart TD
     style R fill:#2196F3,color:#fff
 ```
 
-> 💡 **Consejo:** si ejecutas el cliente por separado (DevServer del `5031`), solo tienes que poner `Web:UrlServidor` en `appsettings.Development.json`; sin ese ajuste, todo vive bajo el mismo `5030` y no hay CORS en el camino.
+> 💡 **Consejo:** `Web:UrlServidor` vive en `wwwroot/appsettings.json` y viaja con el cliente. Si algún día cambias el puerto del servidor, ese es el único sitio que hay que tocar. Y no te alarme ver CORS por medio: es la consecuencia natural de que cada proceso tenga su propio origen, y ya viene configurado (`Cors:OrigenesPermitidos`).
 
 ## 3.4. La estética de Discord con CSS propio
 
@@ -544,14 +544,14 @@ La terminal guardaba la sesión en un fichero del perfil; aquí no hay disco, pe
 
 ## 3.10. Desarrollo: dotnet watch y el manifiesto de assets
 
-Blazor WASM emite un **manifiesto de assets** (`blazor.boot.json`) con los hashes de todos los ficheros del cliente. Detrás de la última pantalla en blanco que costó un susto: **ese manifiesto se lee al arrancar el servidor**, no petición a petición. Si editas el cliente y solo haces F5, el navegador recibe un manifiesto viejo que apunta a nombres de archivo que ya no existen → 404 → página en blanco, **sin ningún error en el servidor**.
+Blazor WASM emite un **manifiesto de assets** con los hashes de todos los ficheros del cliente. Detrás de la última pantalla en blanco que costó un susto: **ese manifiesto se lee al arrancar**, no petición a petición. Si editas el cliente y solo haces F5, el navegador recibe un manifiesto viejo que apunta a nombres de archivo que ya no existen → 404 → página en blanco, **sin ningún error a la vista**.
 
-La solución, en dos mitades (guía oficial de Blazor alojado):
+La solución, en dos mitades:
 
-1. **`dotnet watch --project AulaChatNet.Server`** en desarrollo: al tocar cualquier fichero del cliente, watch reconstruye y **relanza el servidor solo** — el manifiesto nuevo se lee en el arranque limpio. Verificado: tres reinicios automáticos en una sesión de trabajo (arranque, cambio, reversión).
-2. **`Cache-Control: no-cache` en Development**: un middleware pequeño en el `Program.cs` del servidor (antes de `UseBlazorFrameworkFiles`) añade la cabecera a `index.html` y a `/_framework/*`, para que el navegador pida siempre la última versión en lugar de servir una caché amiga.
+1. **`dotnet watch --project AulaChatNet.Client.Blazor`** en desarrollo: al tocar cualquier fichero del cliente, watch reconstruye y **relanza su DevServer** — el manifiesto nuevo se lee en el arranque limpio. Fíjate en el proyecto: el servidor ya no interviene, es agnóstico y no sirve la web, así que hacer watch sobre él no arreglaría nada.
+2. **La caché la resuelve el propio DevServer.** Medido en el `5031`: `GET /index.html` devuelve `Cache-Control: no-cache` de serie, así que el navegador pide siempre la última versión sin necesidad de ningún middleware propio.
 
-> 💡 **Consejo:** el middleware solo se activa en Development. En producción el manifiesto cambia con cada despliegue, que es cuando la caché larga SÍ es tu amiga.
+> 📝 **Nota:** este es un cambio de modelo respecto a lo que documentaba esta guía al principio. Antes el servidor del `5030` alojaba la web y había que añadirle a mano un middleware `no-cache` y hacer watch sobre él. Con el servidor agnóstico, la web tiene su proceso y sus problemas de desarrollo propios, resueltos por su propia herramienta.
 
 ## 3.11. Cómo se prueba
 
@@ -574,14 +574,14 @@ El truco de los tests de componentes es la **`StoreFalsa`**: en lugar de una con
 
 > 📝 **Nota:** un detalle de Moq aprendido a golpe: `It.Is<T>(x => x is Tipo)` no compila (CS8122) porque los árboles de expresión no admiten `is`; en su lugar se verifica sobre `_procesador.Invocations[0].Arguments[0]`, que es lo que de verdad se invocó.
 
-Y más allá de los tests unitarios, la verificación de esta fase se hizo en **navegador de verdad** contra el servidor real: los 9 comandos tecleados en la caja (incluido `/limpiar` con sus 6 mensajes borrados y `/salir` volviendo al panel), la carrera del nick duplicado con dos pestañas, y las cabeceras `no-cache` comprobadas con las herramientas de desarrollo. La misma filosofía que en la terminal: **probar la app como la usaría el alumno**.
+Y más allá de los tests unitarios, la verificación de esta fase se hizo en **navegador de verdad** contra el servidor real: los 9 comandos tecleados en la caja (incluido `/limpiar` con sus 6 mensajes borrados y `/salir` volviendo al panel) y la carrera del nick duplicado con dos pestañas. La misma filosofía que en la terminal: **probar la app como la usaría el alumno**.
 
 ## 3.12. Resumen del punto
 
 | Concepto | Qué retener |
 |----------|-------------|
 | Plataforma | Blazor WebAssembly: el runtime de .NET corre como WebAssembly dentro del navegador — un solo lenguaje en cliente y servidor |
-| Alojamiento | El servidor del `5030` sirve el WASM; por defecto, mismo origen (sin CORS ni URLs escritas) |
+| Proceso propio | DevServer en el `5031` (su `launchSettings.json`); el servidor es agnóstico y no sirve ficheros — por eso la URL del servidor va en `Web:UrlServidor` y hace falta CORS |
 | Configuración | `wwwroot/appsettings.json`; en WASM todo lo leído es PÚBLICO — solo presentación, nunca secretos |
 | Página única | `Chat.razor` pinta panel o canal según `EnSesion`; la store central manda |
 | Componentes | Se suscriben en `OnInitialized`, se desuscriben en `Dispose`, y repintan con `InvokeAsync(StateHasChanged)` |
@@ -591,10 +591,10 @@ Y más allá de los tests unitarios, la verificación de esta fase se hizo en **
 | Errores | De campo → junto al campo; de conexión → al flujo de mensajes; nunca tipos de excepción en pantalla |
 | Bug Closed | SignalR entrega `Closed` tarde: el flag de cierre se resetea al INICIAR la siguiente conexión, nunca al cerrar |
 | Sesión | `localStorage` clave `aulachat.sesion`; un navegador bloqueado no rompe nada |
-| Desarrollo | `dotnet watch` (reconstruye y relanza) + `no-cache` en Development: el manifiesto se lee al arrancar |
+| Desarrollo | `dotnet watch --project AulaChatNet.Client.Blazor` (reconstruye y relanza su DevServer) — el manifiesto se lee al arrancar |
 | Pruebas | Stores con red de verdad y componentes contra `StoreFalsa` con sujetos "meneables" |
 | CSS | Propio, con variables en `:root`; paleta Discord clásica; avatares DiceBear con respaldo de iniciales |
 
-> 📝 **Nota (evolución de la Fase 2):** con los dos clientes listos sobre el mismo hub, la Fase 2 abrió el siguiente capítulo: sacar el historial de las `ConcurrentDictionary` a una base de datos real (SQLite + EF Core) **sin tocar ni el hub ni los clientes**. Y así salió: el contrato ya estaba hecho y no hubo que moverlo — la web sigue suscribiéndose a `MensajeNuevo` y pidiendo el historial exactamente igual que en la Fase 1, solo que ahora ese historial procede de SQLite. El detalle de las decisiones y de sus trampas, en [4. La persistencia con SQLite](04-persistencia.md).
+> 📝 **Nota (evolución de la Fase 2):** con los dos clientes listos sobre el mismo hub, la Fase 2 abrió el siguiente capítulo: sacar el historial de las `ConcurrentDictionary` a una base de datos real (SQLite + EF Core) **sin tocar el hub ni la lógica de los clientes**. Y así salió: el contrato ya estaba hecho y no hubo que moverlo — la web sigue suscribiéndose a `MensajeNuevo` y pidiendo el historial exactamente igual que en la Fase 1, solo que ahora ese historial procede de SQLite. El detalle de las decisiones y de sus trampas, en [4. La persistencia con SQLite](04-persistencia.md).
 
 > 📝 **Nota:** el boceto previo de estas vistas sigue disponible en [`docs/boceto-vistas.html`](boceto-vistas.html), por si quieres comparar el dibujo con lo que acabó saliendo.
