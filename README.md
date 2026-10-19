@@ -72,23 +72,24 @@ AulaChatNet/
 │   └── AulaChatNet.Server.Tests/
 ├── AulaChatNet.Client.Terminal/             # Consola con Spectre.Console (TUI estilo Discord)
 │   └── AulaChatNet.Client.Terminal.Tests/
-└── AulaChatNet.Client.Blazor/               # Blazor WebAssembly (alojado por el servidor)
+└── AulaChatNet.Client.Blazor/               # Blazor WebAssembly (proceso propio en el 5031)
     └── AulaChatNet.Client.Blazor.Tests/
 ```
 
 ## 🏗️ Arquitectura
 
-Capa compartida (`Shared`) como contrato entre servidor y clientes, un hub de SignalR como puerta de entrada y el estado en el `ChatStore`. Desde la Fase 2 se añade la persistencia: el historial se respalda en SQLite y **la escritura y el mantenimiento del fichero ocurren en dos servicios en segundo plano**, para que el hilo de SignalR nunca espere a disco. Detalle en [`docs/01-arquitectura-del-servidor.md`](docs/01-arquitectura-del-servidor.md) y en [`docs/04-persistencia.md`](docs/04-persistencia.md):
+Capa compartida (`Shared`) como contrato entre servidor y clientes, un hub de SignalR como puerta de entrada y el estado en el `ChatStore`. Desde la Fase 2 se añade la persistencia: el historial se respalda en SQLite y **la escritura y el mantenimiento del fichero ocurren en dos servicios en segundo plano**, para que el hilo de SignalR nunca espere a disco. Fíjate en que **los tres son procesos separados**: el servidor está en el `5030` y no sirve ficheros, la web corre en su DevServer del `5031` y el terminal en consola — la web habla con el servidor por `Web:UrlServidor` y, al ser otro origen, con CORS por medio. Detalle en [`docs/01-arquitectura-del-servidor.md`](docs/01-arquitectura-del-servidor.md) y en [`docs/04-persistencia.md`](docs/04-persistencia.md):
 
 ```mermaid
 flowchart TD
-    subgraph Clientes["Clientes"]
-        T["Terminal<br/>Spectre.Console + Rx"]
-        B["Web Blazor<br/>Blazor WebAssembly + Rx"]
+    subgraph Clientes["Clientes (cada uno en su proceso)"]
+        T["Terminal<br/>Spectre.Console + Rx<br/>consola propia"]
+        B["Web Blazor<br/>Blazor WebAssembly + Rx<br/>DevServer :5031"]
     end
 
-    subgraph Servidor["AulaChatNet.Server"]
+    subgraph Servidor["AulaChatNet.Server :5030 (agnóstico, no sirve ficheros)"]
         H["ChatHub<br/>puerta de entrada (/hubs/chat)"]
+        API["GET /estadisticas<br/>API REST mínima"]
         S["ChatStore<br/>presencia y unicidad en memoria<br/>historial en caché"]
         Q["Cola de escritura<br/>(Channel)"]
         P["Servicios de fondo<br/>PersistenciaMensajesService<br/>LimpiezaProgramada"]
@@ -100,7 +101,8 @@ flowchart TD
     DB["SQLite embebido<br/>Data/aulachat.db (modo WAL)"]
 
     T <-->|"SignalR (WebSocket)"| H
-    B <-->|"SignalR (WebSocket)"| H
+    B <-->|"SignalR (WebSocket)<br/>otro origen → CORS"| H
+    B -.->|"REST · otro origen → CORS"| API
 
     H --> S
     S -.->|"encola, sin esperar"| Q
@@ -116,6 +118,7 @@ flowchart TD
     style T fill:#FF9800,color:#fff
     style B fill:#FF9800,color:#fff
     style H fill:#2196F3,color:#fff
+    style API fill:#2196F3,color:#fff
     style S fill:#2196F3,color:#fff
     style Q fill:#9C27B0,color:#fff
     style P fill:#9C27B0,color:#fff
@@ -126,47 +129,40 @@ flowchart TD
 
 ## 🏃‍♂️ Inicio rápido
 
-Los tres puntos de entrada de la aplicación —servidor, web y terminal— y la base de datos:
+Tres procesos **independientes**: el servidor solo expone lo que todos consumen, y cada cliente se arranca en su propia consola:
 
 ```bash
-# ── 1) SERVIDOR ───────────────────────────────────────────────────────
-# Compila y arranca; sirve TODO: hub SignalR, API REST y la web.
+# ── 1) SERVIDOR ────────────────────────────────────────────────────────
+# El servidor es AGNÓSTICO: no conoce a ningún cliente ni sirve ficheros
+# (pide "/" y devuelve 404). Expone SOLO lo que consumen los clientes:
+# el hub SignalR y el GET /estadisticas.
 dotnet run --project AulaChatNet.Server
 #   → http://localhost:5030
 
-# ── 2) WEB (Blazor WebAssembly) ───────────────────────────────────────
-# SÍ tiene comando propio: es un proyecto con DevServer, y el propio
-# launchSettings.json le asigna el http://localhost:5031.
-#
-# OPCIÓN A — uso normal (recomendada): no arranques nada aparte. El
-# servidor del apartado 1 aloja el WASM en su propio 5030, así que el
-# navegador ya está dentro y no hay CORS en el camino.
-#
-# OPCIÓN B — desarrollo del cliente aislado: arráncalo tú solo. Su
-# appsettings.Development.json apunta con Web:UrlServidor al 5030 para
-# que hable con el servidor de verdad (sin ese ajuste no encontraría
-# ni el hub ni /estadisticas).
+# ── 2) WEB (Blazor WebAssembly) ────────────────────────────────────────
+# OTRA consola. Proyecto aparte, con su propio DevServer en el 5031
+# (lo fija launchSettings.json). Ella sola sirve su index.html, su
+# favicon y su .wasm, y habla con el servidor del 5030 indicado en
+# Web:UrlServidor. Como son orígenes distintos hace falta CORS, que ya
+# está configurado (Cors:OrigenesPermitidos).
 dotnet run --project AulaChatNet.Client.Blazor
 #   → http://localhost:5031
-#
-# Cambiando el código de la web, usa watch en lugar de run: el
+
+# Si CAMBIAS el código de la web, usa watch en lugar de run: el
 # manifiesto de assets de Blazor se lee al arrancar, así que sin watch
 # los cambios no llegan al navegador
-dotnet watch --project AulaChatNet.Server          # con la OPCIÓN A
-dotnet watch --project AulaChatNet.Client.Blazor   # con la OPCIÓN B
+dotnet watch --project AulaChatNet.Client.Blazor
 
-# ── 3) TERMINAL ───────────────────────────────────────────────────────
+# ── 3) TERMINAL ────────────────────────────────────────────────────────
 # En OTRA consola: se conecta al servidor del 5030 por defecto
 # (la URL es configurable en la sección Terminal de appsettings)
 dotnet run --project AulaChatNet.Client.Terminal
 
-# ── 4) TESTS de todos los proyectos ───────────────────────────────────
+# ── 4) TESTS de todos los proyectos ────────────────────────────────────
 dotnet test
 ```
 
 **Base de datos (SQLite)**: no hay que crearla ni instalarla. Al arrancar, el servidor crea `Data/aulachat.db` si no existe, aplica las migraciones pendientes y precarga el historial de cada canal —mientras el servidor siga en pie, la web y el terminal leen ese mismo historial sin hacer nada especial—. En desarrollo la vacía a propósito (`Persistencia:LimpiarAlArrancar` está en `true` en `appsettings.Development.json`): ponla a `false` y reinicia para comprobar que los mensajes sobreviven.
-
-En desarrollo, el servidor añade `Cache-Control: no-cache` a `index.html` y a `/_framework/*`, para que el navegador pida siempre la última versión del manifiesto.
 
 ## 📡 Hub del chat
 
@@ -212,9 +208,9 @@ La configuración vive en `appsettings.json` (con override por entorno en `appse
 | `Chat` | Canales, ruta del hub, límites de usuario/mensaje, historial máximo, URL de avatares |
 | `Persistencia` | Fichero SQLite, migración automática, limpieza al arrancar, mensajes precargados y mantenimiento (`LimpiezaCadaHoras`, `RetencionDias`, `VacuumSiFragmentado`) |
 | `Serilog` | **Servidor**: consola (Information, con color) + fichero de errores (`logs/aulachat-YYYY-MM-DD.log`, rolling y retención de 7 días). **Terminal**: solo fichero en `%LOCALAPPDATA%\AulaChatNet\logs\terminal-YYYY-MM-DD.log` (config en `SerilogConfig.cs`; sin consola para no romper el lienzo Live). **Web**: consola del navegador (sink `BrowserConsole`, config en `Program.cs`) |
-| `Cors` | Orígenes permitidos para el cliente Blazor en desarrollo |
+| `Cors` | Orígenes permitidos para la web. **Hace falta siempre** —no solo en desarrollo—: la web corre en su proceso (`5031`) y llama al servidor (`5030`), que es otro origen. Lista vacía = cualquier origen (cómodo en clase); en producción se listan los orígenes reales |
 | `Terminal` | Sección del cliente terminal: `UrlServidor` y `RecordarSesion` |
-| `Web` | Cliente Blazor: `UrlServidor` (vacío = mismo origen) y `RecordarSesion` (sesión en localStorage). En desarrollo, `appsettings.Development.json` + `launchSettings.json` permiten ejecutar el cliente por separado: DevServer en el `5031` apuntando al servidor del `5030` |
+| `Web` | Cliente Blazor: `UrlServidor` (dirección del servidor: `http://localhost:5030` — imprescindible porque web y servidor van en procesos y orígenes distintos) y `RecordarSesion` (sesión en localStorage). El cliente se arranca aparte, con su DevServer en el `5031` (`launchSettings.json`) |
 
 ## ✅ Estado por fases
 
@@ -226,9 +222,10 @@ La configuración vive en `appsettings.json` (con override por entorno en `appse
 | **Fase 1 · Terminal** | Spectre.Console, vista en vivo, entrada guiada, comandos, sesión y Serilog a fichero | ✅ Hecho |
 | **Fase 1 · Blazor** | Layout Discord + store reactiva estilo `NotificationStore` + comandos `/` (parser compartido) + Serilog a consola del navegador | ✅ Hecho |
 | **Fase 2 · Server** | Persistencia con SQLite + EF Core: modelo e índices, migraciones, escritura en segundo plano, precarga del historial y mantenimiento (retención + `VACUUM`) | ✅ Hecho |
+| Arquitectura | Servidor agnóstico: sin `wwwroot` ni referencia a los clientes — solo expone el hub SignalR y `GET /estadisticas`; la web corre en su DevServer (`5031`) y habla con él por `Web:UrlServidor` y CORS, que ya es obligatorio siempre | ✅ Hecho |
 | Fase 3 | Extras (moderación, reacciones) | 🔜 Futura |
 
-> 📝 **Nota:** la Fase 2 tocó **solo el servidor**: ni el hub ni los clientes cambiaron, porque el contrato ya estaba hecho en la Fase 1.
+> 📝 **Nota:** la lógica de la Fase 2 vivió **solo en el servidor**: ni el hub ni el contrato de los clientes se movieron, porque ya estaba hecho en la Fase 1. (Verificado con `git diff 0.2.0 0.3.0`: los únicos toques en clientes de ese tramo fueron cosméticos —el icono de la app—, ni una línea de lógica.)
 
 ## 📚 Documentación
 
@@ -236,7 +233,7 @@ Toda la documentación didáctica vive en [`docs/`](docs/):
 
 - 📖 [`docs/01-arquitectura-del-servidor.md`](docs/01-arquitectura-del-servidor.md) - Arquitectura por capas, ciclo de vida de una conexión de SignalR, estado por canal, el patrón **productor/consumidor** y la cola de escritura con `Channel` (sección 3.6, con diagramas), grupos, estadísticas, Serilog, dos bugs reales y la evolución Fase 1 → Fase 2 (sección 3.5), con diagramas Mermaid
 - 💻 [`docs/02-cliente-terminal.md`](docs/02-cliente-terminal.md) - **El cliente terminal**: por dentro y por fuera — su arquitectura en capas y su flujo de conexión con diagramas Mermaid, el bucle de vista en vivo de Spectre.Console, la capa reactiva con Rx.NET, el modo doble (consola/tubería) y cómo se prueba todo sin abrir una terminal; acompañado del recorrido de uso con capturas reales en ASCII (arranque, vista en vivo, comandos y sus salidas, reconexión y sesión). Incluye la nota de por qué la persistencia no lo tocó
-- 🌐 [`docs/03-cliente-blazor.md`](docs/03-cliente-blazor.md) - **El cliente web**: Blazor WebAssembly alojado por el servidor, la estética de Discord en CSS propio, la store central y la capa reactiva con suscripciones en los componentes, los comandos `/` reutilizando el parser de `Shared`, la sesión en `localStorage`, el desarrollo con `dotnet watch` y **dos bugs reales** (el `Closed` fantasma y el manifiesto de assets caducado), con sus arreglos y tests
+- 🌐 [`docs/03-cliente-blazor.md`](docs/03-cliente-blazor.md) - **El cliente web**: Blazor WebAssembly en su propio proceso hablando con el servidor agnóstico por `Web:UrlServidor` y CORS, la estética de Discord en CSS propio, la store central y la capa reactiva con suscripciones en los componentes, los comandos `/` reutilizando el parser de `Shared`, la sesión en `localStorage`, el desarrollo con `dotnet watch` y **dos bugs reales** (el `Closed` fantasma y el manifiesto de assets caducado), con sus arreglos y tests
 - 🗄️ [`docs/04-persistencia.md`](docs/04-persistencia.md) - **La persistencia de la Fase 2**: por qué SQLite, qué se guarda en disco y qué no (separación por longevidad), el modelo con EF Core y sus índices, `Migrate()` frente a `EnsureCreated()`, la escritura en segundo plano con el patrón *write-behind*, la precarga, la limpieza con retención y `VACUUM`, y **tres trampas reales** que solo salieron al ejecutar
 - 🖼️ [`docs/boceto-vistas.html`](docs/boceto-vistas.html) - **Boceto visual de las dos vistas de la web** con los mismos estilos y elementos que la app: [vista 1 · panel de entrada](docs/boceto-vistas.html#vista-1) y [vista 2 · vista de canal](docs/boceto-vistas.html#vista-2)
 

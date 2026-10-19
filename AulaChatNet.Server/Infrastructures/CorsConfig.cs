@@ -4,10 +4,11 @@ namespace AulaChatNet.Server.Infrastructures;
 /// Extensiones de configuración de CORS.
 ///
 /// <remarks>
-/// En la Fase 1 el servidor aloja al cliente Blazor, así que en el mismo
-/// origen no hace falta CORS. Pero en desarrollo, el DevServer de Blazor
-/// (dotnet run del proyecto cliente) corre en OTRO puerto que el servidor:
-/// a ese tráfico hay que permitirlo.
+/// Este servidor es agnóstico: no sirve ficheros, solo el hub y la API. La web
+/// corre en OTRO proceso (el DevServer de Blazor, puerto 5031) y por eso necesita
+/// CORS: sin política, el navegador bloquearía las llamadas al 5030 por venir de
+/// un origen distinto. Si la lista de orígenes está vacía se permite cualquiera
+/// (cómodo para clase); en producción se listan los orígenes reales del cliente.
 /// </remarks>
 /// </summary>
 public static class CorsConfig

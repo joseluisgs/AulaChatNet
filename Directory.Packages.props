@@ -26,9 +26,6 @@
     <!-- Blazor WebAssembly (10.0.13: misma línea parcheada que SignalR.Client) -->
     <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.13" />
     <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.13" />
-
-    <!-- Alojamiento del cliente WASM en el servidor (UseBlazorFrameworkFiles) -->
-    <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="10.0.13" />
   </ItemGroup>
 
   <ItemGroup>

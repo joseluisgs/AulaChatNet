@@ -39,7 +39,8 @@ services.AddChatServices(configuration);
 // no existe (SQLite crea el fichero, pero no su carpeta).
 services.AddPersistencia(configuration);
 
-// SignalR (realtime) + CORS (para el cliente Blazor en desarrollo)
+// SignalR (realtime) + CORS: la web corre en OTRO origen (su DevServer vive en
+// el 5031), así que el navegador exige permiso explícito para llamar aquí.
 services.AddChatSignalR();
 services.AddCorsPolicy(configuration);
 
@@ -69,31 +70,6 @@ app.UseSerilogRequestLogging(opciones =>
 
 app.UseCorsPolicy();
 
-// En DESARROLLO, ninguna respuesta se cachea en el navegador: los assets
-// del cliente Blazor cambian con cada rebuild, y una caché vieja (o un 404
-// que el navegador guardó mientras el manifiesto estaba desactualizado)
-// deja la página en blanco sin ningún error en el servidor.
-if (app.Environment.IsDevelopment())
-{
-    app.Use((contexto, siguiente) =>
-    {
-        contexto.Response.OnStarting(() =>
-        {
-            contexto.Response.Headers.CacheControl = "no-cache";
-            return Task.CompletedTask;
-        });
-
-        return siguiente();
-    });
-}
-
-// El servidor aloja el cliente Blazor WASM: los archivos del proyecto
-// Blazor (index.html, el runtime _framework y el css) se sirven desde la
-// misma URL que el hub — así no hay CORS en el camino. El fallback hace
-// que cualquier ruta (la raíz "/") devuelva index.html, que es una SPA.
-app.UseBlazorFrameworkFiles();
-app.UseStaticFiles();
-
 // Publicación del hub en la ruta de la config (Chat:HubRuta)
 app.MapChatHub(configuration);
 
@@ -104,10 +80,9 @@ app.MapChatHub(configuration);
 app.MapGet(ChatRutas.Estadisticas, (IChatStore store) =>
     Results.Ok(store.GetEstadisticas()));
 
-// SPA fallback: la raíz "/" y cualquier ruta sin extensión sirven el
-// index.html del cliente Blazor (DESPUÉS de mapear hub y endpoints, o
-// se los comería).
-app.MapFallbackToFile("index.html");
+// FIN de la API. No hay nada más: este servidor no sirve ficheros estáticos ni
+// conoce a ningún cliente. La web vive en su propio proceso y el terminal es
+// una app de consola; ambos consumen lo que hay arriba (hub + /estadisticas).
 
 PrintStartupInfo(configuration);
 
@@ -224,8 +199,8 @@ static void PrintStartupInfo(IConfiguration configuration)
     Log.Information("  Por defecto:   {Canal}", chat.CanalPorDefecto);
     Log.Information("SIGNALR (realtime):");
     Log.Information("  Hub del chat:  http://{Host}:{Puerto}{Ruta}", host, puerto, chat.HubRuta);
-    Log.Information("CLIENTES:");
-    Log.Information("  Web (Blazor):  http://{Host}:{Puerto}/", host, puerto);
+    Log.Information("CLIENTES (cada uno en su propio proceso):");
+    Log.Information("  Web (Blazor):  dotnet run --project AulaChatNet.Client.Blazor  → :5031");
     Log.Information("  Terminal:      dotnet run --project AulaChatNet.Client.Terminal");
     Log.Information("LÍMITES (appsettings.json → sección Chat):");
     Log.Information("  Usuario:       entre {Minima} y {Maxima} caracteres",
