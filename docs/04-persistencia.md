@@ -507,4 +507,4 @@ La prueba que justifica la fase entera es la de integración: se escribe un mens
 | Desarrollo | `LimpiarAlArrancar` es clave explícita, no regla de entorno, para poder comprobar la supervivencia |
 | Trampas | `:memory:` por conexión, el `PRAGMA` que EF no compone, y `StartAsync` que no espera |
 
-La persistencia cierra el ciclo de la Fase 2: el historial sobrevive a cualquier apagón, el fichero se mantiene solo y **ni el hub ni los clientes se tocaron** — el contrato hecho en la [arquitectura del servidor](01-arquitectura-del-servidor.md), la [terminal](02-cliente-terminal.md) y la [web](03-cliente-blazor.md) seguía valiendo.
+La persistencia cierra el ciclo de la Fase 2: el historial sobrevive a cualquier apagón, el fichero se mantiene solo y **ni el hub ni la lógica de los clientes se tocó** — el contrato hecho en la [arquitectura del servidor](01-arquitectura-del-servidor.md), la [terminal](02-cliente-terminal.md) y la [web](03-cliente-blazor.md) seguía valiendo.
