@@ -30,4 +30,11 @@ public static class ChatHubMetodos
     /// EnviarPrivadoAsync(destinatario, texto). NO se difunde al grupo.
     /// </summary>
     public const string EnviarPrivado = "EnviarPrivadoAsync";
+
+    /// <summary>
+    /// Método para avisar de que estás escribiendo: EscribiendoAsync().
+    /// Sin argumentos y SIN texto: el servidor solo reenvía tu nombre al
+    /// resto de tu canal, que es quien decide cuánto dura en pantalla.
+    /// </summary>
+    public const string Escribiendo = "EscribiendoAsync";
 }

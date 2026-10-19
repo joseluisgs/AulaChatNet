@@ -321,6 +321,51 @@ public class ChatHub(IChatStore store, IOptions<ChatConfig> opciones, ILogger<Ch
     }
 
     /// <summary>
+    /// Avisa de que este usuario está escribiendo en SU canal. El QUINTO
+    /// destino de SignalR del proyecto: <c>Clients.OthersInGroup</c>, todos
+    /// los miembros de la sala MENOS el que escribe (para él no es noticia
+    /// saber que se está escribiendo a sí mismo).
+    ///
+    /// <remarks>
+    /// Tres decisiones que hacen de esto un aviso inocuo:
+    /// <list type="bullet">
+    /// <item><b>Sin estado en el servidor</b>: no se guarda quién escribe ni
+    /// cuándo. Cada cliente caduca sus propias marcas a los cinco segundos,
+    /// así que nadie tiene nada que limpiar al desconectar.</item>
+    /// <item><b>Sin <c>AddMensaje</c></b>: la señal no entra en el historial
+    /// ni en la cola de escritura de SQLite — una pulsación de teclas no es
+    /// un mensaje.</item>
+    /// <item><b>Sin texto</b>: solo viaja el nombre de quien escribe, nunca
+    /// lo que está escribiendo.</item>
+    /// </list>
+    /// </remarks>
+    /// </summary>
+    /// <returns>null si estaba registrado; el mensaje de error si no.</returns>
+    public async Task<string?> EscribiendoAsync()
+    {
+        var conexion = store.GetConexion(Context.ConnectionId);
+
+        if (conexion is null)
+        {
+            logger.LogWarning(
+                "Señal de escritura rechazada: la conexión {ConnectionId} no está registrada",
+                Context.ConnectionId);
+
+            return "No estás registrado en el canal, vuelve a conectarte";
+        }
+
+        // Log a nivel Debug a propósito: una señal por segundo y persona no
+        // debe llenar el fichero de log (el nivel por defecto es Information)
+        logger.LogDebug(
+            "Señal de escritura de {Usuario} en {Canal}", conexion.Usuario, conexion.Canal);
+
+        await Clients.OthersInGroup(conexion.Canal).SendAsync(
+            ChatHubEventos.Escribiendo, conexion.Usuario);
+
+        return null;
+    }
+
+    /// <summary>
     /// Envía un mensaje a UNA persona concreta del canal del emisor, sin que
     /// lo vea nadie más. Es el CUARTO destino de SignalR del proyecto:
     /// <c>Group</c> (todo el canal), <c>Caller</c> (solo el que pregunta) y

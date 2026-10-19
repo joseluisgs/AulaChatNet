@@ -13,6 +13,7 @@ namespace AulaChatNet.Shared.Constantes;
 /// - <see cref="HistorialRecibido"/> → solo al cliente que se conecta (mensajes anteriores)
 /// - <see cref="EstadisticasActualizadas"/> → a TODOS: total de conectados y conteo por sala
 /// - <see cref="PrivadoRecibido"/> → SOLO al que lo envía y a quien lo recibe
+/// - <see cref="Escribiendo"/> → a todos los del canal MENOS al que escribe
 /// </remarks>
 /// </summary>
 public static class ChatHubEventos
@@ -45,4 +46,12 @@ public static class ChatHubEventos
     /// Nunca llega al resto del canal. Argumento: MensajePrivadoDto.
     /// </summary>
     public const string PrivadoRecibido = "PrivadoRecibido";
+
+    /// <summary>
+    /// Notifica que alguien del canal está escribiendo, a TODOS MENOS al que
+    /// escribe (<c>Clients.OthersInGroup</c>). Es una señal VIVA, sin
+    /// contenido: cada cliente la descarta sola a los pocos segundos si no
+    /// se renueva. Argumento: string (nombre del que escribe).
+    /// </summary>
+    public const string Escribiendo = "Escribiendo";
 }

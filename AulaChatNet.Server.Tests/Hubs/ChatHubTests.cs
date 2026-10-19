@@ -44,9 +44,11 @@ public class ChatHubTests
     private List<Envio> _aTodos = null!;
 
     /// <summary>
-    /// Eventos emitidos a una conexión CONCRETA (Clients.Client), que es el
-    /// único destino posible de un mensaje privado. Compartido por todos los
-    /// hubs del test: el emisor y el receptor son conexiones distintas.
+    /// Eventos emitidos a una conexión CONCRETA: los de <c>Clients.Client</c>
+    /// (destino de los mensajes privados) y los de
+    /// <c>Clients.OthersInGroup</c>, que aquí se registran POR MIEMBRO para
+    /// poder mirar qué llegó a cada uno — y, sobre todo, qué NO le llegó al
+    /// que escribe. Compartido por todos los hubs del test.
     /// </summary>
     private Dictionary<string, List<Envio>> _porConexion = null!;
 
@@ -98,6 +100,13 @@ public class ChatHubTests
         // proxy nulo de Moq y el test no comprobaría NADA de a quién llegó.
         clientes.Setup(c => c.Client(It.IsAny<string>()))
             .Returns<string>(id => CrearProxy(ObtenerLista(_porConexion, id)).Object);
+
+        // Clients.OthersInGroup(canal): todos los miembros MENOS esta
+        // conexión (la señal de escritura no vuelve al que escribe). Se
+        // resuelve en el MOMENTO de la llamada, porque los miembros van
+        // cambiando según quién se dé de alta en cada test
+        clientes.Setup(c => c.OthersInGroup(It.IsAny<string>()))
+            .Returns<string>(canal => CrearProxyVarios(ListasDeMiembros(canal, connectionId)).Object);
 
         var hub = new ChatHub(_store, Options.Create(_config), _logger.Object)
         {
@@ -166,6 +175,45 @@ public class ChatHubTests
                 It.IsAny<string>(), It.IsAny<object[]>(), It.IsAny<CancellationToken>()))
             .Callback<string, object[], CancellationToken>((metodo, argumentos, _) =>
                 envios.Add(new Envio(metodo, argumentos)))
+            .Returns(Task.CompletedTask);
+
+        return proxy;
+    }
+
+    /// <summary>
+    /// Listas de eventos de los miembros del canal, SIN la conexión dada:
+    /// así se comporta <c>Clients.OthersInGroup</c>, que no devuelve el aviso
+    /// a quien lo emitió.
+    /// </summary>
+    /// <param name="canal">Canal cuyos miembros se buscan.</param>
+    /// <param name="excluida">Conexión que debe quedarse sin eventos.</param>
+    private List<List<Envio>> ListasDeMiembros(string canal, string excluida)
+    {
+        var listas = new List<List<Envio>>();
+
+        if (!_grupos.TryGetValue(canal, out var miembros))
+            return listas;
+
+        foreach (var conexion in miembros)
+        {
+            if (!conexion.Equals(excluida, StringComparison.OrdinalIgnoreCase))
+                listas.Add(ObtenerLista(_porConexion, conexion));
+        }
+
+        return listas;
+    }
+
+    /// <summary>Crea un proxy simulado que registra cada evento en TODAS las listas dadas.</summary>
+    private static Mock<ISingleClientProxy> CrearProxyVarios(List<List<Envio>> destinos)
+    {
+        var proxy = new Mock<ISingleClientProxy>();
+        proxy.Setup(p => p.SendCoreAsync(
+                It.IsAny<string>(), It.IsAny<object[]>(), It.IsAny<CancellationToken>()))
+            .Callback<string, object[], CancellationToken>((metodo, argumentos, _) =>
+            {
+                foreach (var lista in destinos)
+                    lista.Add(new Envio(metodo, argumentos));
+            })
             .Returns(Task.CompletedTask);
 
         return proxy;
@@ -757,6 +805,100 @@ public class ChatHubTests
 
         // Assert
         error.Should().Be(_config.ErrorMensajeLongitud);
+    }
+
+    #endregion
+
+    #region EscribiendoAsync Tests
+
+    [Test]
+    public async Task EscribiendoAsync_SinRegistro_DevuelveErrorSinEmitirNada()
+    {
+        // Arrange: el hub es API pública y se invoca a pelo, así que se
+        // defiende igual que los demás métodos
+        var (hub, _, _) = CrearHub("conn-9");
+
+        // Act
+        var error = await hub.EscribiendoAsync();
+
+        // Assert
+        error.Should().Be("No estás registrado en el canal, vuelve a conectarte");
+        _porConexion.Should().BeEmpty();
+    }
+
+    [Test]
+    public async Task EscribiendoAsync_AUnCompanero_LosLlegaAElYNoAlQueEscribe()
+    {
+        // Arrange: Ana y Luis en el mismo canal
+        var (ana, _, _) = CrearHub("conn-ana");
+        var (luis, _, _) = CrearHub("conn-luis");
+        await ana.ConnectAsync("Ana");
+        await luis.ConnectAsync("Luis");
+
+        // Act
+        var error = await ana.EscribiendoAsync();
+
+        // Assert: a Luis le llega SOLO el nombre de Ana (sin texto: este
+        // evento jamás lleva lo que se está escribiendo)
+        error.Should().BeNull();
+        var avisos = ObtenerLista(_porConexion, "conn-luis")
+            .Where(e => e.Metodo == ChatHubEventos.Escribiendo).ToArray();
+        avisos.Should().ContainSingle();
+        avisos[0].Argumentos[0].Should().Be("Ana");
+
+        // ...y a Ana no: su propio indicador no es noticia para ella
+        ObtenerLista(_porConexion, "conn-ana")
+            .Where(e => e.Metodo == ChatHubEventos.Escribiendo).Should().BeEmpty();
+    }
+
+    [Test]
+    public async Task EscribiendoAsync_NoLlegaAQuienEstaEnOtroCanal()
+    {
+        // Arrange: Marta está en #smr, no en la sala de Ana
+        var (ana, _, _) = CrearHub("conn-ana");
+        var (marta, _, _) = CrearHub("conn-marta");
+        await ana.ConnectAsync("Ana");
+        await marta.ConnectAsync("Marta", "#smr");
+
+        // Act
+        await ana.EscribiendoAsync();
+
+        // Assert
+        ObtenerLista(_porConexion, "conn-marta")
+            .Where(e => e.Metodo == ChatHubEventos.Escribiendo).Should().BeEmpty();
+    }
+
+    [Test]
+    public async Task EscribiendoAsync_NoTocaElHistorialNiLaColaDeEscritura()
+    {
+        // Arrange: el store CON persistencia, el único camino hasta SQLite
+        _store = new ChatStore(Options.Create(_config), new Mock<IMensajesRepository>().Object);
+
+        var (ana, _, _) = CrearHub("conn-ana");
+        var (luis, _, _) = CrearHub("conn-luis");
+        await ana.ConnectAsync("Ana");
+        await luis.ConnectAsync("Luis");
+
+        // Se vacía la cola (las uniones SÍ se encolan) para que lo que venga
+        // después sea solo culpa de lo que se prueba aquí
+        while (_store.ColaEscritura.TryRead(out _))
+        {
+        }
+
+        var historialAntes = _store.GetHistorial(General).Count;
+
+        // Act
+        await ana.EscribiendoAsync();
+
+        // Assert: ni una fila más de historial ni nada en la cola...
+        _store.GetHistorial(General).Should().HaveCount(historialAntes);
+        _store.ColaEscritura.TryRead(out _).Should().BeFalse();
+
+        // ...y el CONTRASTE: un mensaje normal sí se encola. Sin esto, el
+        // test aprobaría también con la cola rota, y eso sería peor
+        await ana.SendAsync("Mensaje normal del canal");
+        _store.ColaEscritura.TryRead(out var pendiente).Should().BeTrue();
+        pendiente.Mensaje.Texto.Should().Be("Mensaje normal del canal");
     }
 
     #endregion

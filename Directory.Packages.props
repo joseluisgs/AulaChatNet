@@ -77,6 +77,10 @@
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
     <PackageVersion Include="coverlet.collector" Version="10.0.1" />
 
+    <!-- Reloj virtual para tests de Rx (TestScheduler): el tiempo pasa al
+         instante, sin esperas reales. Misma versión que System.Reactive -->
+    <PackageVersion Include="Microsoft.Reactive.Testing" Version="6.0.1" />
+
     <!-- bUnit: pruebas de componentes Blazor (los stores se prueban con NUnit solo) -->
     <PackageVersion Include="bunit" Version="2.11.3" />
   </ItemGroup>
