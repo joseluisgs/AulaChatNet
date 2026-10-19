@@ -143,4 +143,54 @@ public class VistaChatTests
     }
 
     #endregion
+
+    #region LineaEscribiendoMarkup Tests
+
+    [Test]
+    public void LineaEscribiendoMarkup_SinNadie_DevuelveCadenaVacia()
+    {
+        // Act
+        var linea = VistaChat.LineaEscribiendoMarkup([]);
+
+        // Assert: quien la usa no debe añadir una fila vacía a la zona
+        linea.Should().BeEmpty();
+    }
+
+    [Test]
+    public void LineaEscribiendoMarkup_UnaPersona_DiceQueEstaEscribiendoEnGris()
+    {
+        // Act
+        var linea = VistaChat.LineaEscribiendoMarkup(["Ana"]);
+
+        // Assert: gris y sin adornos a propósito — el indicador está para
+        // saberlo, no para llevarse la mirada de la conversación
+        linea.Should().Contain("Ana está escribiendo...");
+        linea.Should().StartWith("[grey]");
+    }
+
+    [Test]
+    public void LineaEscribiendoMarkup_DosPersonas_DiceQueEstanEscribiendo()
+    {
+        // Act
+        var linea = VistaChat.LineaEscribiendoMarkup(["Ana", "Bruno"]);
+
+        // Assert: la frase viene de Shared, así que es literalmente el
+        // mismo texto que pinta la web
+        linea.Should().Contain("Ana, Bruno están escribiendo...");
+    }
+
+    [Test]
+    public void LineaEscribiendoMarkup_NombreConCorchetes_LosDejaInofensivos()
+    {
+        // Arrange: Spectre trata lo que va entre corchetes como formato
+        var frase = EscribiendoTexto.Descripcion(["[rojo]"]);
+
+        // Act
+        var linea = VistaChat.LineaEscribiendoMarkup(["[rojo]"]);
+
+        // Assert: escapada, igual que el resto de filas de la vista
+        linea.Should().Contain(Markup.Escape(frase));
+    }
+
+    #endregion
 }

@@ -89,4 +89,19 @@ public static class VistaChat
                $"[{hex}][[{iniciales}]][/] [{hex}]{Markup.Escape(privado.Emisor)}[/]: " +
                $"{Markup.Escape(privado.Texto)}";
     }
+
+    /// <summary>
+    /// La línea de "está escribiendo...": gris y sin adornos, montada sobre
+    /// la frase de Shared para que la terminal y la web digan EXACTAMENTE lo
+    /// mismo. El escapado cubre nombres con corchetes, que Spectre trataría
+    /// como formato y teñirían la línea de un color que nadie eligió.
+    /// </summary>
+    /// <param name="escribiendo">Nombres activos (el orden lo pone el seguimiento).</param>
+    /// <returns>Cadena de markup; vacía si no hay nadie, para no pintar una fila en balde.</returns>
+    public static string LineaEscribiendoMarkup(IReadOnlyList<string> escribiendo)
+    {
+        var frase = EscribiendoTexto.Descripcion(escribiendo);
+
+        return frase.Length == 0 ? string.Empty : $"[grey]{Markup.Escape(frase)}[/]";
+    }
 }

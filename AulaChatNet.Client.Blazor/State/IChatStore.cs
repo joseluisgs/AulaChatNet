@@ -159,4 +159,19 @@ public interface IChatStore : IDisposable
     /// </summary>
     /// <param name="texto">Texto del aviso.</param>
     void Aviso(string texto);
+
+    /// <summary>
+    /// Personas del canal que están escribiendo AHORA. Cada señal la
+    /// renueva, y quien deja de señalar se descarta SOLO a los pocos
+    /// segundos: no hace falta que el servidor avise de que se paró.
+    /// </summary>
+    IObservable<IReadOnlyList<string>> Escribiendo { get; }
+
+    /// <summary>
+    /// Avisa de que el usuario local está escribiendo. Cada tecla del input
+    /// llama aquí; el muestreo —como mucho una señal por segundo— vive
+    /// dentro de la store, así que una ráfaga de teclas no se convierte en
+    /// una llamada al hub por pulsación.
+    /// </summary>
+    void SenalarEscritura();
 }

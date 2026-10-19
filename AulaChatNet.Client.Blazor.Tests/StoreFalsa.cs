@@ -54,6 +54,9 @@ public class StoreFalsa
     /// <summary>Flujo de la persona elegida para escribirle un privado.</summary>
     public BehaviorSubject<string?> DestinatarioPrivado { get; } = new(null);
 
+    /// <summary>Flujo de quienes están escribiendo en el canal.</summary>
+    public BehaviorSubject<IReadOnlyList<string>> Escribiendo { get; } = new([]);
+
     /// <summary>El objeto que se registra en los servicios del componente.</summary>
     public IChatStore Objeto => _mock.Object;
 
@@ -71,6 +74,7 @@ public class StoreFalsa
         _mock.Setup(s => s.Estado).Returns(Estado);
         _mock.Setup(s => s.EnSesion).Returns(EnSesion);
         _mock.Setup(s => s.DestinatarioPrivado).Returns(DestinatarioPrivado);
+        _mock.Setup(s => s.Escribiendo).Returns(Escribiendo);
         _mock.Setup(s => s.Canales).Returns(canales);
 
         // Valores actuales: leídos del SUJETO en cada llamada (lazy), así

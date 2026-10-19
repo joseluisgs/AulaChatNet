@@ -472,6 +472,11 @@ async Task BucleEnVivo()
                     else if (!char.IsControl(tecla.KeyChar))
                     {
                         editor.Insertar(tecla.KeyChar);
+
+                        // Cada tecla avisa de que se está escribiendo: el
+                        // muestreo de Rx se asegura de que salga COMO MUCHO
+                        // una señal por segundo, nunca una por pulsación
+                        cliente.SenalarEscritura();
                     }
                 }
 
@@ -918,6 +923,14 @@ static IRenderable CrearZonaMensajes(
         filas.Add(new Markup(string.Empty));
         filas.AddRange(salidas);
     }
+
+    // Última fila de la zona, justo encima del pie: quién está escribiendo.
+    // Sale vacía si no hay nadie, y en modo tubería esta zona ni se construye
+    // (esa entrada no tiene teclas que detectar, así que tampoco se señala)
+    var escribiendo = VistaChat.LineaEscribiendoMarkup(cliente.VistaEscribiendo);
+
+    if (escribiendo.Length > 0)
+        filas.Add(new Markup(escribiendo));
 
     return filas.Count > 0 ? new Rows(filas.ToArray()) : new Markup(string.Empty);
 }

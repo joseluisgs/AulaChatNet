@@ -592,6 +592,16 @@ body {
     padding: 6px 4px 0;
 }
 
+/* Línea de "está escribiendo...": encima del input, gris y en cursiva para
+   que se lea como un estado y no como un mensaje. La store la apaga sola a
+   los pocos segundos sin señal renovada, así que no hay nada que cerrar */
+.caja-escribiendo {
+    color: var(--dc-suave);
+    font-size: 12px;
+    font-style: italic;
+    padding: 0 4px 4px;
+}
+
 /* ==========================================================================
    8. Columna de usuarios (conectados del canal actual)
    ========================================================================== */

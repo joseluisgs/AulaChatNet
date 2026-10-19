@@ -264,4 +264,62 @@ public class CajaMensajeTests : BunitContext
     }
 
     #endregion
+
+    #region Escritura Tests
+
+    [Test]
+    public void SinNadieEscribiendo_NoSePintaNada()
+    {
+        // Arrange: el sujeto arranca vacío (nadie escribiendo en el canal)
+        var cut = Render<CajaMensaje>();
+
+        // Act / Assert: la línea no debe ocupar un hueco en balde
+        cut.FindAll(".caja-escribiendo").Should().BeEmpty();
+    }
+
+    [Test]
+    public void AlguienEscribiendo_SePintaLaFraseConLosNombres()
+    {
+        // Arrange: la lista llega antes del render (el sujeto recuerda el último valor)
+        _store.Escribiendo.OnNext(["Ana", "Bruno"]);
+
+        // Act
+        var cut = Render<CajaMensaje>();
+
+        // Assert: la frase viene de Shared, así que es literalmente el mismo
+        // texto que pinta la terminal
+        cut.Find(".caja-escribiendo").TextContent.Should()
+            .Contain("Ana, Bruno están escribiendo...");
+    }
+
+    [Test]
+    public void DejaDeEscribirse_LaLineaDesaparece()
+    {
+        // Arrange
+        var cut = Render<CajaMensaje>();
+        _store.Escribiendo.OnNext(["Ana"]);
+        cut.Find(".caja-escribiendo").TextContent.Should().Contain("Ana");
+
+        // Act: la store vacía la lista (llegó su mensaje o caducó su marca)
+        _store.Escribiendo.OnNext([]);
+
+        // Assert
+        cut.FindAll(".caja-escribiendo").Should().BeEmpty();
+    }
+
+    [Test]
+    public void Escribir_AvisaALaStoreDeQueSeEstaEscribiendo()
+    {
+        // Arrange
+        var cut = Render<CajaMensaje>();
+
+        // Act: una tecla del cuadro
+        cut.Find("input.caja-entrada").Input("h");
+
+        // Assert: una llamada por evento de oninput. El recorte a una señal
+        // por segundo (Rx Sample) vive dentro de la store, no aquí
+        _store.Mock.Verify(s => s.SenalarEscritura(), Times.Once);
+    }
+
+    #endregion
 }

@@ -10,7 +10,12 @@
    MIENTRAS la línea es un privado, salen dos cosas: el chip "Privado a X"
    (que se puede cerrar con ✕) y la nota gris de que no se guarda. Las dos
    se derivan del PARSE de la línea, no de una bandera aparte: así no puede
-   quedar un chip diciendo "privado a Ana" cuando la línea ya no lo es. *@
+   quedar un chip diciendo "privado a Ana" cuando la línea ya no lo es.
+
+   ARRIBA del todo, si alguien del canal está escribiendo, sale la línea
+   gris con su nombre; se descarta sola a los pocos segundos sin señal. Cada
+   tecla avisa a la store de que se está escribiendo, pero el muestreo
+   —máximo una señal por segundo al servidor— vive en la store, no aquí. *@
 @implements IDisposable
 @inject IChatStore Store
 @inject ChatConfig Config
@@ -18,6 +23,11 @@
 @inject IJSRuntime JS
 
 <div class="caja-envoltura">
+    @if (!string.IsNullOrEmpty(_escribiendo))
+    {
+        <p class="caja-escribiendo">@_escribiendo</p>
+    }
+
     @if (Destinatario is not null)
     {
         <div class="chip-privado">
@@ -35,8 +45,8 @@
                placeholder="Escribe un mensaje..."
                maxlength="@Config.MensajeLongitudMaxima"
                autocomplete="off"
-               @bind="_texto"
-               @bind:event="oninput" />
+               value="@_texto"
+               @oninput="ManejarEntrada" />
 
         <button type="submit"
                 class="caja-boton"
@@ -58,8 +68,10 @@
 @code {
     private string? _texto;
     private string? _error;
+    private string? _escribiendo;
     private IDisposable? _suscripcion;
     private IDisposable? _suscripcionPrivado;
+    private IDisposable? _suscripcionEscribiendo;
 
     // Marcador para recuperar el foco tras enviar (se consume en OnAfterRender)
     private bool _focoPendiente;
@@ -80,7 +92,7 @@
     /// </summary>
     private bool EmpiezaPrivado => ParserComandos.EmpiezaPrivado(_texto);
 
-    /// <summary>Dos suscripciones: cambio de canal (borra avisos) y clic en la lista.</summary>
+    /// <summary>Tres suscripciones: cambio de canal, clic en la lista y escritura ajena.</summary>
     protected override void OnInitialized()
     {
         _suscripcion = Store.CanalActual.Subscribe(nuevoCanal =>
@@ -102,6 +114,15 @@
             _focoPendiente = true;
             _ = InvokeAsync(StateHasChanged);
         });
+
+        // "Está escribiendo...": la frase se arma en Shared, así que es
+        // literalmente el mismo texto que pinta la terminal, y con la lista
+        // vacía no se pinta NADA (una cadena vacía no lleva marca de estilo)
+        _suscripcionEscribiendo = Store.Escribiendo.Subscribe(activos =>
+        {
+            _escribiendo = EscribiendoTexto.Descripcion(activos);
+            _ = InvokeAsync(StateHasChanged);
+        });
     }
 
     /// <summary>✕ del chip: se borra la línea y vuelve el placeholder normal.</summary>
@@ -109,6 +130,20 @@
     {
         _texto = "";
         _focoPendiente = true;
+    }
+
+    /// <summary>
+    /// Cada tecla hace dos cosas: poner el texto en la línea (lo mismo que
+    /// haría un @bind) y avisar a la store de que se está escribiendo. Va
+    /// aparte de @bind porque Blazor no deja dos manejadores de oninput, y
+    /// de paso cubre también pegar y dictar, que son cambios de texto sin
+    /// tecla que no saldrían por un onkeydown.
+    /// </summary>
+    /// <param name="e">Evento con el texto actual del cuadro.</param>
+    private void ManejarEntrada(ChangeEventArgs e)
+    {
+        _texto = e.Value?.ToString();
+        Store.SenalarEscritura();
     }
 
     /// <summary>
@@ -168,10 +203,11 @@
         await JS.InvokeVoidAsync("aulachat.enfocar", "caja-texto");
     }
 
-    /// <summary>Libera las dos suscripciones cuando el componente se destruye.</summary>
+    /// <summary>Libera las tres suscripciones cuando el componente se destruye.</summary>
     public void Dispose()
     {
         _suscripcion?.Dispose();
         _suscripcionPrivado?.Dispose();
+        _suscripcionEscribiendo?.Dispose();
     }
 }

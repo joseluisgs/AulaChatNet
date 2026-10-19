@@ -43,6 +43,12 @@ public class ChatStore : IChatStore
     private readonly BehaviorSubject<bool> _enSesion = new(false);
     private readonly BehaviorSubject<string?> _destinatarioPrivado = new(null);
 
+    // "Está escribiendo...": por un lado QUIÉN, con su caducidad dentro del
+    // seguimiento, y por otro el muestreo de las TECLAS propias, que convierte
+    // cada pulsación en como mucho una señal por segundo
+    private readonly SeguimientoEscritura _seguimiento = new();
+    private readonly SenalEscritura _senalEscritura;
+
     // Último nick y canal con los que se logró registrar: la reconexión los
     // reutiliza para volver a darse de alta sin volver a preguntar al usuario
     private string? _usuarioActual;
@@ -90,6 +96,11 @@ public class ChatStore : IChatStore
         {
             // La vista del canal = historial recibido + mensajes que llegan
             _mensajes.OnNext([.. _mensajes.Value, mensaje]);
+
+            // Quien acaba de mandar un mensaje ya no "está escribiendo": se
+            // le apaga al instante en vez de esperar a la caducidad (en un
+            // mensaje de sistema el nombre es el de la casa y no pinta nada)
+            _seguimiento.Quitar(mensaje.Usuario);
         });
 
         // Privados: llegan SOLO a los dos implicados (el servidor los emite a
@@ -98,7 +109,12 @@ public class ChatStore : IChatStore
         _conexion.On<MensajePrivadoDto>(ChatHubEventos.PrivadoRecibido, privado =>
         {
             _privados.OnNext([.. _privados.Value, privado]);
+            _seguimiento.Quitar(privado.Emisor);
         });
+
+        // "Está escribiendo...": viene SOLO el nombre de quien escribe (este
+        // evento jamás lleva texto) y solo si no eres tú (OthersInGroup)
+        _conexion.On<string>(ChatHubEventos.Escribiendo, usuario => _seguimiento.Senalar(usuario));
 
         _conexion.On<IReadOnlyList<UsuarioConectadoDto>>(
             ChatHubEventos.ListaUsuariosActualizada, lista => _usuarios.OnNext(lista));
@@ -113,6 +129,10 @@ public class ChatStore : IChatStore
         {
             // El historial REEMPLAZA la vista: así no se mezclan canales
             _mensajes.OnNext(historial);
+
+            // Con él se vacía también el seguimiento: nadie de la sala
+            // anterior debe asomar en la nueva ni un instante
+            _seguimiento.Limpiar();
         });
 
         // ── Ciclo de vida de la conexión → punto de la barra ──
@@ -140,6 +160,11 @@ public class ChatStore : IChatStore
 
             return Task.CompletedTask;
         };
+
+        // Muestreo de las teclas propias: Sample emite como mucho una vez
+        // por segundo mientras se escriba (ver SenalEscritura). Se crea aquí
+        // porque necesita el método que habla con el hub
+        _senalEscritura = new SenalEscritura(EnviarSenalEscribiendoAsync);
     }
 
     /// <inheritdoc />
@@ -247,7 +272,15 @@ public class ChatStore : IChatStore
     {
         try
         {
-            return await _conexion.InvokeAsync<string?>(ChatHubMetodos.Enviar, texto);
+            var error = await _conexion.InvokeAsync<string?>(ChatHubMetodos.Enviar, texto);
+
+            // El mensaje salió: se corta la señal de escritura de la ventana
+            // en curso (si no, llegaría un instante después y repondría al
+            // autor en la lista de "escribiendo" con el mensaje ya en pantalla)
+            if (error is null)
+                _senalEscritura.Envio();
+
+            return error;
         }
         catch (Exception)
         {
@@ -262,8 +295,14 @@ public class ChatStore : IChatStore
     {
         try
         {
-            return await _conexion.InvokeAsync<string?>(
+            var error = await _conexion.InvokeAsync<string?>(
                 ChatHubMetodos.EnviarPrivado, destinatario, texto);
+
+            // Mismo corte de señal que un mensaje normal: el privado salió
+            if (error is null)
+                _senalEscritura.Envio();
+
+            return error;
         }
         catch (Exception)
         {
@@ -390,6 +429,9 @@ public class ChatStore : IChatStore
         _usuarios.OnNext([]);
         _privados.OnNext([]); // y los privados menos: no hay servidor que los vuelva a traer
 
+        // Y nadie de la sesión anterior debe seguir "escribiendo"
+        _seguimiento.Limpiar();
+
         // Y se cierra el privado abierto: si otra persona entra después en
         // este navegador, no debe empezar escribiéndole al anterior
         _destinatarioPrivado.OnNext(null);
@@ -407,6 +449,34 @@ public class ChatStore : IChatStore
     public void PrepararPrivado(string destinatario)
     {
         _destinatarioPrivado.OnNext(destinatario);
+    }
+
+    /// <inheritdoc />
+    public IObservable<IReadOnlyList<string>> Escribiendo => _seguimiento.Activos;
+
+    /// <inheritdoc />
+    public void SenalarEscritura() => _senalEscritura.Tecla();
+
+    /// <summary>
+    /// Manda la señal de escritura al hub, en segundo plano y en silencio:
+    /// es un aviso ornamental, no una operación con resultado que notificar.
+    /// Si no hay conexión, no pasa nada — la próxima tecla lo reintentará.
+    /// </summary>
+    private async Task EnviarSenalEscribiendoAsync()
+    {
+        // Solo con la conexión en verde: mientras se reconecta, la señal no
+        // tiene dónde llegar
+        if (EstadoValor != EstadoConexion.Conectado)
+            return;
+
+        try
+        {
+            await _conexion.InvokeAsync<string?>(ChatHubMetodos.Escribiendo);
+        }
+        catch (Exception)
+        {
+            // La conexión se cayó justo entre la comprobación y la llamada
+        }
     }
 
     /// <inheritdoc />
@@ -467,6 +537,11 @@ public class ChatStore : IChatStore
         _estado.Dispose();
         _enSesion.Dispose();
         _destinatarioPrivado.Dispose();
+
+        // El seguimiento de escritura también: su latido de caducidad vive en
+        // un temporizador que debe pararse con la store
+        _senalEscritura.Dispose();
+        _seguimiento.Dispose();
 
         // DisposeAsync en segundo plano: estamos saliendo y no queremos
         // bloquear el hilo principal en el Dispose
