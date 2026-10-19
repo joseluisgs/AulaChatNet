@@ -1,5 +1,6 @@
 - [1. La arquitectura del servidor](#1-la-arquitectura-del-servidor)
   - [1.1. Los proyectos y su misión](#11-los-proyectos-y-su-misión)
+    - [1.1.1. El servidor es agnóstico: qué expone y qué no](#111-el-servidor-es-agnóstico-qué-expone-y-qué-no)
   - [1.2. El viaje de un mensaje](#12-el-viaje-de-un-mensaje)
   - [1.3. Un patrón de errores, un solo formato](#13-un-patrón-de-errores-un-solo-formato)
 - [2. El ciclo de vida de una conexión](#2-el-ciclo-de-vida-de-una-conexión)
@@ -58,17 +59,17 @@ AulaChatNet es una solución con varios proyectos porque **el contrato entre ser
 
 ```mermaid
 flowchart TD
-    subgraph Clientes["Clientes (sin tocar en la Fase 2)"]
+    subgraph Clientes["Clientes (procesos independientes)"]
         T["AulaChatNet.Client.Terminal<br/>consola elegante (Spectre.Console)"]
-        B["AulaChatNet.Client.Blazor<br/>web (Blazor WebAssembly)"]
+        B["AulaChatNet.Client.Blazor<br/>web (Blazor WebAssembly)<br/>DevServer :5031"]
     end
 
-    S["AulaChatNet.Server<br/>ASP.NET Core + SignalR<br/>ChatHub + ChatStore + SQLite"]
+    S["AulaChatNet.Server :5030<br/>ASP.NET Core + SignalR<br/>ChatHub + ChatStore + SQLite"]
 
     SH["AulaChatNet.Shared<br/>DTOs · constantes · ChatConfig<br/>avatar · operadores Rx"]
 
     T <-->|"SignalR"| S
-    B <-->|"SignalR"| S
+    B <-->|"SignalR · otro origen → CORS"| S
     T -.-> SH
     B -.-> SH
     S -.-> SH
@@ -90,6 +91,20 @@ Cada carpeta del servidor tiene una responsabilidad, y los nombres lo dicen todo
 | `Infrastructures/` | Extensiones de arranque (registran servicios, mapean rutas) | `AddChatServices`, `MapChatHub` |
 
 > 📝 **Nota:** el patrón de "extensiones en `Infrastructures/`" no es un capricho: es el mismo estilo que usan proyectos reales para dejar el `Program.cs` limpio y leerlo como un índice.
+
+### 1.1.1. El servidor es agnóstico: qué expone y qué no
+
+Un dato que se entiende mejor abriendo el proyecto que leyéndolo: **este servidor no sirve ficheros y no sabe que los clientes existen**. No hay carpeta `wwwroot/` porque no hace falta: ni `index.html`, ni runtime de WebAssembly, ni CSS. De hecho, en toda la solución hay **un solo `index.html`** —el de `AulaChatNet.Client.Blazor/wwwroot/`— y lo entrega el proceso del cliente, no el servidor. Si pides `http://localhost:5030/` con el navegador, lo que recibes es un `404`.
+
+| El servidor **sí** expone | El servidor **no** hace |
+|---------------------------|-------------------------|
+| El hub de SignalR en `/hubs/chat` | Servir la web: pide `"/"` y devuelve `404` |
+| `GET /estadisticas`, una línea de API REST | Saber quién es su público: su único `ProjectReference` es `Shared` |
+| El historial de SQLite (escritura y limpieza en segundo plano) | Compilar junto a los clientes: cada uno arranca en su proceso |
+
+Por eso los tres viven en **procesos separados**: servidor en el `5030`, web en su DevServer del `5031`, terminal en consola. Y por eso existe CORS — es la consecuencia inevitable de que la web llame a un origen que no es el suyo. Si mañana añades un cliente de móvil o de escritorio, este servidor no se entera: basta con que hable SignalR y, si quiere contar gente antes de registrarse, pregunte por `/estadisticas`.
+
+> 💡 **Consejo:** esta es también la razón de que el hub y el contrato (`Shared`) puedan seguir intactos entre fases. Al servidor no le importa quién conecta ni cómo se pinta: solo habla por `MensajeDto` y eventos. Un cliente nuevo es una flecha más en este mismo diagrama.
 
 ## 1.2. El viaje de un mensaje
 
@@ -432,7 +447,7 @@ La Fase 1 terminó con **todo** el estado en memoria, y ese era el problema de f
 
 Dos detalles de diseño que no son evidentes y conviene retener:
 
-1. **El hub y los clientes no se tocaron.** El contrato (`MensajeDto`, los eventos, `GetHistorial`) seguía valiendo tal cual: la memoria dejó de ser la *única* fuente de verdad del historial para pasar a ser su **caché**. Ese es el verdadero éxito de la fase: añadir persistencia con **cero cambios en el protocolo**.
+1. **El hub y la lógica de los clientes no se tocaron.** El contrato (`MensajeDto`, los eventos, `GetHistorial`) seguía valiendo tal cual: la memoria dejó de ser la *única* fuente de verdad del historial para pasar a ser su **caché**. Ese es el verdadero éxito de la fase: añadir persistencia con **cero cambios en el protocolo**. Único matiz honesto, comprobado con `git diff 0.2.0 0.3.0`: los clientes SÍ recibieron cambios en ese tramo, pero solo de imagen —el icono de la app (`feat:` de cosmética)—; ni una línea de lógica ni del contrato.
 2. **Escribir dejó de ser síncrono respecto al disco.** `AddMensaje` sigue siendo síncrono —memoria más encolado en un `Channel`, instantáneo— y la escritura real pasó a un `BackgroundService`. Así el hilo de SignalR **nunca espera a un disco**, que es la regla de oro de los hubs en tiempo real. Qué es exactamente ese `Channel` y por qué hace falta, en la sección 3.6.
 
 La asimetría que esto produce es deliberada y es lo que más confunde al principio: `IChatStore` es síncrono (no hace E/S) e `IMensajesRepository` es asíncrono (siempre toca disco). **`async` va donde hay E/S**, no por convención.
@@ -720,6 +735,7 @@ public List<string> Canales { get; set; } = [];
 | Concepto | Qué retener |
 |----------|-------------|
 | Arquitectura | Hub (transporte) → Store (estado) → Shared (contrato compartido); desde la Fase 2, el historial se respalda en SQLite |
+| Superficie del servidor | **Agnóstico**: solo expone `/hubs/chat` y `GET /estadisticas`; no sirve ficheros (`"/"` → `404`) y no tiene referencia a ningún cliente. Cada cliente es un proceso aparte (web en `5031`, de ahí CORS) |
 | Errores | `Task<string?>`: `null` = OK, texto = mensaje para el cliente (`ObtenerUsuariosAsync` devuelve datos) |
 | Ciclo de vida | Conectar → alta → historial (solo al caller) → mensajes al grupo → salida |
 | Nick | `CambiarNickAsync` cambia el nombre en caliente, con aviso "X ahora se llama Y" al canal |
