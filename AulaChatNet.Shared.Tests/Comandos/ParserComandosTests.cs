@@ -302,4 +302,144 @@ public class ParserComandosTests
     }
 
     #endregion
+
+    #region Privado Tests
+
+    [Test]
+    [TestCase("/privado Ana ¿nos vemos?")]
+    [TestCase("/mp Ana ¿nos vemos?")]
+    [TestCase("/DM Ana ¿nos vemos?")] // mayúsculas: como todos los comandos
+    public void Parse_PrivadoConDestinatarioYTexto_DevuelvePrivado(string entrada)
+    {
+        // Act
+        var comando = ParserComandos.Parse(entrada);
+
+        // Assert
+        comando.Should().BeOfType<Comando.Privado>()
+            .Which.Destinatario.Should().Be("Ana");
+    }
+
+    [Test]
+    public void Parse_Privado_ElTextoConservaSusEspaciosInternos()
+    {
+        // Act: el texto es TODO lo que va tras el primer espacio
+        var comando = ParserComandos.Parse("/privado Luis  nos   vemos mañana ");
+
+        // Assert
+        comando.Should().BeOfType<Comando.Privado>()
+            .Which.Texto.Should().Be("nos   vemos mañana");
+    }
+
+    [Test]
+    [TestCase("/privado")]
+    [TestCase("/privado   ")]
+    [TestCase("/mp")]
+    public void Parse_PrivadoSinDestinatario_DevuelveInvalidoConElUso(string entrada)
+    {
+        // Act
+        var comando = ParserComandos.Parse(entrada);
+
+        // Assert: no se manda nada a la red sin destino, y el usuario aprende
+        // a escribirlo sin tener que abrir la ayuda entera
+        var invalido = comando.Should().BeOfType<Comando.Invalido>().Subject;
+        invalido.Uso.Should().Contain("/privado <quien> <texto>");
+    }
+
+    [Test]
+    public void Parse_PrivadoSinTexto_DevuelveInvalidoConElUso()
+    {
+        // Act: solo el destinatario, sin nada que decirle
+        var comando = ParserComandos.Parse("/privado Ana");
+
+        // Assert
+        var invalido = comando.Should().BeOfType<Comando.Invalido>().Subject;
+        invalido.Uso.Should().Contain("/privado <quien> <texto>");
+    }
+
+    [Test]
+    [TestCase("/privado", true)]
+    [TestCase("/privado Ana hola", true)]
+    [TestCase("   /mp Ana hola", true)] // con espacios delante, como al teclear
+    [TestCase("/DM Ana hola", true)]
+    [TestCase("/dm", true)]
+    [TestCase("/mpp hola", false)]     // palabra parecida, pero NO es un alias
+    [TestCase("/privadox", false)]     // el alias debe ser una palabra completa
+    [TestCase("hola", false)]
+    [TestCase("", false)]
+    [TestCase(null, false)]
+    public void EmpiezaPrivado_DistintasLineas_DiceSiVaASerPrivado(string? entrada, bool esperado)
+    {
+        // Act: la web la usa para enseñar la nota ANTES de que exista el destino
+        var resultado = ParserComandos.EmpiezaPrivado(entrada);
+
+        // Assert
+        resultado.Should().Be(esperado);
+    }
+
+    [Test]
+    [TestCase("/privado Luis", "Luis")]
+    [TestCase("/privado Luis hola", "Luis")]  // el texto puede llevar espacios
+    [TestCase("  /mp   Luis   ¿nos vemos?", "Luis")]
+    [TestCase("/DM Luis hola", "Luis")]
+    [TestCase("/privado", null)]              // aún no hay a quién escribirle
+    [TestCase("/privado ", null)]
+    [TestCase("hola", null)]
+    [TestCase(null, null)]
+    public void DestinatarioDePrivado_DistintasLineas_DevuelveElPrimero(string? entrada, string? esperado)
+    {
+        // Act: mientras se teclea, Parse aún devuelve "inválido", y el chip
+        // de la web necesita el nombre ANTES de que el comando esté completo
+        var resultado = ParserComandos.DestinatarioDePrivado(entrada);
+
+        // Assert
+        resultado.Should().Be(esperado);
+    }
+
+    #endregion
+
+    #region Reaccion Tests
+
+    [Test]
+    [TestCase("/reaccion 👍", "👍")]
+    [TestCase("/react 😂", "😂")]           // alias corto
+    [TestCase("/REACCION ❤️", "❤️")]        // mayúsculas dan igual
+    [TestCase("  /reaccion   👍  ", "👍")]   // espacios sobrantes
+    public void Parse_ReaccionConEmoji_DevuelveReaccion(string entrada, string esperado)
+    {
+        // Act
+        var comando = ParserComandos.Parse(entrada);
+
+        // Assert
+        comando.Should().BeOfType<Comando.Reaccion>()
+            .Which.Emoji.Should().Be(esperado);
+    }
+
+    [Test]
+    public void Parse_ReaccionConTextoSobrante_SeQuedaConElPrimerToken()
+    {
+        // Act: "/reaccion 👍 hola" — el emoji manda y el resto se ignora
+        // en lugar de romper el comando
+        var comando = ParserComandos.Parse("/reaccion 👍 hola");
+
+        // Assert
+        comando.Should().BeOfType<Comando.Reaccion>()
+            .Which.Emoji.Should().Be("👍");
+    }
+
+    [Test]
+    [TestCase("/reaccion")]
+    [TestCase("/reaccion   ")]
+    [TestCase("/react")]
+    public void Parse_ReaccionSinEmoji_DevuelveInvalidoConElUso(string entrada)
+    {
+        // Act: sin emoji no se manda nada a la red, y el uso se enseña ya
+        var comando = ParserComandos.Parse(entrada);
+
+        // Assert
+        var invalido = comando.Should().BeOfType<Comando.Invalido>().Subject;
+        invalido.Motivo.Should().Contain("emoji");
+        invalido.Uso.Should().Contain("/reaccion <emoji>");
+    }
+
+    #endregion
 }

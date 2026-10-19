@@ -20,6 +20,12 @@
     <PackageReference Include="NUnit.Analyzers" />
     <PackageReference Include="NUnit3TestAdapter" />
 
+    <!-- Cliente SignalR REAL para los tests de integración: Kestrel escuchando
+         en un puerto aleatorio y dos clientes de verdad. Los dobles de Moq
+         comprueban QUIÉN debe recibir cada cosa; estos tests comprueban que el
+         mensaje VIAJA de verdad por la red (serialización y eventos incluidos) -->
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" />
+
     <!-- SQLite para los tests del repositorio: se usa la base de datos en
          memoria COMPARTIDA (no la llana :memory:, que daría una BD vacía nueva
          por cada conexión y haría los tests falsos) -->

@@ -289,4 +289,33 @@ public class ChatConfigTests
     }
 
     #endregion
+
+    #region Errores de privado Tests
+
+    [Test]
+    public void ErrorPrivadoDestinoVacio_DiceQueFaltaAQuienVa()
+    {
+        // Assert: es el texto que verá quien invoque el hub a pelo, sin pasar
+        // por el parser (que ya habría rechazado la línea en el cliente)
+        _config.ErrorPrivadoDestinoVacio.Should().Contain("destinatario");
+    }
+
+    [Test]
+    public void ErrorPrivadoAUnoMismo_NoSeTrataDeUnErrorDeRed()
+    {
+        // Assert: palabras de usuario, como todo lo que sale en pantalla
+        _config.ErrorPrivadoAUnoMismo.Should().Contain("ti mismo");
+    }
+
+    [Test]
+    public void ErrorPrivadoSinDestino_NombraAlQueSeBuscaba()
+    {
+        // Act
+        var error = _config.ErrorPrivadoSinDestino("Maria");
+
+        // Assert: el nombre va dentro para que el usuario sepa QUÉ escribió mal
+        error.Should().Contain("Maria");
+    }
+
+    #endregion
 }

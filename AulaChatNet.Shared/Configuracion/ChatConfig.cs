@@ -99,6 +99,22 @@ public class ChatConfig
     public string ErrorMensajeLongitud =>
         $"El mensaje no puede superar los {MensajeLongitudMaxima} caracteres";
 
+    /// <summary>Error cuando un privado no lleva destinatario (invocación directa al hub).</summary>
+    public string ErrorPrivadoDestinoVacio => "Falta el destinatario del mensaje privado";
+
+    /// <summary>Error cuando alguien intenta enviarse un privado a sí mismo.</summary>
+    public string ErrorPrivadoAUnoMismo => "No puedes enviarte un privado a ti mismo";
+
+    /// <summary>
+    /// Error cuando en el canal no hay nadie con ese nombre. Los nombres son
+    /// únicos DENTRO de un canal, así que un privado solo puede ir a alguien
+    /// de tu propia sala: cruzar canales sería ambiguo sin autenticación.
+    /// </summary>
+    /// <param name="usuario">Nombre que se buscaba.</param>
+    /// <returns>Mensaje en español, sin depender del género del destinatario.</returns>
+    public string ErrorPrivadoSinDestino(string usuario) =>
+        $"No hay nadie llamado {usuario} conectado en tu canal";
+
     // ── Validación ──
     // Un único sitio donde se aplica la regla: el servidor la usa para
     // rechazar peticiones y los clientes para avisar antes de enviar.

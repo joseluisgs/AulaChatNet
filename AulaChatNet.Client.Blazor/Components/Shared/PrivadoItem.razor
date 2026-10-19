@@ -1,0 +1,70 @@
+@* Una fila PRIVADA: la MISMA estructura que un mensaje normal —para que se
+   lea igual— con el 🔒 en rosa, el contexto "para X" o "de X" según quién
+   escribió el mensaje, y el aviso de que no se guarda colgado del title del
+   🔒: descubrible sin sumar una línea más al flujo de mensajes.
+
+   El nombre se pinta con su color derivado, igual que en el canal: la
+   identidad no cambia por ser privado, solo cambia quién puede leerlo. *@
+@implements IDisposable
+@inject IChatStore Store
+
+<div class="mensaje privado">
+    <span class="mensaje-hora">@Hora</span>
+    <Avatar Usuario="@Privado.Emisor" Tamano="40" />
+    <div class="mensaje-cuerpo">
+        <span class="privado-marca" title="@NotaEfimera">🔒 @Contexto</span>
+        <span class="mensaje-nombre" style="color: @ColorNombre">@Privado.Emisor</span>
+        <span class="mensaje-texto">@Privado.Texto</span>
+    </div>
+</div>
+
+@code {
+    /// <summary>Mensaje privado a pintar.</summary>
+    [Parameter] public MensajePrivadoDto Privado { get; set; } = default!;
+
+    // Mi propio nombre: no viene en el DTO a propósito (el privado no lo
+    // necesita para guardarlo, solo para presentarlo), así que se lee de la
+    // store, que es quien lo sabe desde el registro
+    private string? _yo;
+    private IDisposable? _suscripcion;
+
+    /// <summary>
+    /// Nota de que no se guarda, colgada del 🔒. Es la MISMA frase que lee la
+    /// terminal, porque vive en Shared: los dos clientes no pueden decir
+    /// cosas distintas sobre la misma decisión.
+    /// </summary>
+    private string NotaEfimera => AyudaComandos.NotaPrivados;
+
+    /// <summary>Hora local de quien mira (el servidor marca UTC: guardar UTC, convertir al presentar).</summary>
+    private string Hora => Privado.Timestamp.ToLocalTime().ToString("HH:mm");
+
+    /// <summary>
+    /// "para X" cuando lo escribí yo; "de X" cuando me lo enviaron. Se dice
+    /// en la propia fila para no obligar a adivinar quién habla.
+    /// </summary>
+    private string Contexto => EsMio ? $"para {Privado.Destinatario}" : $"de {Privado.Emisor}";
+
+    /// <summary>true si el emisor soy yo (mismo nombre, sin distinguir mayúsculas).</summary>
+    private bool EsMio => string.Equals(_yo, Privado.Emisor, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Color con el que se pinta el nombre del emisor (derivado del nombre).</summary>
+    private string ColorNombre
+    {
+        get
+        {
+            var (rojo, verde, azul) = AvatarHelper.ObtenerColor(Privado.Emisor);
+            return $"rgb({rojo}, {verde}, {azul})";
+        }
+    }
+
+    /// <summary>Suscripción al nick actual, para saber si el privado es mío.</summary>
+    protected override void OnInitialized() =>
+        _suscripcion = Store.Nick.Subscribe(nick =>
+        {
+            _yo = nick;
+            _ = InvokeAsync(StateHasChanged);
+        });
+
+    /// <summary>Libera la suscripción cuando el componente se destruye.</summary>
+    public void Dispose() => _suscripcion?.Dispose();
+}

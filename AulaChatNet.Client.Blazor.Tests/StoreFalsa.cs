@@ -30,6 +30,9 @@ public class StoreFalsa
     /// <summary>Flujo de mensajes para inyectar lo que "llega del servidor".</summary>
     public BehaviorSubject<IReadOnlyList<MensajeDto>> Mensajes { get; } = new([]);
 
+    /// <summary>Flujo de privados: solo SE AÑADEN (el servidor no guarda ninguno).</summary>
+    public BehaviorSubject<IReadOnlyList<MensajePrivadoDto>> Privados { get; } = new([]);
+
     /// <summary>Flujo de conectados del canal actual.</summary>
     public BehaviorSubject<IReadOnlyList<UsuarioConectadoDto>> Usuarios { get; } = new([]);
 
@@ -48,6 +51,16 @@ public class StoreFalsa
     /// <summary>Flujo de sesión activa (lo que decide qué mitad pinta la página).</summary>
     public BehaviorSubject<bool> EnSesion { get; } = new(false);
 
+    /// <summary>Flujo de la persona elegida para escribirle un privado.</summary>
+    public BehaviorSubject<string?> DestinatarioPrivado { get; } = new(null);
+
+    /// <summary>Flujo de quienes están escribiendo en el canal.</summary>
+    public BehaviorSubject<IReadOnlyList<string>> Escribiendo { get; } = new([]);
+
+    /// <summary>Flujo de reacciones por mensaje del canal (chip por emoji).</summary>
+    public BehaviorSubject<IReadOnlyDictionary<Guid, ReaccionesMensajeDto>> Reacciones { get; } =
+        new(new Dictionary<Guid, ReaccionesMensajeDto>());
+
     /// <summary>El objeto que se registra en los servicios del componente.</summary>
     public IChatStore Objeto => _mock.Object;
 
@@ -57,12 +70,16 @@ public class StoreFalsa
     private StoreFalsa(IReadOnlyList<string> canales)
     {
         _mock.Setup(s => s.Mensajes).Returns(Mensajes);
+        _mock.Setup(s => s.Privados).Returns(Privados);
         _mock.Setup(s => s.Usuarios).Returns(Usuarios);
         _mock.Setup(s => s.Estadisticas).Returns(Estadisticas);
         _mock.Setup(s => s.CanalActual).Returns(CanalActual);
         _mock.Setup(s => s.Nick).Returns(Nick);
         _mock.Setup(s => s.Estado).Returns(Estado);
         _mock.Setup(s => s.EnSesion).Returns(EnSesion);
+        _mock.Setup(s => s.DestinatarioPrivado).Returns(DestinatarioPrivado);
+        _mock.Setup(s => s.Escribiendo).Returns(Escribiendo);
+        _mock.Setup(s => s.Reacciones).Returns(Reacciones);
         _mock.Setup(s => s.Canales).Returns(canales);
 
         // Valores actuales: leídos del SUJETO en cada llamada (lazy), así
@@ -70,6 +87,9 @@ public class StoreFalsa
         _mock.Setup(s => s.Canal).Returns(() => CanalActual.Value);
         _mock.Setup(s => s.EstadoValor).Returns(() => Estado.Value);
         _mock.Setup(s => s.VistaUsuarios).Returns(() => Usuarios.Value);
+        _mock.Setup(s => s.VistaPrivados).Returns(() => Privados.Value);
+        _mock.Setup(s => s.VistaMensajes).Returns(() => Mensajes.Value);
+        _mock.Setup(s => s.VistaReacciones).Returns(() => Reacciones.Value);
         _mock.Setup(s => s.EstadisticasActuales).Returns(() => Estadisticas.Value);
     }
 

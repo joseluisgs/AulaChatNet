@@ -1,0 +1,89 @@
+@* Reacciones de UN mensaje, a la manera de Discord: los chips debajo del
+   texto —con el tuyo resaltado— y el botón "+" que aparece al pasar el
+   ratón por la fila y abre el selector con la lista CERRADA de Shared.
+
+   El componente NO calcula nada: los chips vienen del servidor por evento
+   (la fila se repinta sola) y aquí solo se INVOCAL el alterna — el mismo
+   gesto que quita lo que tú pusiste. Vive dentro de la columna de texto,
+   pero el "+" y el selector se posicionan contra la FILA (.mensaje), que
+   es la única con position: relative. *@
+@inject IChatStore Store
+
+@if (Reacciones.Count > 0)
+{
+    <div class="reacciones">
+        @foreach (var reaccion in Reacciones)
+        {
+            <button class="chip-reaccion@(EsMia(reaccion) ? " mia" : "")"
+                    title="@ListaPersonas(reaccion)"
+                    @onclick="() => AlternarAsync(reaccion.Emoji)">
+                <span class="chip-emoji">@reaccion.Emoji</span>
+                <span class="chip-contador">@reaccion.Personas.Count</span>
+            </button>
+        }
+    </div>
+}
+
+<div class="acciones-fila@(_selectorAbierto ? " abierta" : "")">
+    <button class="boton-reaccion" title="Reaccionar a este mensaje"
+            @onclick="() => _selectorAbierto = !_selectorAbierto">
+        +
+    </button>
+</div>
+
+@if (_selectorAbierto)
+{
+    <div class="selector-reacciones">
+        @foreach (var emoji in EmojisReaccion.Admitidos)
+        {
+            <button class="opcion-reaccion" title="Reaccionar con @emoji"
+                    @onclick="() => AlternarAsync(emoji)">
+                @emoji
+            </button>
+        }
+    </div>
+}
+
+@code {
+    /// <summary>Mensaje al que pertenecen las reacciones.</summary>
+    [Parameter] public Guid IdMensaje { get; set; }
+
+    /// <summary>Chips actuales del mensaje (vacío si no tiene ninguno).</summary>
+    [Parameter] public IReadOnlyList<ReaccionDto> Reacciones { get; set; } = [];
+
+    /// <summary>Nick local: decide qué chip sale resaltado como tuyo (null sin sesión).</summary>
+    [Parameter] public string? Nick { get; set; }
+
+    // true mientras el selector está abierto: NO se cierra al pasar el
+    // ratón a otro sitio (habría que inyectar JS para escuchar los clics de
+    // fuera); se cierra al elegir un emoji, que es lo que de verdad importa
+    private bool _selectorAbierto;
+
+    /// <summary>El chip lo puso quien mira (con el nombre tal como se registró al reaccionar).</summary>
+    /// <param name="reaccion">Chip a mirar.</param>
+    /// <returns>true si su lista de personas contiene al nick local.</returns>
+    private bool EsMia(ReaccionDto reaccion) =>
+        Nick is not null && reaccion.Personas.Contains(Nick, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Quiénes pusieron este chip, para el título del ratón.</summary>
+    /// <param name="reaccion">Chip a describir.</param>
+    /// <returns>Nombres unidos por comas.</returns>
+    private string ListaPersonas(ReaccionDto reaccion) => string.Join(", ", reaccion.Personas);
+
+    /// <summary>
+    /// Alterna la reacción (ponerla o quitarla): el servidor calcula el
+    /// estado nuevo y lo difunde por evento, así que aquí solo se invoca y
+    /// se cierra el selector. El error —si lo hay— es un aviso en la vista,
+    /// igual que en el resto de comandos.
+    /// </summary>
+    /// <param name="emoji">Emoji de la lista cerrada (el selector solo pinta esa lista).</param>
+    private async Task AlternarAsync(string emoji)
+    {
+        _selectorAbierto = false;
+
+        var error = await Store.ReaccionarAsync(IdMensaje, emoji);
+
+        if (error is not null)
+            Store.Aviso(error);
+    }
+}

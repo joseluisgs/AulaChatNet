@@ -106,21 +106,28 @@ Esto es lo que ves al ejecutar el cliente — **captura real**, salida del progr
 
 Chat en tiempo real para el aula · .NET 10 + SignalR + Rx
 
-╭───────────────────┬──────────────────────────────────────────────────────────╮
-│ Comando           │ Qué hace                                                 │
-├───────────────────┼──────────────────────────────────────────────────────────┤
-│ /ayuda [comando]  │ Esta ayuda, o la de un comando concreto                  │
-│ /canales          │ Lista los canales disponibles                            │
-│ /canal <nombre>   │ Cambia de canal (p. ej. /canal daw)                      │
-│ /nick <nombre>    │ Cambia tu nombre en caliente (p. ej. /nick Ana2)         │
-│ /usuarios [canal] │ Conectados de tu canal o de otro (p. ej. /usuarios daw)  │
-│ /reconectar       │ Vuelve a entrar si se perdió la conexión (en vivo,       │
-│                   │ también la tecla R)                                      │
-│ /sesion [borrar]  │ Ver la sesión guardada o borrarla (útil en aulas         │
-│                   │ compartidas)                                             │
-│ /limpiar          │ Limpia la pantalla (el historial lo repinta el servidor) │
-│ /salir            │ Desconectar y cerrar (Ctrl+C hace lo mismo)              │
-╰───────────────────┴──────────────────────────────────────────────────────────╯
+╭─────────────────────────┬───────────────────────────────────────────────────────╮
+│ Comando                 │ Qué hace                                              │
+├─────────────────────────┼───────────────────────────────────────────────────────┤
+│ /ayuda [comando]        │ Esta ayuda, o la de un comando concreto               │
+│ /canales                │ Lista los canales disponibles y cuánta gente hay en   │
+│                         │ cada uno                                              │
+│ /canal <nombre>         │ Cambia de canal (p. ej. /canal daw)                   │
+│ /nick <nombre>          │ Cambia tu nombre en caliente (p. ej. /nick Ana2)      │
+│ /usuarios [canal]       │ Conectados de tu canal o de otro (p. ej.              │
+│                         │ /usuarios daw)                                        │
+│ /privado <quien> <texto>│ Mensaje privado a alguien de tu canal (efímero,       │
+│                         │ no se guarda)                                         │
+│ /reaccion <emoji>       │ Pone un emoji en el último mensaje del canal;         │
+│                         │ pulsarlo otra vez lo quita                            │
+│ /reconectar             │ Vuelve a entrar si se perdió la conexión              │
+│ /sesion [borrar]        │ Ver la sesión guardada o borrarla (útil en aulas      │
+│                         │ compartidas)                                          │
+│ /limpiar                │ Limpia la vista local de mensajes (el historial       │
+│                         │ sigue en el servidor)                                 │
+│ /salir                  │ Desconectar y cerrar la sesión                        │
+╰─────────────────────────┴───────────────────────────────────────────────────────╯
+Atajos: R = /reconectar (con la línea vacía) · Ctrl+C = /salir
 
 📌 Actualmente no hay nadie conectado todavía.
 
@@ -245,6 +252,8 @@ Una consola clásica "solo imprime": cada línea de estado nueva va subiendo por
 | `/canal <nombre>` | — | Cambia de sala (`/canal daw` = `/canal #daw`) |
 | `/nick <nombre>` | `/nickname` | Cambia el nombre en caliente |
 | `/usuarios [canal]` | `/quienes` | Conectados de tu sala; con argumento, consulta **otra sala sin cambiar** (`ObtenerUsuariosAsync` del hub) |
+| `/privado <quien> <texto>` | `/mp`, `/dm` | Mensaje privado a alguien **conectado en tu canal**: llega solo a los dos, se mezcla en la cronología con `🔒` y **no se guarda** |
+| `/reaccion <emoji>` | `/react` | Alterna un emoji de la lista cerrada sobre el último mensaje de una persona del canal (pulsar el chip en la web hace lo mismo); a los avisos de sistema no se les reacciona |
 | `/reconectar` | `/reconnect` | Vuelve a entrar si se perdió la conexión (la tecla `R` hace lo mismo) |
 | `/sesion [borrar]` | — | Ve la sesión guardada en el perfil o la borra |
 | `/limpiar` | `/clear` | Limpia la pantalla; en la vista en vivo, deja viendo solo lo que llegue después |
@@ -255,7 +264,7 @@ Lo que no empieza por `/` es un mensaje para el canal actual. Las salidas, calca
 **`/ayuda`** (y `/ayuda canal`, que filtra por prefijo):
 
 ```text
-/canales — Lista los canales disponibles
+/canales — Lista los canales disponibles y cuánta gente hay en cada uno
 /canal <nombre> — Cambia de canal (p. ej. /canal daw)
 ```
 
@@ -287,6 +296,8 @@ Comando no reconocido: /noexistecomando. Escribe /ayuda para ver todos.
 
 Falta el nombre del canal
 Usa: /canal <nombre> (p. ej. /canal daw)
+
+Emoji no admitido. Usa: 👍, ❤️, 😂, 😮, 😢, 😡
 ```
 
 > 📝 **Nota:** el parser es `switch` con *pattern matching* sobre los `record` de `Comando`: añadir un comando nuevo es una línea en el parser, su `record`, su caso en `ProcesarLinea` y su fila en `Ayuda` (el procesamiento es el MISMO en los dos modos de entrada; solo cambia dónde acaba la salida). Y `/usuarios` sin argumento usa la lista local (mismo dato que el servidor, sin ida y vuelta): es el equivalente terminal de un `GET` de una API dentro de SignalR.
@@ -452,7 +463,7 @@ Además, el **smoke E2E** arranca el servidor real y el terminal con `stdin`/`st
 | Línea de entrada | `EditorLinea` (clase pura): texto + cursor, con el cursor resaltado en lugar de moverlo |
 | Reconexión | Al volver, se re-invoca `ConnectAsync` (el alta no viaja sola); si se agota, `R` o `/reconectar` sin reiniciar |
 | Horas | El servidor guarda en UTC y la terminal convierte a hora local SOLO al pintar (también en mensajes de sistema) |
-| Comandos | 9 comandos, parser puro con `record` + pattern matching; procesamiento compartido entre modos |
+| Comandos | 11 comandos (los 9 de Fase 1 más `/privado` y `/reaccion` de la Fase 3), parser puro con `record` + pattern matching; procesamiento compartido entre modos |
 | Sesión | `%APPDATA%\AulaChatNet\sesion.json`; ver con `/sesion`, borrar con `/sesion borrar` |
 | Modos de entrada | Consola real → Live + `ReadKey`; tubería → `ReadLine` + pintado incremental (pruebas y capturas) |
 | Rx | Stores con `BehaviorSubject`; el bucle **solo pinta el estado actual** cada 50 ms |

@@ -109,6 +109,10 @@ public class ChatHub(IChatStore store, IOptions<ChatConfig> opciones, ILogger<Ch
         // 1) Historial del canal SOLO a este cliente: no se satura a los demás
         await Clients.Caller.SendAsync(ChatHubEventos.HistorialRecibido, store.GetHistorial(canalCanonico));
 
+        // 1b) Reacciones de ese historial SOLO a este cliente: quien llega
+        //     tarde también ve los chips de los mensajes que siguen vivos
+        await Clients.Caller.SendAsync(ChatHubEventos.ReaccionesRecibidas, store.GetReacciones(canalCanonico));
+
         // 2) "X se ha unido al canal" a los miembros del canal (también al que entra)
         var mensaje = MensajesSistema.UsuarioUnido(usuario);
         store.AddMensaje(canalCanonico, mensaje);
@@ -184,6 +188,10 @@ public class ChatHub(IChatStore store, IOptions<ChatConfig> opciones, ILogger<Ch
         // Historial del nuevo canal SOLO al que cambia (antes del aviso de
         // entrada, para que no se pinte dos veces la unión)
         await Clients.Caller.SendAsync(ChatHubEventos.HistorialRecibido, store.GetHistorial(canalNuevo));
+
+        // Reacciones del nuevo canal SOLO al que cambia: los chips de los
+        // mensajes que trae su historial (mismo orden: tras el historial)
+        await Clients.Caller.SendAsync(ChatHubEventos.ReaccionesRecibidas, store.GetReacciones(canalNuevo));
 
         // Aviso de ENTRADA en el nuevo canal
         var entrada = MensajesSistema.UsuarioUnido(conexion.Usuario);
@@ -316,6 +324,216 @@ public class ChatHub(IChatStore store, IOptions<ChatConfig> opciones, ILogger<Ch
             conexion.Usuario, texto.Length, conexion.Canal);
 
         await Clients.Group(conexion.Canal).SendAsync(ChatHubEventos.MensajeNuevo, mensaje);
+
+        return null;
+    }
+
+    /// <summary>
+    /// Avisa de que este usuario está escribiendo en SU canal. El QUINTO
+    /// destino de SignalR del proyecto: <c>Clients.OthersInGroup</c>, todos
+    /// los miembros de la sala MENOS el que escribe (para él no es noticia
+    /// saber que se está escribiendo a sí mismo).
+    ///
+    /// <remarks>
+    /// Tres decisiones que hacen de esto un aviso inocuo:
+    /// <list type="bullet">
+    /// <item><b>Sin estado en el servidor</b>: no se guarda quién escribe ni
+    /// cuándo. Cada cliente caduca sus propias marcas a los cinco segundos,
+    /// así que nadie tiene nada que limpiar al desconectar.</item>
+    /// <item><b>Sin <c>AddMensaje</c></b>: la señal no entra en el historial
+    /// ni en la cola de escritura de SQLite — una pulsación de teclas no es
+    /// un mensaje.</item>
+    /// <item><b>Sin texto</b>: solo viaja el nombre de quien escribe, nunca
+    /// lo que está escribiendo.</item>
+    /// </list>
+    /// </remarks>
+    /// </summary>
+    /// <returns>null si estaba registrado; el mensaje de error si no.</returns>
+    public async Task<string?> EscribiendoAsync()
+    {
+        var conexion = store.GetConexion(Context.ConnectionId);
+
+        if (conexion is null)
+        {
+            logger.LogWarning(
+                "Señal de escritura rechazada: la conexión {ConnectionId} no está registrada",
+                Context.ConnectionId);
+
+            return "No estás registrado en el canal, vuelve a conectarte";
+        }
+
+        // Log a nivel Debug a propósito: una señal por segundo y persona no
+        // debe llenar el fichero de log (el nivel por defecto es Information)
+        logger.LogDebug(
+            "Señal de escritura de {Usuario} en {Canal}", conexion.Usuario, conexion.Canal);
+
+        await Clients.OthersInGroup(conexion.Canal).SendAsync(
+            ChatHubEventos.Escribiendo, conexion.Usuario);
+
+        return null;
+    }
+
+    /// <summary>
+    /// Alterna una reacción sobre un mensaje del canal del usuario: si ya la
+    /// tenía, se la quita; si no, se la pone. Difunde el estado COMPLETO del
+    /// mensaje a <c>Clients.Group</c> — el emisor incluido, porque él también
+    /// debe ver su propio chip (a diferencia de la señal de escritura, aquí
+    /// la noticia es para todos).
+    ///
+    /// <remarks>
+    /// Cuatro reglas que sostienen este método y que conviene leer juntas:
+    /// <list type="number">
+    /// <item>El emoji se valida contra la lista CERRADA de
+    /// <see cref="EmojisReaccion"/>: de la red llega lo que quiera, y sin
+    /// esa puerta cualquier texto libre ensuciaría el canal para todos.</item>
+    /// <item>Solo se reacciona a mensajes NORMALES que sigan en la caché del
+    /// canal del emisor: los avisos de sistema no lo son, y lo que salió de
+    /// la caché circular ya no se puede reaccionar.</item>
+    /// <item><b>No se llama a <c>AddMensaje</c> ni se persiste nada</b>: una
+    /// reacción no es un mensaje y no debe entrar en el historial de SQLite.
+    /// Sin autenticación, el nombre que dejaste libre al reiniciar lo puede
+    /// coger cualquiera y se llevaría tus reacciones: efímero, como los
+    /// privados.</item>
+    /// <item>El servidor es la ÚNICA fuente de verdad: el cliente solo
+    /// invoca, y el estado que pinta viene del evento, nunca de un cálculo
+    /// propio — así no hay dos pantallas que puedan discrepar.</item>
+    /// </list>
+    /// </remarks>
+    /// </summary>
+    /// <param name="idMensaje">Identificador del mensaje a reaccionar.</param>
+    /// <param name="emoji">Emoji escrito por el cliente (se canoniciza y se valida aquí).</param>
+    /// <returns>null si el alterna fue correcto; el mensaje de error si no.</returns>
+    public async Task<string?> ReaccionarAsync(Guid idMensaje, string? emoji)
+    {
+        var conexion = store.GetConexion(Context.ConnectionId);
+
+        if (conexion is null)
+        {
+            logger.LogWarning(
+                "Reacción rechazada: la conexión {ConnectionId} no está registrada",
+                Context.ConnectionId);
+
+            return "No estás registrado en el canal, vuelve a conectarte";
+        }
+
+        var canonico = EmojisReaccion.Canonico(emoji);
+
+        if (canonico is null)
+        {
+            logger.LogWarning(
+                "Reacción rechazada de {Usuario}: emoji no admitido", conexion.Usuario);
+
+            return $"Emoji no admitido. Usa: {EmojisReaccion.ListaLegible}";
+        }
+
+        var estado = store.AlternarReaccion(conexion.Canal, idMensaje, canonico, conexion.Usuario);
+
+        if (estado is null)
+        {
+            logger.LogWarning(
+                "Reacción rechazada de {Usuario}: el mensaje {IdMensaje} no está en {Canal}",
+                conexion.Usuario, idMensaje, conexion.Canal);
+
+            return "Ese mensaje ya no está en el canal";
+        }
+
+        logger.LogInformation(
+            "{Usuario} reacciona {Emoji} al mensaje {IdMensaje} en {Canal}",
+            conexion.Usuario, canonico, idMensaje, conexion.Canal);
+
+        await Clients.Group(conexion.Canal).SendAsync(ChatHubEventos.ReaccionActualizada, estado);
+
+        return null;
+    }
+
+    /// <summary>
+    /// Envía un mensaje a UNA persona concreta del canal del emisor, sin que
+    /// lo vea nadie más. Es el CUARTO destino de SignalR del proyecto:
+    /// <c>Group</c> (todo el canal), <c>Caller</c> (solo el que pregunta) y
+    /// <c>All</c> (todos) ya estaban; este va a dos conexiones concretas.
+    ///
+    /// <remarks>
+    /// Cuatro reglas que sostienen la privacidad de este método, y que
+    /// conviene leer juntas porque son las que lo hacen seguro:
+    /// <list type="number">
+    /// <item>El destinatario se busca <b>dentro del canal del emisor</b>: los
+    /// nombres solo son únicos en una sala, así que sin ese filtro dos
+    /// personas distintas podrían llamarse igual en salas distintas.</item>
+    /// <item><b>No se llama a <c>AddMensaje</c></b>: el privado no entra en el
+    /// historial de canal ni en su cola de escritura, de modo que quien entre
+    /// después no se lo puede encontrar.</item>
+    /// <item><b>No se persiste</b>: sin autenticación, el nombre que dejaste
+    /// libre al reiniciar lo puede coger cualquiera y se llevaría tus
+    /// mensajes privados. Efímero es la única opción honesta.</item>
+    /// <item>El eco al autor sale del MISMO servidor: las dos partes reciben
+    /// el mismo objeto en el mismo orden, sin montar la vista a mano.</item>
+    /// </list>
+    /// </remarks>
+    /// </summary>
+    /// <param name="destinatario">Nombre de quien lo recibe (en el canal del emisor).</param>
+    /// <param name="texto">Texto escrito (misma validación que un mensaje normal).</param>
+    /// <returns>null si todo fue correcto; el mensaje de error si no.</returns>
+    public async Task<string?> EnviarPrivadoAsync(string? destinatario, string? texto)
+    {
+        var conexion = store.GetConexion(Context.ConnectionId);
+
+        if (conexion is null)
+        {
+            logger.LogWarning(
+                "Privado rechazado: la conexión {ConnectionId} no está registrada",
+                Context.ConnectionId);
+
+            return "No estás registrado en el canal, vuelve a conectarte";
+        }
+
+        destinatario = destinatario?.Trim() ?? string.Empty;
+
+        if (destinatario.Length == 0)
+            return Config.ErrorPrivadoDestinoVacio;
+
+        // Mismo nombre solo en mayúsculas: es la misma persona (el store
+        // compara igual cuando da de alta, así que las dos reglas cuadran)
+        if (string.Equals(conexion.Usuario, destinatario, StringComparison.OrdinalIgnoreCase))
+            return Config.ErrorPrivadoAUnoMismo;
+
+        texto = texto?.Trim() ?? string.Empty;
+
+        var error = Config.ValidarMensaje(texto);
+
+        if (error is not null)
+        {
+            logger.LogWarning(
+                "Privado rechazado de {Usuario}: {Error}", conexion.Usuario, error);
+
+            return error;
+        }
+
+        // El canal del emisor decide a quién se puede hablar: nadie de otra
+        // sala (y null significa "no hay nadie con ese nombre AQUÍ")
+        var connectionIdDestino = store.GetConnectionId(conexion.Canal, destinatario);
+
+        if (connectionIdDestino is null)
+        {
+            logger.LogWarning(
+                "Privado rechazado de {Usuario} a {Destinatario}: sin destino en {Canal}",
+                conexion.Usuario, destinatario, conexion.Canal);
+
+            return Config.ErrorPrivadoSinDestino(destinatario);
+        }
+
+        var mensaje = new MensajePrivadoDto(
+            Guid.NewGuid(), conexion.Usuario, destinatario, texto, DateTime.UtcNow);
+
+        // Se loguea la longitud, no el contenido (mismo criterio que SendAsync:
+        // los logs pueden verse personas no autorizadas)
+        logger.LogInformation(
+            "{Usuario} envía un privado de {Longitud} caracteres a {Destinatario} ({Canal})",
+            conexion.Usuario, texto.Length, destinatario, conexion.Canal);
+
+        // Primero al destinatario y después el eco al autor (Clients.Caller):
+        // un único emisor, dos destinos concretos, jamás Clients.Group
+        await Clients.Client(connectionIdDestino).SendAsync(ChatHubEventos.PrivadoRecibido, mensaje);
+        await Clients.Caller.SendAsync(ChatHubEventos.PrivadoRecibido, mensaje);
 
         return null;
     }
