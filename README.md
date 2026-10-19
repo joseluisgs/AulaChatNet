@@ -36,6 +36,7 @@ AulaChatNet es un proyecto educativo de ejemplo para el módulo **Desarrollo Web
 - 💻 **Múltiples clientes**: consola con Spectre.Console (vista en vivo con cabecera y pie fijos, editor de línea con cursor y reconexión con re-alta) y web con Blazor WebAssembly, ambos sobre el mismo hub y con los **mismos comandos `/`** (el parser vive en `Shared` y lo usan los dos clientes)
 - 🎨 **Estética Discord**: layout de dos columnas, avatares (DiceBear) y paleta oscura
 - 🗄️ **Persistencia (Fase 2)**: SQLite embebido en un fichero (`Data/aulachat.db`) con EF Core; el historial sobrevive a cualquier reinicio mientras que la presencia y la unicidad de nicks siguen en memoria, y se escribe en segundo plano sin frenar el chat
+- 🔒 **Mensajes privados (Fase 3.1)**: `/privado <quien> <texto>` (alias `/mp` y `/dm`) dentro de un canal, entre personas CONECTADAS en ese mismo canal; llegan SOLO a los dos implicados, se mezclan en la misma cronología que el canal en las dos vistas y **no se guardan** — ni en SQLite ni en el historial
 
 ## 🚀 Tecnologías
 
@@ -177,6 +178,7 @@ Ruta: `/hubs/chat` (configurable en `Chat:HubRuta`). Los métodos y eventos se r
 | `CambiarCanalAsync` | `canal` | Mueve al usuario: aviso de salida en el viejo, historial del nuevo solo a él, aviso de entrada |
 | `CambiarNickAsync` | `nuevoNick` | Cambia el nombre en caliente, con aviso "X ahora se llama Y" al canal |
 | `ObtenerUsuariosAsync` | `canal` | Devuelve los conectados de CUALQUIER canal; responde SOLO al que pregunta (para `/usuarios <canal>`) |
+| `EnviarPrivadoAsync` | `destinatario`, `texto` | Envía un mensaje a UNA persona de SU canal: valida destino (que exista y conectado, que no seas tú mismo) y lo emite SOLO a las dos conexiones implicadas. **No llama a `AddMensaje`**: el privado no entra en el historial ni en la cola de escritura (efímero) |
 
 **Servidor → cliente**:
 
@@ -186,6 +188,7 @@ Ruta: `/hubs/chat` (configurable en `Chat:HubRuta`). Los métodos y eventos se r
 | `ListaUsuariosActualizada` | `IReadOnlyList<UsuarioConectadoDto>` | Grupo del canal |
 | `HistorialRecibido` | `IReadOnlyList<MensajeDto>` | SOLO al cliente que se conecta o cambia de canal |
 | `EstadisticasActualizadas` | `EstadisticasDto` | A TODOS (total + reparto por canal) |
+| `PrivadoRecibido` | `MensajePrivadoDto` | SOLO a los dos implicados: `Clients.Client(destino)` y `Clients.Caller` (el eco, para que ambas partes pinten el mismo objeto) |
 
 **Canales**: `#general`, `#daw`, `#dam`, `#asir`, `#smr`. Nombre único por canal, historial de 25 mensajes por canal (50 en Development) y rechazo con lista de válidos si el canal no existe. El orden del array del `appsettings.json` es el orden de pantalla en los clientes, y el primero es el canal por defecto.
 
@@ -223,7 +226,12 @@ La configuración vive en `appsettings.json` (con override por entorno en `appse
 | **Fase 1 · Blazor** | Layout Discord + store reactiva estilo `NotificationStore` + comandos `/` (parser compartido) + Serilog a consola del navegador | ✅ Hecho |
 | **Fase 2 · Server** | Persistencia con SQLite + EF Core: modelo e índices, migraciones, escritura en segundo plano, precarga del historial y mantenimiento (retención + `VACUUM`) | ✅ Hecho |
 | Arquitectura | Servidor agnóstico: sin `wwwroot` ni referencia a los clientes — solo expone el hub SignalR y `GET /estadisticas`; la web corre en su DevServer (`5031`) y habla con él por `Web:UrlServidor` y CORS, que ya es obligatorio siempre | ✅ Hecho |
-| Fase 3 | Extras (moderación, reacciones) | 🔜 Futura |
+| **Fase 3.1 · Shared y Server** | Mensajes privados: `MensajePrivadoDto`, comando `/privado` (alias `/mp`, `/dm`), validación de destino y emisión a las DOS conexiones implicadas — sin `AddMensaje`, así que no entran en el historial ni en SQLite | ✅ Hecho |
+| **Fase 3.1 · Terminal y Blazor** | Fusión cronológica canal + privados con `CombinadorChat` (vive en `Shared`: misma mezcla en las dos vistas), fila `🔒` con "para/de quien", clic en la lista de usuarios para pre-rellenar el privado en la web y aviso de que no se guarda | ✅ Hecho |
+| Fase 3.2 | "Está escribiendo..." con caducidad (presencia efímera, `Sample` en vez de `Throttle`) | 🔜 Futura |
+| Fase 3.3 | Reacciones a los mensajes | 🔜 Futura |
+
+> 📝 **Nota:** los privados son **efímeros a propósito**: no hay autenticación, así que guardarlo en SQLite significaría que el siguiente que se registre con ese nombre herede los mensajes de otros. Por el mismo motivo, la **moderación no entra** en este proyecto: un rol atado a un nombre que cualquiera puede cambiar al recargar la página no protege nada. Y el aviso de "esto no se guarda" se muestra **una vez por sesión en la terminal y mientras preparas el privado en la web**, no en cada envío — repetirlo en la charla lo convierte en ruido que nadie lee.
 
 > 📝 **Nota:** la lógica de la Fase 2 vivió **solo en el servidor**: ni el hub ni el contrato de los clientes se movieron, porque ya estaba hecho en la Fase 1. (Verificado con `git diff 0.2.0 0.3.0`: los únicos toques en clientes de ese tramo fueron cosméticos —el icono de la app—, ni una línea de lógica.)
 
@@ -235,6 +243,7 @@ Toda la documentación didáctica vive en [`docs/`](docs/):
 - 💻 [`docs/02-cliente-terminal.md`](docs/02-cliente-terminal.md) - **El cliente terminal**: por dentro y por fuera — su arquitectura en capas y su flujo de conexión con diagramas Mermaid, el bucle de vista en vivo de Spectre.Console, la capa reactiva con Rx.NET, el modo doble (consola/tubería) y cómo se prueba todo sin abrir una terminal; acompañado del recorrido de uso con capturas reales en ASCII (arranque, vista en vivo, comandos y sus salidas, reconexión y sesión). Incluye la nota de por qué la persistencia no lo tocó
 - 🌐 [`docs/03-cliente-blazor.md`](docs/03-cliente-blazor.md) - **El cliente web**: Blazor WebAssembly en su propio proceso hablando con el servidor agnóstico por `Web:UrlServidor` y CORS, la estética de Discord en CSS propio, la store central y la capa reactiva con suscripciones en los componentes, los comandos `/` reutilizando el parser de `Shared`, la sesión en `localStorage`, el desarrollo con `dotnet watch` y **dos bugs reales** (el `Closed` fantasma y el manifiesto de assets caducado), con sus arreglos y tests
 - 🗄️ [`docs/04-persistencia.md`](docs/04-persistencia.md) - **La persistencia de la Fase 2**: por qué SQLite, qué se guarda en disco y qué no (separación por longevidad), el modelo con EF Core y sus índices, `Migrate()` frente a `EnsureCreated()`, la escritura en segundo plano con el patrón *write-behind*, la precarga, la limpieza con retención y `VACUUM`, y **tres trampas reales** que solo salieron al ejecutar
+- 🔒 [`docs/05-mensajes-privados.md`](docs/05-mensajes-privados.md) - **Los mensajes privados de la Fase 3.1**: el recorrido completo de un `/privado` (del parser a los dos clientes), por qué son **efímeros** y no tocan SQLite, la fusión cronológica del canal con los privados (`CombinadorChat` en `Shared`), el clic en la lista de usuarios de la web, el aviso de que no se guarda sin convertirlo en ruido, y cómo se prueba — con una prueba de red real incluida
 - 🖼️ [`docs/boceto-vistas.html`](docs/boceto-vistas.html) - **Boceto visual de las dos vistas de la web** con los mismos estilos y elementos que la app: [vista 1 · panel de entrada](docs/boceto-vistas.html#vista-1) y [vista 2 · vista de canal](docs/boceto-vistas.html#vista-2)
 
 > 💡 **Consejo:** si solo vas a leer un documento, empieza por el del servidor: es el mapa completo sobre el que se apoyan los dos clientes.
