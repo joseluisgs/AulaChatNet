@@ -46,6 +46,35 @@
             enfocar: function (id) {
                 var campo = document.getElementById(id);
                 if (campo) campo.focus();
+            },
+
+            // Parpadeo del título de la pestaña cuando alguien te menciona:
+            // alterna el título con el aviso; se PARA al volver a la pestaña
+            // (focus) o al dar el badge por visto (terminarParpadeo). Un solo
+            // parpadeo a la vez
+            parpadeoTitulo: null,
+            tituloOriginal: null,
+            empezarParpadeo: function (texto) {
+                if (window.aulachat.parpadeoTitulo) return;
+
+                window.aulachat.tituloOriginal = document.title;
+                var original = window.aulachat.tituloOriginal;
+                var alterna = false;
+
+                window.aulachat.parpadeoTitulo = setInterval(function () {
+                    alterna = !alterna;
+                    document.title = alterna ? texto : original;
+                }, 1200);
+
+                window.addEventListener('focus', window.aulachat.terminarParpadeo);
+            },
+            terminarParpadeo: function () {
+                if (!window.aulachat.parpadeoTitulo) return;
+
+                clearInterval(window.aulachat.parpadeoTitulo);
+                window.aulachat.parpadeoTitulo = null;
+                document.title = window.aulachat.tituloOriginal;
+                window.removeEventListener('focus', window.aulachat.terminarParpadeo);
             }
         };
     </script>

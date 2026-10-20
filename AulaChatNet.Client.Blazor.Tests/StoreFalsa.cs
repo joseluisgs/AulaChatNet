@@ -61,6 +61,12 @@ public class StoreFalsa
     public BehaviorSubject<IReadOnlyDictionary<Guid, ReaccionesMensajeDto>> Reacciones { get; } =
         new(new Dictionary<Guid, ReaccionesMensajeDto>());
 
+    /// <summary>Flujo de la última mención dirigida recibida.</summary>
+    public BehaviorSubject<MencionDto?> UltimaMencion { get; } = new(null);
+
+    /// <summary>Flujo del contador de menciones sin mirar (el badge).</summary>
+    public BehaviorSubject<int> MencionesNoVistas { get; } = new(0);
+
     /// <summary>El objeto que se registra en los servicios del componente.</summary>
     public IChatStore Objeto => _mock.Object;
 
@@ -80,6 +86,8 @@ public class StoreFalsa
         _mock.Setup(s => s.DestinatarioPrivado).Returns(DestinatarioPrivado);
         _mock.Setup(s => s.Escribiendo).Returns(Escribiendo);
         _mock.Setup(s => s.Reacciones).Returns(Reacciones);
+        _mock.Setup(s => s.UltimaMencion).Returns(UltimaMencion);
+        _mock.Setup(s => s.MencionesNoVistas).Returns(MencionesNoVistas);
         _mock.Setup(s => s.Canales).Returns(canales);
 
         // Valores actuales: leídos del SUJETO en cada llamada (lazy), así

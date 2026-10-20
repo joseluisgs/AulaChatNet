@@ -47,7 +47,7 @@ else
         <Avatar Usuario="@Mensaje.Usuario" Tamano="40" />
         <div class="mensaje-cuerpo">
             <span class="mensaje-nombre" style="color: @ColorNombre">@Mensaje.Usuario</span>
-            <span class="mensaje-texto">@Mensaje.Texto</span>
+            <span class="mensaje-texto"><TextoMencion Texto="@Mensaje.Texto" /></span>
 
             @* Los chips y el "+" de reaccionar: solo a los mensajes de
                persona (los avisos de sistema no se reaccionan) *@

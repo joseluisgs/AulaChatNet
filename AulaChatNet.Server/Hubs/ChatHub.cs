@@ -1,3 +1,4 @@
+using AulaChatNet.Server.Models;
 using AulaChatNet.Server.Services;
 using AulaChatNet.Shared.Configuracion;
 using AulaChatNet.Shared.Constantes;
@@ -340,7 +341,64 @@ public class ChatHub(IChatStore store, IControlRafagas rafagas, IOptions<ChatCon
 
         await Clients.Group(conexion.Canal).SendAsync(ChatHubEventos.MensajeNuevo, mensaje);
 
+        // Menciones (@ana): el mensaje va igual al canal —la mención NO es
+        // un mensaje aparte—; esto es solo un empujoncito dirigido a quien
+        // sale nombrado, para que su cliente pite y parpadee
+        await NotificarMencionesAsync(conexion, mensaje);
+
         return null;
+    }
+
+    /// <summary>
+    /// Avisa por separado a cada persona nombrada con @ en el mensaje. El
+    /// mensaje ya salió al grupo; este aviso es SOLO un empujoncito
+    /// dirigido por el MISMO camino que los privados —<c>Clients.Client</c>
+    /// con la conexión de quien nombra—: no se abre ningún destino nuevo.
+    ///
+    /// <remarks>
+    /// Cuatro decisiones:
+    /// <list type="bullet">
+    /// <item><b>Se emite DESPUÉS del mensaje</b>: SignalR conserva el orden
+    /// en cada conexión, así que la mención nunca llega antes que el texto
+    /// que la provoca.</item>
+    /// <item><b>El mensaje no cambia</b>: si a quien nombras no está
+    /// conectado en el canal, su mensaje sigue siendo un mensaje normal —
+    /// una mención no es una entrega garantizada, es un aviso.</item>
+    /// <item><b>Nunca a uno mismo</b>: mencionarte a ti no es noticia.</item>
+    /// <item><b>Sin estado y sin persistencia</b>: el aviso viaja y se
+    /// olvida; el "no visto" lo lleva cada cliente.</item>
+    /// </list>
+    /// </remarks>
+    /// </summary>
+    /// <param name="conexion">Quien escribió el mensaje (emisor y canal).</param>
+    /// <param name="mensaje">Mensaje ya emitido al canal.</param>
+    private async Task NotificarMencionesAsync(ConexionChat conexion, MensajeDto mensaje)
+    {
+        // Guardia barata: sin arroba no hay mención que buscar (y casi
+        // ningún mensaje la trae, así que el bucle no se ni mira)
+        if (!mensaje.Texto.Contains('@'))
+            return;
+
+        foreach (var usuario in store.GetUsuarios(conexion.Canal))
+        {
+            // Ni a sí mismo ni a quien no esté nombrado en el texto
+            var esElMismo = string.Equals(
+                usuario.Usuario, conexion.Usuario, StringComparison.OrdinalIgnoreCase);
+
+            if (esElMismo || !Menciones.Contiene(mensaje.Texto, usuario.Usuario))
+                continue;
+
+            // El store resuelve la CONEXIÓN del canal: los nicks son
+            // únicos dentro de su sala, no en todo el servidor
+            var destino = store.GetConnectionId(conexion.Canal, usuario.Usuario);
+
+            if (destino is not null)
+            {
+                await Clients.Client(destino).SendAsync(
+                    ChatHubEventos.MencionRecibida,
+                    new MencionDto(conexion.Usuario, conexion.Canal, mensaje.Texto, mensaje.Timestamp));
+            }
+        }
     }
 
     /// <summary>

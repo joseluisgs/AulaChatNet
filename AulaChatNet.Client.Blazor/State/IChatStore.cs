@@ -199,4 +199,17 @@ public interface IChatStore : IDisposable
     /// una llamada al hub por pulsación.
     /// </summary>
     void SenalarEscritura();
+
+    /// <summary>Última mención dirigida que ha llegado (null = ninguna esta sesión).</summary>
+    IObservable<MencionDto?> UltimaMencion { get; }
+
+    /// <summary>
+    /// Menciones recibidas que aún no se han mirado. El contador es del
+    /// CLIENTE —el servidor solo emite el aviso—, y lo vacía
+    /// <see cref="MarcarMencionesVistas"/> al pulsar el badge.
+    /// </summary>
+    IObservable<int> MencionesNoVistas { get; }
+
+    /// <summary>Marca las menciones como vistas: el badge vuelve a cero.</summary>
+    void MarcarMencionesVistas();
 }

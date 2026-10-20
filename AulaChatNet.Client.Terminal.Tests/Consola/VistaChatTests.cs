@@ -290,4 +290,50 @@ public class VistaChatTests
     }
 
     #endregion
+
+    #region Menciones Tests
+
+    [Test]
+    public void LineaMensajeMarkup_ConMencion_LaResaltaEnAmarillo()
+    {
+        // Arrange
+        var mensaje = new MensajeDto(
+            Guid.NewGuid(), "Luis", "@Ana, ¿vienes?", DateTime.Now, TipoMensaje.Normal);
+
+        // Act
+        var linea = VistaChat.LineaMensajeMarkup(mensaje);
+
+        // Assert: la mención va envuelta en SU color, con la @ incluida
+        linea.Should().Contain("[#FAA61A]@Ana[/]");
+    }
+
+    [Test]
+    public void LineaMensajeMarkup_SinMenciones_SePintaSinColorDeMas()
+    {
+        // Arrange
+        var mensaje = new MensajeDto(
+            Guid.NewGuid(), "Luis", "Buenas a todos", DateTime.Now, TipoMensaje.Normal);
+
+        // Act
+        var linea = VistaChat.LineaMensajeMarkup(mensaje);
+
+        // Assert: el amarillo es EXCLUSIVO de las menciones
+        linea.Should().Contain("Buenas a todos").And.NotContain("[#FAA61A]");
+    }
+
+    [Test]
+    public void LineaMensajeMarkup_Mencion_YElRestoDelTextoSigueEscapado()
+    {
+        // Arrange: un corchete suelto en el resto del mensaje es texto, no formato
+        var mensaje = new MensajeDto(
+            Guid.NewGuid(), "Luis", "@Ana mira [esto]", DateTime.Now, TipoMensaje.Normal);
+
+        // Act
+        var linea = VistaChat.LineaMensajeMarkup(mensaje);
+
+        // Assert: mención teñida Y corchete escapado (duplicado por Spectre)
+        linea.Should().Contain("[#FAA61A]@Ana[/]").And.Contain("[[esto]]");
+    }
+
+    #endregion
 }

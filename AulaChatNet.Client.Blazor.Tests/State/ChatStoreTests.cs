@@ -247,6 +247,51 @@ public class ChatStoreTests
         error.Should().Be("Sin conexión con el servidor");
     }
 
+    #region Menciones Tests
+
+    [Test]
+    public void MencionesNoVistas_AlCrearLaStore_EmpiezaEnCero()
+    {
+        // Arrange
+        using var store = new ChatStore(UrlMuerta, Config());
+
+        // Act
+        var contador = Capturar<int>(store.MencionesNoVistas);
+
+        // Assert: sin sesión no puede haber nadie que te nombre
+        contador.Should().Be(0);
+    }
+
+    [Test]
+    public void UltimaMencion_AlCrearLaStore_EsNula()
+    {
+        // Arrange
+        using var store = new ChatStore(UrlMuerta, Config());
+
+        // Act
+        var mencion = Capturar<MencionDto?>(store.UltimaMencion);
+
+        // Assert: null = "ninguna esta sesión" — el componente del badge lo
+        // ignora y no pide parpadeo al navegador
+        mencion.Should().BeNull();
+    }
+
+    [Test]
+    public void MarcarMencionesVistas_Llamarlo_ElContadorQuedaEnCero()
+    {
+        // Arrange: el contador crece con el evento del servidor (MencionRecibida);
+        // aquí se prueba el APAGADO, que es lo que hace el clic del badge
+        using var store = new ChatStore(UrlMuerta, Config());
+
+        // Act
+        store.MarcarMencionesVistas();
+
+        // Assert
+        Capturar<int>(store.MencionesNoVistas).Should().Be(0);
+    }
+
+    #endregion
+
     // ── Ayudante ──
 
     /// <summary>Lee el valor ACTUAL de un observable (el BehaviorSubject lo guarda).</summary>

@@ -51,6 +51,9 @@ public static class TemaDiscord
     /// </summary>
     public static readonly Color Fucsia = Color.FromHex("#eb459e");
 
+    /// <summary>Amarillo clásico: color de las menciones (@ana) en la terminal.</summary>
+    public static readonly Color Amarillo = Color.FromHex("#faa61a");
+
     /// <summary>
     /// Colores vivos legibles sobre fondo oscuro; el nick se pinta con uno
     /// de ellos según su hash. Sin blancos ni negros (se perderían en el fondo).

@@ -43,6 +43,12 @@ public class ChatStore : IChatStore
     private readonly BehaviorSubject<bool> _enSesion = new(false);
     private readonly BehaviorSubject<string?> _destinatarioPrivado = new(null);
 
+    // Menciones dirigidas (@ana): la ÚLTIMA recibida (para el parpadeo de
+    // la pestaña) y el contador de las que aún no se han mirado (para el
+    // badge). El "no visto" es estado DEL CLIENTE: el servidor solo avisa
+    private readonly BehaviorSubject<MencionDto?> _ultimaMencion = new(null);
+    private readonly BehaviorSubject<int> _mencionesNoVistas = new(0);
+
     // Reacciones por mensaje: el servidor manda el estado COMPLETO de cada
     // mensaje, así que aquí solo se REEMPLAZA la entrada que cambia. La
     // clave es el Id del mensaje (GUID), el mismo que identifica la fila
@@ -121,6 +127,16 @@ public class ChatStore : IChatStore
         // "Está escribiendo...": viene SOLO el nombre de quien escribe (este
         // evento jamás lleva texto) y solo si no eres tú (OthersInGroup)
         _conexion.On<string>(ChatHubEventos.Escribiendo, usuario => _seguimiento.Senalar(usuario));
+
+        // Menciones dirigidas (@ana): un aviso SEPARADO del mensaje — el
+        // mensaje ya llega por MensajeNuevo y aquí se pinta resaltado; esto
+        // es solo el empujoncito para que el cliente parpadee y ponga su
+        // badge. Llega después del mensaje, nunca antes
+        _conexion.On<MencionDto>(ChatHubEventos.MencionRecibida, mencion =>
+        {
+            _ultimaMencion.OnNext(mencion);
+            _mencionesNoVistas.OnNext(_mencionesNoVistas.Value + 1);
+        });
 
         _conexion.On<IReadOnlyList<UsuarioConectadoDto>>(
             ChatHubEventos.ListaUsuariosActualizada, lista => _usuarios.OnNext(lista));
@@ -234,6 +250,18 @@ public class ChatStore : IChatStore
 
     /// <inheritdoc />
     public IObservable<string?> DestinatarioPrivado => _destinatarioPrivado;
+
+    /// <summary>Última mención dirigida recibida (null = ninguna esta sesión).</summary>
+    public IObservable<MencionDto?> UltimaMencion => _ultimaMencion;
+
+    /// <summary>Menciones recibidas que aún no se han mirado (el badge de la barra).</summary>
+    public IObservable<int> MencionesNoVistas => _mencionesNoVistas;
+
+    /// <summary>
+    /// Marca las menciones como vistas: el badge vuelve a cero. El clic
+    /// viene del badge, que no puede tocar la store por su cuenta.
+    /// </summary>
+    public void MarcarMencionesVistas() => _mencionesNoVistas.OnNext(0);
 
     /// <inheritdoc />
     public IReadOnlyList<string> Canales => _config.Canales;
@@ -492,6 +520,11 @@ public class ChatStore : IChatStore
         _usuarios.OnNext([]);
         _privados.OnNext([]); // y los privados menos: no hay servidor que los vuelva a traer
         _reacciones.OnNext(new Dictionary<Guid, ReaccionesMensajeDto>()); // ni chips de nadie
+
+        // Ni las menciones sin mirar de la sesión anterior: el badge de la
+        // siguiente persona que entre en este navegador empieza en cero
+        _mencionesNoVistas.OnNext(0);
+        _ultimaMencion.OnNext(null);
 
         // Y nadie de la sesión anterior debe seguir "escribiendo"
         _seguimiento.Limpiar();

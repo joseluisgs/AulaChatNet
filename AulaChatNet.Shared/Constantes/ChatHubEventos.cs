@@ -72,4 +72,12 @@ public static class ChatHubEventos
     /// IReadOnlyList&lt;ReaccionesMensajeDto&gt;.
     /// </summary>
     public const string ReaccionesRecibidas = "ReaccionesRecibidas";
+
+    /// <summary>
+    /// Aviso dirigido de mención (@ana): llega SOLO a la persona nombrada,
+    /// DESPUÉS de que el mensaje haya salido al canal por su flujo normal.
+    /// No abre ningún destino nuevo de SignalR: usa el MISMO camino que los
+    /// privados, <c>Clients.Client</c> con la conexión de quien nombra.
+    /// </summary>
+    public const string MencionRecibida = "MencionRecibida";
 }

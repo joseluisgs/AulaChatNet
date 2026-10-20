@@ -1564,6 +1564,107 @@ public class ChatHubTests
 
     #endregion
 
+    #region Menciones Tests
+
+    [Test]
+    public async Task SendAsync_ConMencion_AvisaSoloAQuienNombran()
+    {
+        // Arrange: Ana y Luis en #general; Marta en #smr
+        var ana = CrearHub("conn-ana");
+        await ana.Hub.ConnectAsync("Ana", General);
+
+        var luis = CrearHub("conn-luis");
+        await luis.Hub.ConnectAsync("Luis", General);
+
+        var marta = CrearHub("conn-marta");
+        await marta.Hub.ConnectAsync("Marta", Smr);
+
+        // Act: Luis menciona a Ana
+        await luis.Hub.SendAsync("@Ana, ¿me pasas el ejercicio 3?");
+
+        // Assert: el mensaje SÍ va al canal de Luis (el filtro por Tipo deja
+        // fuera el mensaje de sistema de su alta en la sala)...
+        ObtenerListaEventos(luis.PorCanal, General, ChatHubEventos.MensajeNuevo)
+            .Where(e => ((MensajeDto)e.Argumentos[0]).Tipo == TipoMensaje.Normal)
+            .Should().ContainSingle("la mención no cambia el destino del mensaje");
+
+        // ...y el aviso dirigido llega SOLO a la conexión de Ana (el destino
+        // Clients.Client(id) se registra en el mapa POR CONEXIÓN, el mismo
+        // camino que usan los privados, no en el del caller)
+        var avisosAna = ObtenerLista(_porConexion, "conn-ana")
+            .Where(e => e.Metodo == ChatHubEventos.MencionRecibida).ToList();
+        avisosAna.Should().ContainSingle();
+
+        var mencion = (MencionDto)avisosAna[0].Argumentos[0];
+        mencion.Emisor.Should().Be("Luis");
+        mencion.Canal.Should().Be(General);
+        mencion.Texto.Should().Contain("@Ana");
+
+        ObtenerLista(_porConexion, "conn-luis").Should()
+            .NotContain(e => e.Metodo == ChatHubEventos.MencionRecibida);
+        ObtenerLista(_porConexion, "conn-marta").Should()
+            .NotContain(e => e.Metodo == ChatHubEventos.MencionRecibida);
+    }
+
+    [Test]
+    public async Task SendAsync_MencionandoseASiMismo_NoSeAvisa()
+    {
+        // Arrange
+        var luis = CrearHub("conn-luis");
+        await luis.Hub.ConnectAsync("Luis", General);
+
+        // Act
+        await luis.Hub.SendAsync("@Luis toma nota");
+
+        // Assert: mencionarte a ti no es noticia (pero el mensaje sale, y
+        // el filtro por Tipo deja fuera el mensaje de sistema de su alta)
+        ObtenerLista(_porConexion, "conn-luis").Should()
+            .NotContain(e => e.Metodo == ChatHubEventos.MencionRecibida);
+        ObtenerListaEventos(luis.PorCanal, General, ChatHubEventos.MensajeNuevo)
+            .Where(e => ((MensajeDto)e.Argumentos[0]).Tipo == TipoMensaje.Normal)
+            .Should().ContainSingle();
+    }
+
+    [Test]
+    public async Task SendAsync_MencionAAlguienNoConectado_ElMensajeSaleIgual()
+    {
+        // Arrange: Luis escribe mencionando a Diego, que no está
+        var luis = CrearHub("conn-luis");
+        await luis.Hub.ConnectAsync("Luis", General);
+
+        // Act
+        await luis.Hub.SendAsync("@Diego, ¿vuelves mañana?");
+
+        // Assert: una mención no es una entrega garantizada — el mensaje es
+        // un mensaje normal y no se avisa a nadie (el filtro por Tipo deja
+        // fuera el mensaje de sistema de su alta)
+        ObtenerListaEventos(luis.PorCanal, General, ChatHubEventos.MensajeNuevo)
+            .Where(e => ((MensajeDto)e.Argumentos[0]).Tipo == TipoMensaje.Normal)
+            .Should().ContainSingle();
+        ObtenerLista(_porConexion, "conn-luis").Should()
+            .NotContain(e => e.Metodo == ChatHubEventos.MencionRecibida);
+    }
+
+    [Test]
+    public async Task SendAsync_SinArrobas_NoSeEmiteNingunAviso()
+    {
+        // Arrange
+        var ana = CrearHub("conn-ana");
+        await ana.Hub.ConnectAsync("Ana", General);
+
+        var luis = CrearHub("conn-luis");
+        await luis.Hub.ConnectAsync("Luis", General);
+
+        // Act
+        await luis.Hub.SendAsync("Buenas a todos");
+
+        // Assert
+        ObtenerLista(_porConexion, "conn-ana").Should()
+            .NotContain(e => e.Metodo == ChatHubEventos.MencionRecibida);
+    }
+
+    #endregion
+
     /// <summary>
     /// Lista de eventos emitidos a un CANAL, FILTRADA por método. El filtro
     /// evita el error clásico de confundir un MensajeNuevo con el evento que

@@ -895,3 +895,37 @@ body {
         display: none;
     }
 }
+
+/* ── Menciones (@ana) ────────────────────────────────────────────────── */
+
+/* Trozo nombrado dentro del texto del mensaje: acento de Discord y fondo
+   translúcido, como el resaltado de mención de cualquier chat moderno */
+.mencion {
+    color: #fff;
+    background: rgba(88, 101, 242, 0.35);
+    border-radius: 3px;
+    padding: 0 3px;
+}
+
+/* Badge de menciones sin mirar: esquina superior derecha, sobre la barra.
+   Se oculta con la clase vacía cuando el contador llega a cero */
+.mencion-aviso {
+    position: fixed;
+    top: 14px;
+    right: 16px;
+    z-index: 10;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border: none;
+    border-radius: 10px;
+    background: #5865f2;
+    color: #fff;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+
+.mencion-aviso:hover {
+    background: #4752c4;
+}

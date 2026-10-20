@@ -1,3 +1,4 @@
+using System.Text;
 using AulaChatNet.Shared.Dtos;
 using AulaChatNet.Shared.Helpers;
 using Spectre.Console;
@@ -64,8 +65,30 @@ public static class VistaChat
 
         return $"[grey]{hora}[/] " +
                $"[{hex}][[{iniciales}]][/] " +
-               $"[{hex}]{Markup.Escape(mensaje.Usuario)}[/]: {Markup.Escape(mensaje.Texto)}" +
+               $"[{hex}]{Markup.Escape(mensaje.Usuario)}[/]: {TextoConMencionesMarkup(mensaje.Texto)}" +
                ChipsReaccionesMarkup(mensaje, reacciones);
+    }
+
+    /// <summary>
+    /// El texto con las menciones (@ana) resaltadas en amarillo: la misma
+    /// regla de troceado que <see cref="Menciones"/> (Shared) ofrece a los
+    /// dos clientes, aquí montada en markup de Spectre. Cada tramo se
+    /// ESCAPA ANTES de teñirlo, así que un nombre con corchetes no se come
+    /// el formato de la línea entera.
+    /// </summary>
+    /// <param name="texto">Texto del mensaje ya validado.</param>
+    /// <returns>Cadena de markup con las menciones resaltadas.</returns>
+    private static string TextoConMencionesMarkup(string texto)
+    {
+        var amarillo = TemaDiscord.Amarillo.ToMarkup();
+        var sb = new StringBuilder();
+
+        foreach (var (trozo, esMencion) in Menciones.Trocear(texto))
+            sb.Append(esMencion
+                ? $"[{amarillo}]{Markup.Escape(trozo)}[/]"
+                : Markup.Escape(trozo));
+
+        return sb.ToString();
     }
 
     /// <summary>

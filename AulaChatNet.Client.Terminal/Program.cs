@@ -293,7 +293,19 @@ else
             AnsiConsole.Clear();
 
         for (var i = incremental ? pintados.Count : 0; i < lista.Count; i++)
+        {
             PintarMensaje(lista[i]);
+
+            // Campanita cuando el mensaje NUEVO te nombra con @ (y no es
+            // tuyo): la terminal no tiene badges persistentes, pero SÍ
+            // tiene beep — y en un chat de aula se oye desde atrás
+            var teMenciona = lista[i].Tipo == TipoMensaje.Normal
+                && !string.Equals(lista[i].Usuario, nickActual, StringComparison.OrdinalIgnoreCase)
+                && Menciones.Contiene(lista[i].Texto, nickActual);
+
+            if (teMenciona)
+                Console.Beep();
+        }
 
         pintados = lista;
     });
