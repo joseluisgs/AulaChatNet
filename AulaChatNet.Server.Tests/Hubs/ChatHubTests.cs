@@ -31,6 +31,13 @@ public class ChatHubTests
     private Mock<ILogger<ChatHub>> _logger = null!;
 
     /// <summary>
+    /// Control de ráfagas simulado: por defecto la cuota PASA, porque los
+    /// tests existentes mandan tandas largas sin esperar la ventana. Los de
+    /// ráfagas la agotan reconfigurando el mock.
+    /// </summary>
+    private Mock<IControlRafagas> _rafagas = null!;
+
+    /// <summary>
     /// Miembros de cada grupo simulado (grupo → conexiones), como hace
     /// SignalR: los envíos a Clients.Group solo llega a quien se dio de alta
     /// con Groups.AddToGroupAsync. Compartido por todos los hubs de un test.
@@ -63,6 +70,9 @@ public class ChatHubTests
 
         _store = new ChatStore(Options.Create(_config));
         _logger = new Mock<ILogger<ChatHub>>();
+        _rafagas = new Mock<IControlRafagas>();
+        _rafagas.Setup(r => r.Intentar(It.IsAny<string>(), It.IsAny<DateTime>()))
+            .Returns(true);
         _grupos = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
         _aTodos = [];
         _porConexion = new Dictionary<string, List<Envio>>(StringComparer.OrdinalIgnoreCase);
@@ -108,7 +118,7 @@ public class ChatHubTests
         clientes.Setup(c => c.OthersInGroup(It.IsAny<string>()))
             .Returns<string>(canal => CrearProxyVarios(ListasDeMiembros(canal, connectionId)).Object);
 
-        var hub = new ChatHub(_store, Options.Create(_config), _logger.Object)
+        var hub = new ChatHub(_store, _rafagas.Object, Options.Create(_config), _logger.Object)
         {
             Context = Mock.Of<HubCallerContext>(c => c.ConnectionId == connectionId),
             Clients = clientes.Object,
@@ -1471,6 +1481,85 @@ public class ChatHubTests
         var reacciones = (IReadOnlyList<ReaccionesMensajeDto>)snapshots[^1].Argumentos[0];
         reacciones.Should().ContainSingle()
             .Which.IdMensaje.Should().Be(mensaje.Id);
+    }
+
+    #endregion
+
+    #region Control de ráfagas (Fase 4.1) Tests
+
+    [Test]
+    public async Task SendAsync_CuotaDeRafagasAgotada_DevuelveElAvisoSinEmitir()
+    {
+        // Arrange: la ventana de la conexión está llena
+        _rafagas.Setup(r => r.Intentar(It.IsAny<string>(), It.IsAny<DateTime>()))
+            .Returns(false);
+
+        var ana = CrearHub("conn-1");
+        await ana.Hub.ConnectAsync("Ana", General);
+
+        // El alta ha emitido su mensaje de sistema: apuntamos CUÁNTOS hay
+        // ANTES del intento rechazado, no asumimos que la lista está vacía
+        var emitidos = ObtenerListaEventos(ana.PorCanal, General, ChatHubEventos.MensajeNuevo).Count;
+
+        // Act
+        var aviso = await ana.Hub.SendAsync("este mensaje no debe pasar");
+
+        // Assert: el cliente ve el aviso y el canal queda intacto
+        aviso.Should().Be(_config.AvisoRafaga);
+        ObtenerListaEventos(ana.PorCanal, General, ChatHubEventos.MensajeNuevo)
+            .Count.Should().Be(emitidos, "con la cuota agotada no se difunde nada");
+        _store.GetHistorial(General)
+            .Should().NotContain(m => m.Texto == "este mensaje no debe pasar");
+    }
+
+    [Test]
+    public async Task SendAsync_MensajeVacio_NoConsultaLaCuota()
+    {
+        // Arrange
+        var ana = CrearHub("conn-1");
+        await ana.Hub.ConnectAsync("Ana", General);
+
+        // Act: un mensaje inválido devuelve SU error de validación
+        var error = await ana.Hub.SendAsync("   ");
+
+        // Assert: la cuota se consulta DESPUÉS de validar, así que un
+        // mensaje malformado ni siquiera la toca (no gasta cuota ajena)
+        error.Should().NotBeNull();
+        _rafagas.Verify(r => r.Intentar(It.IsAny<string>(), It.IsAny<DateTime>()),
+            Times.Never);
+    }
+
+    [Test]
+    public async Task EnviarPrivado_CuotaDeRafagasAgotada_DevuelveElAvisoSinEmitir()
+    {
+        // Arrange
+        _rafagas.Setup(r => r.Intentar(It.IsAny<string>(), It.IsAny<DateTime>()))
+            .Returns(false);
+
+        var ana = CrearHub("conn-1");
+        await ana.Hub.ConnectAsync("Ana", General);
+
+        // Act: los privados son escritura del aula y comparten la cuota
+        var aviso = await ana.Hub.EnviarPrivadoAsync("Luis", "hola");
+
+        // Assert
+        aviso.Should().Be(_config.AvisoRafaga);
+        ana.AlCaller.Should()
+            .NotContain(e => e.Metodo == ChatHubEventos.PrivadoRecibido);
+    }
+
+    [Test]
+    public async Task OnDisconnectedAsync_LaConexionSeVa_BorraSuCuotaDeRafagas()
+    {
+        // Arrange
+        var ana = CrearHub("conn-1");
+
+        // Act: al morir la conexión, su ventana se olvida — si no, el
+        // diccionario del singleton crecería mientras el servidor vive
+        await ana.Hub.OnDisconnectedAsync(null);
+
+        // Assert
+        _rafagas.Verify(r => r.Limpiar("conn-1"), Times.Once);
     }
 
     #endregion

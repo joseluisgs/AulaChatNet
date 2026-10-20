@@ -47,7 +47,11 @@ public class ReaccionesEndToEndTests
             {
                 [$"{ChatConfig.Seccion}:HubRuta"] = Ruta,
                 [$"{ChatConfig.Seccion}:Canales:0"] = "#general",
-                [$"{ChatConfig.Seccion}:Canales:1"] = "#smr"
+                [$"{ChatConfig.Seccion}:Canales:1"] = "#smr",
+
+                // Sin cuota de ráfagas: estas pruebas mandan tandas
+                // seguidas sin esperar la ventana (0 = sin límite)
+                [$"{ChatConfig.Seccion}:RafagaMensajes"] = "0"
             })
             .Build();
 

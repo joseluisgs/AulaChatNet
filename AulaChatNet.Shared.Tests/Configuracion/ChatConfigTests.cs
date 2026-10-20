@@ -318,4 +318,35 @@ public class ChatConfigTests
     }
 
     #endregion
+
+    #region Control de ráfagas Tests
+
+    [Test]
+    public void AvisoRafaga_SiCambiaElLimite_ElAvisoReflejaLosValoresNuevos()
+    {
+        // Arrange: mismo criterio que el resto de mensajes computados: si
+        // cambia el límite en appsettings, el aviso sigue citando la verdad
+        _config.RafagaMensajes = 4;
+        _config.RafagaVentanaSegundos = 7;
+
+        // Act
+        var aviso = _config.AvisoRafaga;
+
+        // Assert
+        aviso.Should().Contain("4").And.Contain("7");
+    }
+
+    [Test]
+    public void RafagaMensajes_PorDefecto_EsCinco()
+    {
+        _config.RafagaMensajes.Should().Be(5);
+    }
+
+    [Test]
+    public void RafagaVentanaSegundos_PorDefecto_EsCinco()
+    {
+        _config.RafagaVentanaSegundos.Should().Be(5);
+    }
+
+    #endregion
 }

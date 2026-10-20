@@ -35,6 +35,9 @@ namespace AulaChatNet.Server.Hubs;
 /// Matiz conocido: en el instante exacto de un cambio de canal puede
 /// colarse un mensaje de la sala anterior (carrera inherente a los grupos);
 /// el cliente, al recibir el historial del nuevo canal, repinta y lo corrige.
+///
+/// La Fase 4.1 pone además una ventana de ráfagas: los mensajes del canal
+/// y los privados pasan por <see cref="IControlRafagas"/> antes de difundirse.
 /// </remarks>
 /// </summary>
 /// <example>
@@ -45,7 +48,7 @@ namespace AulaChatNet.Server.Hubs;
 /// await conexion.InvokeAsync(ChatHubMetodos.Enviar, "Buenas");        // → null si OK
 /// </code>
 /// </example>
-public class ChatHub(IChatStore store, IOptions<ChatConfig> opciones, ILogger<ChatHub> logger) : Hub
+public class ChatHub(IChatStore store, IControlRafagas rafagas, IOptions<ChatConfig> opciones, ILogger<ChatHub> logger) : Hub
 {
     private ChatConfig Config => opciones.Value;
 
@@ -312,6 +315,18 @@ public class ChatHub(IChatStore store, IOptions<ChatConfig> opciones, ILogger<Ch
             return error;
         }
 
+        // Control de ráfagas (Fase 4.1): DESPUÉS de validar — un mensaje
+        // malformado no consume cuota — y ANTES de tocar store o red. Si la
+        // ventana está llena, el intento se cae y el cliente recibe el aviso
+        if (!rafagas.Intentar(Context.ConnectionId, DateTime.UtcNow))
+        {
+            logger.LogWarning(
+                "Ráfaga: {Usuario} superó el límite de mensajes en {Canal}",
+                conexion.Usuario, conexion.Canal);
+
+            return Config.AvisoRafaga;
+        }
+
         var mensaje = new MensajeDto(
             Guid.NewGuid(), conexion.Usuario, texto, DateTime.UtcNow, TipoMensaje.Normal);
 
@@ -508,6 +523,17 @@ public class ChatHub(IChatStore store, IOptions<ChatConfig> opciones, ILogger<Ch
             return error;
         }
 
+        // Mismo control de ráfagas que en SendAsync: los privados son
+        // escritura del aula y comparten la CUOTA de la conexión
+        if (!rafagas.Intentar(Context.ConnectionId, DateTime.UtcNow))
+        {
+            logger.LogWarning(
+                "Ráfaga: {Usuario} superó el límite de privados hacia {Destinatario}",
+                conexion.Usuario, destinatario);
+
+            return Config.AvisoRafaga;
+        }
+
         // El canal del emisor decide a quién se puede hablar: nadie de otra
         // sala (y null significa "no hay nadie con ese nombre AQUÍ")
         var connectionIdDestino = store.GetConnectionId(conexion.Canal, destinatario);
@@ -545,6 +571,9 @@ public class ChatHub(IChatStore store, IOptions<ChatConfig> opciones, ILogger<Ch
     /// <param name="exception">Excepción que causó la caída, si la hubo.</param>
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
+        // La cuota de ráfagas era de ESTA conexión: al morir, se olvida
+        rafagas.Limpiar(Context.ConnectionId);
+
         // SignalR da de baja esta conexión de todos sus grupos al cerrarse,
         // así que no hace falta quitarla del canal a mano
         var conexion = store.RemoveUsuario(Context.ConnectionId);
