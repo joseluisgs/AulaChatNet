@@ -288,6 +288,39 @@ public class ChatHub(IChatStore store, IControlRafagas rafagas, IOptions<ChatCon
     }
 
     /// <summary>
+    /// Devuelve una PÁGINA del historial ANTIGUO del canal del que pregunta.
+    /// Es una invocación CON RETORNO (como ObtenerUsuariosAsync) y no un
+    /// evento: aquí no se avisa a nadie, se contesta UNA pregunta.
+    /// </summary>
+    /// <remarks>
+    /// El canal NO es un parámetro: sale del registro de la conexión, así que
+    /// solo se puede mirar la sala en la que estás y ninguna otra. Si no
+    /// estás registrado, no hay sala propia y devuelve null.
+    /// </remarks>
+    /// <param name="antesDe">Cursor: marca de tiempo (UTC) del mensaje más antiguo que ya ve el cliente.</param>
+    /// <param name="cantidad">Tamaño de página pedido (el servidor lo limita al tope configurado).</param>
+    /// <returns>La página, del más antiguo al más reciente; vacío si no queda más historial, null si no estás registrado.</returns>
+    public async Task<IReadOnlyList<MensajeDto>?> ObtenerHistorialAsync(DateTime antesDe, int cantidad)
+    {
+        var conexion = store.GetConexion(Context.ConnectionId);
+
+        if (conexion is null)
+        {
+            logger.LogWarning(
+                "Historial rechazado: la conexión {ConnectionId} no está registrada",
+                Context.ConnectionId);
+
+            return null;
+        }
+
+        logger.LogDebug(
+            "Historial de {Canal} pedido por {Usuario}: antes de {AntesDe}, página de {Cantidad}",
+            conexion.Canal, conexion.Usuario, antesDe, cantidad);
+
+        return await store.GetAnterioresAsync(conexion.Canal, antesDe, cantidad);
+    }
+
+    /// <summary>
     /// Difunde un mensaje del usuario registrado al grupo de SU canal.
     /// </summary>
     /// <param name="texto">Texto escrito (se valida con ChatConfig).</param>

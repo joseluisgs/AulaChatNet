@@ -43,6 +43,26 @@ public interface IMensajesRepository
     Task<IReadOnlyList<MensajeDto>> GetUltimosAsync(string canal, int limite, CancellationToken cancelacion = default);
 
     /// <summary>
+    /// Devuelve una PÁGINA de mensajes del canal hacia ATRÁS en el tiempo: los
+    /// anteriores (o del mismo instante) a la marca de tiempo indicada, del más
+    /// antiguo al más reciente. Es el cimiento del "cargar más mensajes" de la
+    /// Fase 4.3.
+    /// </summary>
+    /// <remarks>
+    /// El cursor <paramref name="antesDe"/> es INCLUSIVO: además de lo
+    /// anterior devuelve también los del MISMO instante, que con una sola
+    /// fecha no se pueden separar. Quien recibe la página descarta por Id los
+    /// mensajes que ya tiene, y así no se pierde ninguno.
+    /// </remarks>
+    /// <param name="canal">Canal canónico.</param>
+    /// <param name="antesDe">Marca de tiempo (UTC) del mensaje más antiguo que ya ve el cliente.</param>
+    /// <param name="limite">Tamaño máximo de la página.</param>
+    /// <param name="cancelacion">Token para cancelar la operación.</param>
+    /// <returns>La página en orden cronológico; vacío = no queda más historial.</returns>
+    Task<IReadOnlyList<MensajeDto>> GetAnterioresAsync(
+        string canal, DateTime antesDe, int limite, CancellationToken cancelacion = default);
+
+    /// <summary>
     /// Borra los mensajes anteriores a una fecha dada y devuelve cuántos ha quitado.
     /// Es la base del mantenimiento del fichero: sin él, la base de datos crece
     /// sin límite.

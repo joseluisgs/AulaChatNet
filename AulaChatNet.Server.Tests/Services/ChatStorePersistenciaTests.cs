@@ -162,4 +162,78 @@ public class ChatStorePersistenciaTests
     }
 
     #endregion
+
+    #region GetAnterioresAsync (paginación del historial)
+
+    [Test]
+    public async Task GetAnteriores_SinRepositorio_DevuelveVacio()
+    {
+        // Arrange: modo Fase 1. La caché solo guarda lo que el cliente YA
+        // ve (los últimos HistorialMaximo): sin disco no hay nada anterior
+        var store = new ChatStore(Options.Create(_config));
+
+        // Act
+        var pagina = await store.GetAnterioresAsync(General, DateTime.UtcNow, 10);
+
+        // Assert
+        pagina.Should().BeEmpty();
+    }
+
+    [Test]
+    public async Task GetAnteriores_ConCursorPorDefinido_NoTocaElRepositorio()
+    {
+        // Arrange: un cursor sin fecha (default) no es un momento válido
+        var repo = CrearRepo();
+        var store = new ChatStore(Options.Create(_config), repo.Object);
+
+        // Act
+        var pagina = await store.GetAnterioresAsync(General, default, 10);
+
+        // Assert: ni se consulta la base ni se puede confundir con "todo el
+        // historial": no hay nada que paginar sin un punto de partida
+        pagina.Should().BeEmpty();
+        repo.Verify(r => r.GetAnterioresAsync(
+            It.IsAny<string>(), It.IsAny<DateTime>(), It.IsAny<int>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Test]
+    public async Task GetAnteriores_PideMasDeLoPermitido_LimitaAlHistorialMaximo()
+    {
+        // Arrange: HistorialMaximo = 10 en esta suite; alguien pide mil
+        var repo = CrearRepo();
+        var store = new ChatStore(Options.Create(_config), repo.Object);
+
+        // Act: una página nunca supera la ventana del sistema
+        await store.GetAnterioresAsync(General, DateTime.UtcNow, 1_000);
+
+        // Assert
+        repo.Verify(r => r.GetAnterioresAsync(
+            General, It.IsAny<DateTime>(), 10, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task GetAnteriores_DevuelveLoQueElRepositorioDiga()
+    {
+        // Arrange: la store no filtra ni reordena nada, solo limita
+        var esperada = new[]
+        {
+            Mensaje("primero de la página"),
+            Mensaje("segundo de la página")
+        };
+
+        var repo = new Mock<IMensajesRepository>();
+        repo.Setup(r => r.GetAnterioresAsync(General, It.IsAny<DateTime>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(esperada);
+
+        var store = new ChatStore(Options.Create(_config), repo.Object);
+
+        // Act
+        var pagina = await store.GetAnterioresAsync(General, DateTime.UtcNow, 5);
+
+        // Assert
+        pagina.Should().Equal(esperada);
+    }
+
+    #endregion
 }

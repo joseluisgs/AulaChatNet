@@ -292,6 +292,53 @@ public class ChatStoreTests
 
     #endregion
 
+    #region Paginación Tests
+
+    [Test]
+    public void HayAnteriores_AlCrearLaStore_EmpiezaEnTrue()
+    {
+        // Arrange
+        using var store = new ChatStore(UrlMuerta, Config());
+
+        // Act
+        var hay = Capturar<bool>(store.HayAnteriores);
+
+        // Assert: optimismo inicial: el botón se muestra, y el servidor
+        // dirá con su página vacía si en realidad no quedaba nada más
+        hay.Should().BeTrue();
+    }
+
+    [Test]
+    public async Task CargarAnteriores_SinVistaNoHaceNada()
+    {
+        // Arrange: la vista empieza vacía y sin cursor no hay dónde mirar
+        using var store = new ChatStore(UrlMuerta, Config());
+
+        // Act: no debe lanzar ni tocar el estado
+        await store.CargarAnterioresAsync();
+
+        // Assert
+        Capturar<bool>(store.HayAnteriores).Should().BeTrue();
+    }
+
+    [Test]
+    public async Task CargarAnteriores_ConElServidorCaido_NoLanzaYNodejaElEstadoUtil()
+    {
+        // Arrange: un aviso local llena la vista, para que el método
+        // llegue hasta la invocación (y ahí la conexión muerta revienta)
+        using var store = new ChatStore(UrlMuerta, Config());
+        store.Aviso("algo pasó");
+
+        // Act: un clic de botón o un scroll NUNCA deben lanzar al navegador
+        await store.CargarAnterioresAsync();
+
+        // Assert: la llamada se tragó el fallo y NO apagó el botón: la
+        // siguiente tentativa reintentará en cuanto vuelva la conexión
+        Capturar<bool>(store.HayAnteriores).Should().BeTrue();
+    }
+
+    #endregion
+
     // ── Ayudante ──
 
     /// <summary>Lee el valor ACTUAL de un observable (el BehaviorSubject lo guarda).</summary>

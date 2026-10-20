@@ -387,6 +387,23 @@ public class ChatStore(IOptions<ChatConfig> opciones, IMensajesRepository? repos
     }
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<MensajeDto>> GetAnterioresAsync(
+        string canal, DateTime antesDe, int cantidad, CancellationToken cancelacion = default)
+    {
+        // Sin repositorio no hay dónde mirar: la caché solo retiene lo que el
+        // cliente YA ve (los últimos HistorialMaximo), nunca nada anterior
+        if (_repository is null || antesDe == default)
+            return [];
+
+        // Misma regla que la precarga: una página no supera la ventana del
+        // sistema. El Math.Max protege el Clamp por si alguien configurara
+        // HistorialMaximo a 0 (mínimo mayor que máximo revienta)
+        var tope = Math.Clamp(cantidad, 1, Math.Max(1, Config.HistorialMaximo));
+
+        return await _repository.GetAnterioresAsync(canal, antesDe, tope, cancelacion);
+    }
+
+    /// <inheritdoc />
     public IReadOnlyList<UsuarioConectadoDto> GetUsuarios(string canal) =>
         _conexiones.Values
             .Where(c => string.Equals(c.Canal, canal, StringComparison.OrdinalIgnoreCase))

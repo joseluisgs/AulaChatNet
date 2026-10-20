@@ -4,6 +4,7 @@ using AulaChatNet.Shared.Dtos;
 using Bunit;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
+using Moq;
 
 namespace AulaChatNet.Client.Blazor.Tests.Components;
 
@@ -34,8 +35,18 @@ public class ListaMensajesTests : BunitContext
         Services.AddSingleton(store.Objeto);
         Services.AddSingleton(new ChatConfig());
 
-        // Bajar el scroll al llegar algo nuevo es JS del navegador (js/aulachat.js)
-        JSInterop.SetupVoid("aulachat.abajo", _ => true);
+        // Bajar el scroll al llegar algo nuevo es JS del navegador (js/aulachat.js).
+        // Ojo con bUnit: un handler que HACE MATCH pero no tiene resultado
+        // fijado no devuelve nada — cuelga la invocación —, así que cada
+        // ayudante se configura con SU resultado
+        JSInterop.SetupVoid("aulachat.abajo", _ => true).SetVoidResult();
+
+        // Y la paginación usa tres ayudantes más: medir la altura del
+        // contenido, leer la posición del scroll y recuperarla tras cargar
+        // una página vieja (js/aulachat.js, Fase 4.3)
+        JSInterop.Setup<double>("aulachat.altura", _ => true).SetResult(0);
+        JSInterop.Setup<double>("aulachat.yPosicion", _ => true).SetResult(0);
+        JSInterop.SetupVoid("aulachat.recuperarScroll", _ => true).SetVoidResult();
 
         return Render<ListaMensajes>();
     }
@@ -93,8 +104,9 @@ public class ListaMensajesTests : BunitContext
         store.Mensajes.OnNext([Mensaje("De las diez", Diez), Mensaje("De las doce", Doce)]);
         store.Privados.OnNext([Privado("De las once", Once)]);
 
-        // Assert
-        var filas = cut.FindAll(".mensajes > *").Select(f => f.TextContent).ToArray();
+        // Assert: ".mensaje" (y no "> *") porque dentro del contenedor
+        // también vive el botón de paginación, que no es una fila
+        var filas = cut.FindAll(".mensajes > .mensaje").Select(f => f.TextContent).ToArray();
 
         filas.Should().HaveCount(3);
         filas[0].Should().Contain("De las diez");
@@ -113,9 +125,84 @@ public class ListaMensajesTests : BunitContext
         // Act: el servidor REEMPLAZA la vista al cambiar de canal
         store.Mensajes.OnNext([Mensaje("Mensaje del canal nuevo", Doce)]);
 
-        // Assert
-        var filas = cut.FindAll(".mensajes > *").Select(f => f.TextContent).ToArray();
+        // Assert: ".mensaje" deja fuera el botón de paginación del contenedor
+        var filas = cut.FindAll(".mensajes > .mensaje").Select(f => f.TextContent).ToArray();
         filas.Should().ContainSingle();
         filas[0].Should().Contain("canal nuevo").And.NotContain("canal viejo");
     }
+
+    #region Paginación
+
+    [Test]
+    public void ConMensajes_MuestraElBotonDeCargarAntiguos()
+    {
+        // Arrange
+        var store = StoreFalsa.Crear();
+        var cut = Renderizar(store);
+        store.Mensajes.OnNext([Mensaje("Buenas a todos", Diez)]);
+
+        // Assert: optimismo inicial de la store (HayAnteriores=true): el
+        // botón se muestra; si no quedaba nada, la página vacía del
+        // servidor apaga el flujo y él desaparece solo
+        cut.Find(".carga-anterior").TextContent.Should().Contain("Cargar mensajes antiguos");
+    }
+
+    [Test]
+    public void SinMensajes_NoMuestraElBotonDeCargarAntiguos()
+    {
+        // Arrange
+        var cut = Renderizar(StoreFalsa.Crear());
+
+        // Assert: sin vista no hay cursor, y sin cursor no hay nada que pedir
+        cut.FindAll(".carga-anterior").Should().BeEmpty();
+    }
+
+    [Test]
+    public void SinMasHistorial_ElBotonDesaparece()
+    {
+        // Arrange
+        var store = StoreFalsa.Crear();
+        var cut = Renderizar(store);
+        store.Mensajes.OnNext([Mensaje("Buenas a todos", Diez)]);
+
+        // Act: así apaga la store el flujo tras una página vacía
+        store.HayAnteriores.OnNext(false);
+
+        // Assert
+        cut.FindAll(".carga-anterior").Should().BeEmpty();
+    }
+
+    [Test]
+    public void PulsarCargarAntiguos_LlamaALaStore()
+    {
+        // Arrange
+        var store = StoreFalsa.Crear();
+        var cut = Renderizar(store);
+        store.Mensajes.OnNext([Mensaje("Buenas a todos", Diez)]);
+
+        // Act: el clic es ASÍNCRONO (JSInterop + invocación del hub), así
+        // que la verificación espera a que la tarea se resuelva
+        cut.Find(".carga-anterior").Click();
+
+        // Assert
+        cut.WaitForAssertion(() => store.Mock.Verify(s => s.CargarAnterioresAsync(), Times.Once));
+    }
+
+    [Test]
+    public void DesplazarseCercaDelTop_TambienLlamaALaStore()
+    {
+        // Arrange: el JS simulado devuelve yPosicion = 0 (sin scroll), y 0
+        // está dentro del umbral de carga del componente
+        var store = StoreFalsa.Crear();
+        var cut = Renderizar(store);
+        store.Mensajes.OnNext([Mensaje("Buenas a todos", Diez)]);
+
+        // Act
+        cut.Find("#lista-mensajes").TriggerEvent("onscroll", EventArgs.Empty);
+
+        // Assert: la carga automática es async igual que la del botón
+        cut.WaitForAssertion(() => store.Mock.Verify(s => s.CargarAnterioresAsync(), Times.Once));
+    }
+
+    #endregion
 }

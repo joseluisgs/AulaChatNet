@@ -85,6 +85,40 @@ public class MensajeRepository(IDbContextFactory<AulaChatContexto> fabrica, ILog
     }
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<MensajeDto>> GetAnterioresAsync(
+        string canal, DateTime antesDe, int limite, CancellationToken cancelacion = default)
+    {
+        await using var contexto = await fabrica.CreateDbContextAsync(cancelacion);
+
+        // Mismo barrido por índice que GetUltimos, pero hacia ATRÁS en el
+        // tiempo: el rango termina en el cursor que manda el cliente. El
+        // cursor es INCLUSIVO (<=) a propósito: dos mensajes con la misma
+        // marca de tiempo no se pueden separar con una sola fecha, y así
+        // ninguno queda huérfano — el cliente descarta los que ya tiene.
+        // El ThenBy por Id desempata a los gemelos para que dos páginas con
+        // el mismo cursor devuelvan siempre lo mismo.
+        var entidades = await contexto.Mensajes
+            .AsNoTracking()                            // solo lectura: sin tracking
+            .Where(m => m.Canal == canal && m.Timestamp <= antesDe)
+            .OrderByDescending(m => m.Timestamp)
+            .ThenByDescending(m => m.Id)
+            .Take(limite)
+            .ToListAsync(cancelacion);
+
+        // Se devuelven del más antiguo al más reciente, igual que GetUltimos
+        entidades.Reverse();
+
+        // Mismo trato del Kind que en GetUltimos: SQLite guarda fechas como
+        // texto y el contrato de la entidad es "siempre UTC"
+        return entidades
+            .Select(m => new MensajeDto(
+                m.Id, m.Usuario, m.Texto,
+                DateTime.SpecifyKind(m.Timestamp, DateTimeKind.Utc),
+                m.Tipo))
+            .ToArray();
+    }
+
+    /// <inheritdoc />
     public async Task<int> LimpiarAsync(DateTime anteriorA, CancellationToken cancelacion = default)
     {
         await using var contexto = await fabrica.CreateDbContextAsync(cancelacion);

@@ -74,6 +74,27 @@ public interface IChatStore
     IReadOnlyList<MensajeDto> GetHistorial(string canal);
 
     /// <summary>
+    /// Devuelve una PÁGINA del historial guardado en la base de datos: los
+    /// mensajes del canal anteriores (o del mismo instante) al cursor, del
+    /// más antiguo al más reciente. Es el "cargar más mensajes antiguos" de
+    /// la Fase 4.3.
+    /// </summary>
+    /// <remarks>
+    /// La caché en memoria solo retiene los últimos
+    /// <c>ChatConfig.HistorialMaximo</c> mensajes; lo anterior vive SOLO en
+    /// la base de datos, y de ahí sale esta página. No hace nada sin
+    /// repositorio (modo Fase 1). El tamaño pedido se limita además al de la
+    /// caché: una página nunca supera la ventana del sistema.
+    /// </remarks>
+    /// <param name="canal">Canal canónico.</param>
+    /// <param name="antesDe">Cursor: marca de tiempo (UTC) del mensaje más antiguo que ya ve el cliente.</param>
+    /// <param name="cantidad">Tamaño de página pedido (se limita al tope configurado).</param>
+    /// <param name="cancelacion">Token para cancelar la operación.</param>
+    /// <returns>La página en orden cronológico; vacío = no queda más historial.</returns>
+    Task<IReadOnlyList<MensajeDto>> GetAnterioresAsync(
+        string canal, DateTime antesDe, int cantidad, CancellationToken cancelacion = default);
+
+    /// <summary>
     /// Devuelve la lista de usuarios conectados EN UN CANAL, ordenada por nombre.
     /// </summary>
     /// <param name="canal">Canal canónico.</param>

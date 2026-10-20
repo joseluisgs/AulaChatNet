@@ -49,6 +49,12 @@ public class ChatStore : IChatStore
     private readonly BehaviorSubject<MencionDto?> _ultimaMencion = new(null);
     private readonly BehaviorSubject<int> _mencionesNoVistas = new(0);
 
+    // Paginación del historial (Fase 4.3): si puede quedar algo anterior a
+    // lo que ya se ve, y si ahora mismo hay una petición en vuelo (para que
+    // el scroll no dispare una segunda mientras la primera no vuelve)
+    private readonly BehaviorSubject<bool> _hayAnteriores = new(true);
+    private bool _cargandoAnteriores;
+
     // Reacciones por mensaje: el servidor manda el estado COMPLETO de cada
     // mensaje, así que aquí solo se REEMPLAZA la entrada que cambia. La
     // clave es el Id del mensaje (GUID), el mismo que identifica la fila
@@ -77,6 +83,13 @@ public class ChatStore : IChatStore
 
     /// <summary>Error devuelto al invocar el hub con la conexión caída.</summary>
     private const string ErrorSinConexion = "Sin conexión con el servidor";
+
+    /// <summary>
+    /// Tamaño de página que pide el cliente al cargar mensajes antiguos. El
+    /// servidor lo limita además a su tope configurado, así que este número
+    /// es solo una petición, no un contrato.
+    /// </summary>
+    private const int TamanoPagina = 25;
 
     /// <summary>
     /// Crea la store y prepara la conexión (aún NO conectada: eso es
@@ -151,6 +164,10 @@ public class ChatStore : IChatStore
         {
             // El historial REEMPLAZA la vista: así no se mezclan canales
             _mensajes.OnNext(historial);
+
+            // La paginación vuelve a empezar: la vista nueva acaba de
+            // llegar y puede tener detrás (el servidor dirá si no queda nada)
+            _hayAnteriores.OnNext(true);
 
             // Con él se vacía también el seguimiento: nadie de la sala
             // anterior debe asomar en la nueva ni un instante
@@ -256,6 +273,9 @@ public class ChatStore : IChatStore
 
     /// <summary>Menciones recibidas que aún no se han mirado (el badge de la barra).</summary>
     public IObservable<int> MencionesNoVistas => _mencionesNoVistas;
+
+    /// <inheritdoc />
+    public IObservable<bool> HayAnteriores => _hayAnteriores;
 
     /// <summary>
     /// Marca las menciones como vistas: el badge vuelve a cero. El clic
@@ -459,6 +479,61 @@ public class ChatStore : IChatStore
     }
 
     /// <inheritdoc />
+    public async Task CargarAnterioresAsync()
+    {
+        // Sin vista no hay cursor, y con una petición en vuelo no se pide otra
+        if (_cargandoAnteriores || _mensajes.Value.Count == 0)
+            return;
+
+        _cargandoAnteriores = true;
+
+        try
+        {
+            // Cursor = el mensaje más antiguo de la vista. El servidor
+            // devuelve lo anterior (inclusive) a ese instante, nada más
+            var cursor = _mensajes.Value[0].Timestamp;
+
+            var pagina = await _conexion.InvokeAsync<IReadOnlyList<MensajeDto>?>(
+                ChatHubMetodos.Historial, cursor, TamanoPagina);
+
+            if (pagina is null || pagina.Count == 0)
+            {
+                // Página vacía = no quedaba más historial. null no debería
+                // pasar (este botón solo existe en sesión), pero corta el
+                // bucle igual: sin datos no hay nada que pintar
+                _hayAnteriores.OnNext(false);
+                return;
+            }
+
+            var actuales = _mensajes.Value;
+            var yaVistas = actuales.Select(m => m.Id).ToHashSet();
+
+            // El servidor devuelve también el del cursor (el rango es
+            // inclusivo) y una página podría solaparse; el descarte por Id
+            // lo deja inocuo
+            var nuevas = pagina.Where(m => !yaVistas.Contains(m.Id)).ToArray();
+
+            if (nuevas.Length == 0)
+            {
+                _hayAnteriores.OnNext(false);
+                return;
+            }
+
+            // Por delante: la página vieja va ARRIBA de todo lo que ya se ve
+            _mensajes.OnNext([.. nuevas, .. actuales]);
+        }
+        catch (Exception)
+        {
+            // Sin conexión: la vista no crece; el aviso de cierre llega por
+            // su propio camino (jamás lanzar desde un clic o un scroll)
+        }
+        finally
+        {
+            _cargandoAnteriores = false;
+        }
+    }
+
+    /// <inheritdoc />
     public async Task<string?> ReconectarAsync()
     {
         if (_usuarioActual is null || _canalActual.Value is null)
@@ -634,6 +709,7 @@ public class ChatStore : IChatStore
         _estado.Dispose();
         _enSesion.Dispose();
         _destinatarioPrivado.Dispose();
+        _hayAnteriores.Dispose();
         _reacciones.Dispose();
 
         // El seguimiento de escritura también: su latido de caducidad vive en

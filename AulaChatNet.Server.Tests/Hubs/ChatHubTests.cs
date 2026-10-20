@@ -1665,6 +1665,102 @@ public class ChatHubTests
 
     #endregion
 
+    #region ObtenerHistorialAsync Tests
+
+    [Test]
+    public async Task ObtenerHistorialAsync_SinRegistro_DevuelveNull()
+    {
+        // Arrange: la conexión existe, pero nunca se dio de alta en nada
+        var (hub, _, _) = CrearHub("conn-vaga");
+
+        // Act: sin registro no hay canal propio, y sin canal no hay nada
+        // que paginar — null es el "no estás registrado" de este método
+        var pagina = await hub.ObtenerHistorialAsync(DateTime.UtcNow, 10);
+
+        // Assert
+        pagina.Should().BeNull();
+    }
+
+    [Test]
+    public async Task ObtenerHistorialAsync_PideElHistorialDelSuPropioCanal()
+    {
+        // Arrange: un store CON repositorio mockeado, que es el único
+        // camino hasta la paginación (la caché no guarda nada anterior a lo
+        // que el cliente ya ve)
+        var muyViejo = new MensajeDto(
+            Guid.NewGuid(), "Ana", "de la noche de los tiempos",
+            new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc), TipoMensaje.Normal);
+
+        var repo = new Mock<IMensajesRepository>();
+        repo.Setup(r => r.GetAnterioresAsync(
+                General, It.IsAny<DateTime>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([muyViejo]);
+
+        _store = new ChatStore(Options.Create(_config), repo.Object);
+
+        var (hub, _, _) = CrearHub("conn-ana");
+        await hub.ConnectAsync("Ana"); // entra en #general por defecto
+
+        // Act
+        var pagina = await hub.ObtenerHistorialAsync(muyViejo.Timestamp, 10);
+
+        // Assert: el pedido sale al DE ÉL. El canal NO es parámetro del
+        // método, sino que sale del registro, así que no hay ni forma de
+        // mirar la sala de al lado
+        pagina.Should().Equal(muyViejo);
+        repo.Verify(r => r.GetAnterioresAsync(
+            General, It.IsAny<DateTime>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task ObtenerHistorialAsync_PideMasDeLoPermitido_LimitaElTamanioDePagina()
+    {
+        // Arrange: esta suite trabaja con HistorialMaximo = 25 (el valor
+        // por defecto de ChatConfig); alguien podría pedir mil de golpe
+        var repo = new Mock<IMensajesRepository>();
+        repo.Setup(r => r.GetAnterioresAsync(
+                It.IsAny<string>(), It.IsAny<DateTime>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<MensajeDto>());
+
+        _store = new ChatStore(Options.Create(_config), repo.Object);
+
+        var (hub, _, _) = CrearHub("conn-ana");
+        await hub.ConnectAsync("Ana");
+
+        // Act
+        await hub.ObtenerHistorialAsync(DateTime.UtcNow, 1_000);
+
+        // Assert: la petición que llega al repositorio va LIMITADA al tope
+        repo.Verify(r => r.GetAnterioresAsync(
+            General, It.IsAny<DateTime>(), 25, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task ObtenerHistorialAsync_NoEmiteNadaANadie()
+    {
+        // Arrange
+        var (ana, alAna, porCanalAna) = CrearHub("conn-ana");
+        var (luis, _, _) = CrearHub("conn-luis");
+        await ana.ConnectAsync("Ana");
+        await luis.ConnectAsync("Luis");
+
+        var emitidosAntes = alAna.Count + _aTodos.Count
+            + porCanalAna.Sum(p => p.Value.Count) + _porConexion.Sum(p => p.Value.Count);
+
+        // Act: una consulta es una consulta
+        await ana.ObtenerHistorialAsync(DateTime.UtcNow, 10);
+
+        // Assert: ni evento al canal, ni a la otra conexión, ni al propio
+        // preguntón — la respuesta vuelve por el RETORNO de la invocación,
+        // que este doble ni siquiera registra
+        var emitidosDespues = alAna.Count + _aTodos.Count
+            + porCanalAna.Sum(p => p.Value.Count) + _porConexion.Sum(p => p.Value.Count);
+
+        emitidosDespues.Should().Be(emitidosAntes);
+    }
+
+    #endregion
+
     /// <summary>
     /// Lista de eventos emitidos a un CANAL, FILTRADA por método. El filtro
     /// evita el error clásico de confundir un MensajeNuevo con el evento que

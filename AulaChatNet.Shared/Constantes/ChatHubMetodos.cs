@@ -26,6 +26,14 @@ public static class ChatHubMetodos
     public const string ObtenerUsuarios = "ObtenerUsuariosAsync";
 
     /// <summary>
+    /// Método de CONSULTA (no difunde): el historial ANTIGUO de tu canal por
+    /// páginas, solo para quien lo pregunta: ObtenerHistorialAsync(antesDe, cantidad).
+    /// Es una invocación CON RETORNO —como ObtenerUsuariosAsync— y no un
+    /// evento: aquí no interesa avisar a nadie, sino contestar UNA pregunta.
+    /// </summary>
+    public const string Historial = "ObtenerHistorialAsync";
+
+    /// <summary>
     /// Método para enviar un mensaje a UNA persona concreta de tu canal:
     /// EnviarPrivadoAsync(destinatario, texto). NO se difunde al grupo.
     /// </summary>

@@ -430,6 +430,30 @@ body {
     font-size: 14px;
 }
 
+/* Botón de "cargar mensajes antiguos" (Fase 4.3): píldora discreta
+   centrada arriba del todo, al estilo del divisor "load more" de Discord.
+   Al pasar el ratón se ilumina en blurple; mientras carga, se queda gris */
+.carga-anterior {
+    display: block;
+    margin: 0 auto 8px;
+    padding: 6px 16px;
+    background: var(--dc-input);
+    color: var(--dc-texto);
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.carga-anterior:hover:not(:disabled) {
+    background: var(--dc-blurple);
+}
+
+.carga-anterior:disabled {
+    color: var(--dc-suave);
+    cursor: default;
+}
+
 .mensaje {
     display: flex;
     /* hora, avatar y texto centrados verticalmente entre sí */

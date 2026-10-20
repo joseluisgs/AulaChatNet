@@ -105,6 +105,22 @@ public interface IChatStore : IDisposable
     Task<IReadOnlyList<UsuarioConectadoDto>?> ObtenerUsuariosAsync(string canal);
 
     /// <summary>
+    /// Indica si puede quedar historial ANTERIOR al que ya se ve (para
+    /// enseñar el botón de "cargar mensajes antiguos"). Empieza en true y
+    /// se pone en false cuando el servidor responde una página vacía; al
+    /// entrar o cambiar de canal vuelve a true.
+    /// </summary>
+    IObservable<bool> HayAnteriores { get; }
+
+    /// <summary>
+    /// Pide al servidor una página de mensajes ANTERIORES a los que ya se
+    /// ven y la pone por delante en la vista (la web no repinta: recupera el
+    /// scroll para que el lector no pierda su sitio). Es una invocación con
+    /// retorno, así que el orden de llegada está garantizado.
+    /// </summary>
+    Task CargarAnterioresAsync();
+
+    /// <summary>
     /// Vacía la vista local de mensajes (comando /limpiar): solo es una
     /// limpieza de PANTALLA — el historial vive en el servidor y vuelve al
     /// cambiar de canal o al reconectar.
