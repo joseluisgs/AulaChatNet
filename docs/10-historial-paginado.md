@@ -8,7 +8,7 @@
   - [10.7. Cómo se pinta: scroll, altura y recuperación](#107-cómo-se-pinta-scroll-altura-y-recuperación)
   - [10.8. Qué queda fuera (y por qué)](#108-qué-queda-fuera-y-por-qué)
   - [10.9. Cómo se prueba](#109-cómo-se-prueba)
-  - [10.10. Resumen del punto](#1010-resumen-del-punto)
+  - [10.10. Decisiones, patrones y técnicas del punto](#1010-decisiones-patrones-y-técnicas-del-punto)
 
 
 # 10. Historial paginado
@@ -17,14 +17,12 @@
 
 **Objetivos de aprendizaje:**
 
-- Entender **por qué la caché del servidor no puede responder sola** y lo anterior tiene que salir de SQLite.
-- Diferenciar **una invocación con retorno de un evento** de SignalR, y cuándo toca cada una.
-- Diseñar una paginación con **cursor temporal** (y por qué los números de página mienten con datos en vivo).
-- Implementar en Blazor una **carga por scroll** que no arruine la posición de lectura.
+- Entender **por qué la caché del servidor no puede responder sola** y lo anterior tiene que salir de SQLite
+- Diferenciar **una invocación con retorno de un evento** de SignalR, y cuándo toca cada una
+- Diseñar una paginación con **cursor temporal** (y por qué los números de página mienten con datos en vivo)
+- Implementar en Blazor una **carga por scroll** que no arruine la posición de lectura
 
 📌 **Ejemplo real:** WhatsApp Web, Discord y Slack cargan el historial por páginas al subir con el ratón. Ninguno te manda la sala entera: el chat de un curso activo acumula miles de mensajes en una semana, y el navegador no tiene por qué tragarlos todos para que tú veas los últimos veinte.
-
----
 
 ## 10.1. Un botón por encima del chat
 
@@ -44,7 +42,7 @@ Aquí hay que recordar cómo reparte el servidor lo que recuerda:
 | Dónde | Qué guarda | Cuánto |
 |-------|------------|--------|
 | Caché del `ChatStore` (memoria) | Últimos mensajes del canal, listos para el que entre | `Chat:HistorialMaximo` (50 por defecto) |
-| SQLite (Fase 2) | **TODO** el historial normal de cada canal | Sin límite práctico |
+| SQLite (persistencia) | **TODO** el historial normal de cada canal | Sin límite práctico |
 
 Lo que el cliente pide al hacer scroll hacia arriba es, por definición, **anterior a la caché**. Así que la única fuente posible es el disco:
 
@@ -52,7 +50,7 @@ Lo que el cliente pide al hacer scroll hacia arriba es, por definición, **anter
 cliente (ve 50) ──¿más antiguos?──► caché (50) ✗ ──► SQLite ✓
 ```
 
-> 📝 **Nota:** solo se persisten los mensajes NORMALES (política de la Fase 2: los avisos de sistema describen hechos de la sesión viva). Por eso, al paginar hacia atrás solo aparecen mensajes de personas: los "Ana ha entrado" no están en la base de datos porque nunca la tocaron.
+> 📝 **Nota:** solo se persisten los mensajes NORMALES (política de la persistencia: los avisos de sistema describen hechos de la sesión viva). Por eso, al paginar hacia atrás solo aparecen mensajes de personas: los "Ana ha entrado" no están en la base de datos porque nunca la tocaron.
 
 ## 10.3. Invocación con retorno, no evento
 
@@ -94,7 +92,7 @@ Tres decisiones dentro de esa consulta, y las tres se enseñan en el código:
 
 1. **`<=` inclusivo.** El cursor no es un límite cortante sino un punto que se toca. ¿Por qué? Dos mensajes escritos en el mismo milisegundo son **gemelos**: con `<` estricto, el gemelo del cursor se perdería para siempre. El servidor devuelve también los del mismo instante y el cliente **descarta por `Id`** los que ya tiene. Ninguno huérfano, un descarte inocuo.
 2. **`ORDER BY Timestamp DESC, Id DESC`.** El desempate por `Id` hace determinista la página entre gemelos: dos clientes que pidan lo mismo reciben lo mismo.
-3. **Se pagina de atrás hacia delante con `Take`.** Igual que `GetUltimosAsync` (Fase 2): pedir a la base lo último en orden inverso y dar la vuelta es más barato que paginar al revés.
+3. **Se pagina de atrás hacia delante con `Take`.** Igual que `GetUltimosAsync`: pedir a la base lo último en orden inverso y dar la vuelta es más barato que paginar al revés.
 
 ```mermaid
 sequenceDiagram
@@ -137,7 +135,7 @@ Si el canal fuera parámetro, cualquiera podría tirar de sonda: `ObtenerHistori
 
 ## 10.6. Invocación en la web: store reactiva, como todo
 
-En Blazor no se habla al hub desde el componente: se añade un método a la store, con su estado observable, igual que el resto de la Fase 3:
+En Blazor no se habla al hub desde el componente: se añade un método a la store, con su estado observable, igual que el resto de la librería:
 
 ```csharp
 // State/ChatStore.cs
@@ -155,7 +153,7 @@ También se reinicia a `true` con cada `HistorialRecibido`: al cambiar de canal 
 
 ## 10.7. Cómo se pinta: scroll, altura y recuperación
 
-El ingenuo que solo prepende tiene un bug garrafal: el contenido nuevo crece **POR ARRIBA** de donde estás mirando, y el navegador te deja clavado en el pixel 0 — saltando al principio del canal. La web lo resuelve como los chats de verdad, en tres pasos:
+El ingenuo que solo prepende tiene un fallo garrafal: el contenido nuevo crece **POR ARRIBA** de donde estás mirando, y el navegador te deja clavado en el pixel 0 — saltando al principio del canal. La web lo resuelve como los chats de verdad, en tres pasos:
 
 1. **Antes de pedir** la página, se mide la altura del contenido (`aulachat.altura`).
 2. La página entra por la store → la lista se repinta **sin bajar el scroll** (el marcador `_pendienteRecuperar` apaga el "bajar" de siempre).
@@ -178,9 +176,11 @@ Un detalle elegante del ajuste: si la carga no produce repintado (sin conexión,
 
 ## 10.8. Qué queda fuera (y por qué)
 
-- **La terminal no pagina.** Su vista es impresión incremental: cada mensaje se pinta al llegar y no hay una lista que "recrecer" por arriba sin repintar la pantalla entera. Añadir `/historial` obligaría a un repintor nuevo y a retocar ayuda y menú; no compensa para lo que enseña esta fase. Si se quisiera, sería el próximo paso natural.
+Como en todos los puntos, vale la pena dejar el perímetro claro. Esto NO hace el punto, y cada omisión es una decisión con su porqué:
+
+- **La terminal no pagina.** Su vista es impresión incremental: cada mensaje se pinta al llegar y no hay una lista que "recrecer" por arriba sin repintar la pantalla entera. Añadir `/historial` obligaría a un repintor nuevo y a retocar ayuda y menú; no compensa para lo que enseña este punto. Si se quisiera, sería el próximo paso natural.
 - **Reacciones sobre mensajes paginados.** Las reacciones viven en la caché con su mensaje y no se persisten; un mensaje paginado que ya salió de la ventana no tiene chips, y reaccionar a él devuelve el error habitual de "ya no está en el canal". Son contexto de solo lectura.
-- **Cursor por tiempo, no por identificador.** Un cursor compuesto (`Timestamp + Id`) podría atravesar gemelos sin el techo descrito; a cambio, el DTO del cursor crece y el alumno carga con más conceptos. Se eligió la fecha por claridad, con el límite escrito a la vista.
+- **Cursor por tiempo, no por identificador.** Un cursor compuesto (`Timestamp + Id`) podría atravesar gemelos sin el techo descrito; a cambio, el DTO (objeto de transferencia de datos) del cursor crece y el alumno carga con más conceptos. Se eligió la fecha por claridad, con el límite escrito a la vista.
 
 ## 10.9. Cómo se prueba
 
@@ -193,11 +193,27 @@ La paginación toca cuatro anillos, y cada uno se prueba donde vive:
 | `ChatHub` | Dobles de SignalR como en toda la suite | Sin registro → `null`; el canal sale del SUYO; **cero eventos emitidos** (es una consulta) |
 | Red completa | E2E con **Kestrel + SQLite de verdad** | Página 1, página 2, página vacía, tope y `null` sin registro |
 
-El E2E es el único que enciende la persistencia en el arnés, y no es capricho: bajando `HistorialMaximo` a 3 se garantiza que cualquier página profunda **pisa disco de verdad**. Y como la escritura es *write-behind* (Fase 2), el test espera a que la cola haya persistido el último mensaje antes de paginar — FIFO: si el último está, los anteriores también. Ese "punto de sincronía" es el mismo truco del TCS de los E2E de menciones, cruzando el proceso de un servicio en segundo plano.
+El E2E es el único que enciende la persistencia en el arnés, y no es capricho: bajando `HistorialMaximo` a 3 se garantiza que cualquier página profunda **pisa disco de verdad**. Y como la escritura es *write-behind*, el test espera a que la cola haya persistido el último mensaje antes de paginar — FIFO: si el último está, los anteriores también. Ese "punto de sincronía" es el mismo truco del TCS de los E2E de menciones, cruzando el proceso de un servicio en segundo plano.
 
 > 📝 **Nota:** en los tests de componentes de Blazor (bUnit), un ayudante de JS que **coincide pero no tiene resultado fijado** no devuelve nada: cuelga la invocación. Por eso cada uno se configura con su `SetResult`/`SetVoidResult`, igual que el parpadeo de las menciones.
 
-## 10.10. Resumen del punto
+## 10.10. Decisiones, patrones y técnicas del punto
+
+Paginar parece un `SELECT` con desplazamiento, y es en realidad un conjunto de decisiones de contrato. Éstas son:
+
+| Patrón o técnica | Dónde vive en AulaChatNet | La lección transferible |
+|------------------|---------------------------|-------------------------|
+| Cursor por tiempo, no por número | El cursor es el `Timestamp` del último mensaje servido | Los números de página saltan con cada borrado; el tiempo es un cursor estable |
+| Consulta con retorno, no evento | `ObtenerHistorialAsync` devuelve página y cursor | Una consulta no difunde: la respuesta es solo para quien pregunta |
+| Canal desde el registro | El hub saca el canal de la conexión, no de un parámetro | Un parámetro es una puerta trasera: el servidor autoriza con lo que ya sabe |
+| Caché y disco, cada uno para algo | La caché sirve lo vivo; SQLite, lo antiguo | La memoria tiene techo y el disco no: paginar es la traducción de esa frontera |
+| Tope de página idéntico al sistema | `Math.Clamp(cantidad, 1, HistorialMaximo)` en el store | Ningún cliente pide más de lo que el sistema decide servir |
+| Recuperación de scroll | Altura medida antes y restaurada tras cargar | El detalle que separa "funciona" de "se siente bien": el scroll es parte de la interfaz |
+| Límite asumido en la terminal | Su vista es impresión incremental, sin lista que recrecer | Reconocer qué NO hace tu cliente también es arquitectura; hacerlo todo es improvisación |
+
+---
+
+**Resumen del punto:**
 
 | Concepto | Decisión |
 |----------|----------|
@@ -211,3 +227,5 @@ El E2E es el único que enciende la persistencia en el arnés, y no es capricho:
 | Scroll | Se mide antes, se repinta sin bajar, se compensa la altura después |
 | Estado | `HayAnteriores` se apaga con página vacía y se reinicia al cambiar de canal |
 | Fuera del alcance | Terminal (impresión incremental), reacciones sobre mensajes paginados y cursor compuesto |
+
+**Anterior:** [9. Menciones y avisos](09-menciones-y-avisos.md) · **Índice:** [README](../README.md)

@@ -7,14 +7,14 @@
   - [8.6. Qué se limita y qué no](#86-qué-se-limita-y-qué-no)
   - [8.7. La configuración y el aviso](#87-la-configuración-y-el-aviso)
   - [8.8. Cómo se prueba](#88-cómo-se-prueba)
-  - [8.9. Resumen del punto](#89-resumen-del-punto)
+  - [8.9. Decisiones, patrones y técnicas del punto](#89-decisiones-patrones-y-técnicas-del-punto)
 
 
 # 8. El control de ráfagas
 
 > 💡 **Punto de partida:** has conectado la terminal de tu compañero, escrito cinco frases en diez segundos... y de repente el aula entera ve pasar un torrente de mensajes imposible de leer. En los chats de verdad esto pasa todos los días: alguien pega mil líneas, un script dispara mensajes, o simplemente hay quien teclea más rápido de lo que el grupo puede seguir. ¿Quién decide cuánto puede escribir cada persona: el cliente (que miente fácil) o el servidor (al que nadie salta)?
 
-En este punto abrimos la Fase 4 con el control de ráfagas: una ventana deslizante que el servidor aplica a cada conexión antes de difundir nada. Como siempre, lo interesante no es el `if`, sino las decisiones que hay detrás: **dónde guarda el servidor la cuota si los hubs son desechables, por qué la clave es la conexión y no el nick, y por qué se valida el mensaje ANTES de cotizarlo**.
+En este punto incorporamos el control de ráfagas: una ventana deslizante que el servidor aplica a cada conexión antes de difundir nada. Como siempre, lo interesante no es el `if`, sino las decisiones que hay detrás: **dónde guarda el servidor la cuota si los hubs son desechables, por qué la clave es la conexión y no el nick, y por qué se valida el mensaje ANTES de cotizarlo**.
 
 **Objetivos de aprendizaje:**
 
@@ -178,10 +178,10 @@ var mensaje = new MensajeDto(...);   // 3) y solo ahora el efecto
 
 Dos razones para ese orden:
 
-- **Justicia:** un mensaje vacío o gigante ya se cae por validación; no debe gastar la cuota del usuario. Si la cuota viniera antes, cualquier bug que mande basura te dejaría sin escribir
+- **Justicia:** un mensaje vacío o gigante ya se cae por validación; no debe gastar la cuota del usuario. Si la cuota viniera antes, cualquier fallo que mande basura te dejaría sin escribir
 - **Coste:** la cuota se consulta solo cuando el mensaje está a punto de costar algo (store, historial, difusión). Y el registro de conexión sigue siendo previo a todo: quien no está dado de alta ni llega a cotizar
 
-Como el hub devuelve `string?` —`null` si todo fue bien, el texto del error si no—, el aviso de ráfaga usa exactamente el mismo canal que "El mensaje no puede superar los 500 caracteres". Y ahí está el regalo de esta fase para el equipo de desarrollo: **los clientes ya saben mostrar eso**. En la web, el aviso aparece en el flujo de mensajes y el texto se queda en la caja, listo para reenviarlo cuando pase la ventana; en la terminal, sale la línea roja `✗` de siempre. Cero cambios en los dos clientes.
+Como el hub devuelve `string?` —`null` si todo fue bien, el texto del error si no—, el aviso de ráfaga usa exactamente el mismo canal que "El mensaje no puede superar los 500 caracteres". Y ahí está el regalo de este punto para el equipo de desarrollo: **los clientes ya saben mostrar eso**. En la web, el aviso aparece en el flujo de mensajes y el texto se queda en la caja, listo para reenviarlo cuando pase la ventana; en la terminal, sale la línea roja `✗` de siempre. Cero cambios en los dos clientes.
 
 ## 8.6. Qué se limita y qué no
 
@@ -195,7 +195,7 @@ La cuota cubre `SendAsync` y `EnviarPrivadoAsync`: los dos caminos por los que u
 | `EscribiendoAsync` | ❌ No | El cliente ya lo muestrea a un aviso por segundo, y su estado caduca solo a los 5 s |
 | `ConnectAsync` y demás | ❌ No | Registrar, mirar la lista o pedir estadísticas no inundan el canal |
 
-Dejar algo fuera es una decisión, no un descuido: se documenta, y si algún día hiciera falta, el mismo `Intentar` se invoca en otro sitio sin tocar nada más. Esta es una fase más de la regla de oro del proyecto: **no se adelanta nada; lo que se necesite se añade, pequeño y probado**.
+Dejar algo fuera es una decisión, no un descuido: se documenta, y si algún día hiciera falta, el mismo `Intentar` se invoca en otro sitio sin tocar nada más. Esta es una aplicación más de la regla de oro del proyecto: **no se adelanta nada; lo que se necesite se añade, pequeño y probado**.
 
 Además, la cuota tiene un apagador en la propia configuración: `RafagaMensajes` en `0` (o menos) desactiva el control entero, igual que `RetencionDias` en la persistencia. En un aula donde se quiera libertad total, basta un cambio en `appsettings.json`.
 
@@ -231,9 +231,25 @@ Tres niveles, como en los puntos anteriores:
 
 3. **La red de verdad** (`RafagasEndToEndTests`): servidor real escuchando, cliente SignalR real, cuota de 3 cada 10 s. Se mandan cuatro mensajes seguidos: los tres primeros vuelven `null`, el cuarto devuelve el aviso **por la red** (con su serialización) y en el canal solo hay tres mensajes nuevos. Y la prueba del aislamiento: cuando Ana se queda sin cuota, Luis sigue escribiendo a lo suyo
 
-> 📝 **Nota:** los tests E2E anteriores (privados, reacciones, escribiendo) mandan tandas sin esperar, así que su config en memoria sube `RafagaMensajes = 0`. Es una decisión de prueba, no una escapatoria: cada test prueba SU cosa, y aquí lo que se prueba es la ventana.
+> 📝 **Nota:** los tests E2E (extremo a extremo) anteriores (privados, reacciones, escribiendo) mandan tandas sin esperar, así que su config en memoria sube `RafagaMensajes = 0`. Es una decisión de prueba, no una escapatoria: cada test prueba SU cosa, y aquí lo que se prueba es la ventana.
 
-## 8.9. Resumen del punto
+## 8.9. Decisiones, patrones y técnicas del punto
+
+Limitar no es solo contar: hay que decidir dónde se cuenta, con qué clave, en qué orden y con qué apagador. Éstas son las decisiones del punto:
+
+| Patrón o técnica | Dónde vive en AulaChatNet | La lección transferible |
+|------------------|---------------------------|-------------------------|
+| Ventana deslizante | `RafagaMensajes` (5) en `RafagaVentanaSegundos` (5), todo configurable | La cuota se recupera segundo a segundo: ni ventana de gracia fija ni bloqueo total |
+| Estado fuera del hub | La cuota vive en `ControlRafagas`, un singleton | SignalR crea un hub por invocación: lo que se comparte entre llamadas va en singleton |
+| Clave = conexión | `ConnectionId`, limpiado en `OnDisconnectedAsync` | Cuelga la cuota de una identidad que el servidor conoce y que muere con su dueño |
+| Orden de comprobaciones | Registro → validación de campo → cuota → efecto | El orden también es seguridad y justicia: la basura no gasta la cuota de nadie |
+| Qué se limita y qué no | Solo `EnviarAsync` y `EnviarPrivadoAsync` | Dejar algo fuera es una decisión documentada, no un descuido |
+| Apagador en configuración | `RafagaMensajes = 0` desactiva el control entero | Apagar el límite debe ser una línea en JSON, no un despliegue |
+| Tiempo por parámetro | `Intentar` recibe el instante como argumento | Quien recibe el tiempo por parámetro prueba la ventana sin esperar ni un segundo |
+
+---
+
+**Resumen del punto:**
 
 | Concepto | Decisión en AulaChatNet |
 |----------|-------------------------|
@@ -247,4 +263,6 @@ Tres niveles, como en los puntos anteriores:
 | Aviso al usuario | El mismo `string?` de los errores: web en el flujo con el texto guardado, terminal en línea roja |
 | Clientes | Sin cambios: el aviso viaja por el canal de errores ya existente |
 
-En el siguiente punto seguimos con la Fase 4: menciones y avisos.
+En el siguiente punto seguimos con menciones y avisos.
+
+**Anterior:** [7. Las reacciones](07-reacciones.md) · **Índice:** [README](../README.md)

@@ -7,12 +7,12 @@
   - [6.6. Apagar una señal en el momento exacto](#66-apagar-una-señal-en-el-momento-exacto)
   - [6.7. Cómo se pinta en los dos clientes](#67-cómo-se-pinta-en-los-dos-clientes)
   - [6.8. Cómo se prueba](#68-cómo-se-prueba)
-  - [6.9. Resumen del punto](#69-resumen-del-punto)
+  - [6.9. Decisiones, patrones y técnicas del punto](#69-decisiones-patrones-y-técnicas-del-punto)
 
 
 # 6. La escritura en vivo
 
-> 💡 **Punto de partida:** en el chat de la Fase 1, si alguien se queda tecleando una respuesta larga, tú no te enteras: el mensaje llega de golpe o no llega. En WhatsApp, Discord o Slack, mientras la otra persona escribe ves "está escribiendo...". ¿Cómo se consigue ese aviso SIN que el servidor lleve la cuenta de nadie, SIN mandar una llamada al servidor por cada tecla y SIN que viaje jamás lo que se está escribiendo?
+> 💡 **Punto de partida:** en la versión inicial del chat, si alguien se queda tecleando una respuesta larga, tú no te enteras: el mensaje llega de golpe o no llega. En WhatsApp, Discord o Slack, mientras la otra persona escribe ves "está escribiendo...". ¿Cómo se consigue ese aviso SIN que el servidor lleve la cuenta de nadie, SIN mandar una llamada al servidor por cada tecla y SIN que viaje jamás lo que se está escribiendo?
 
 En este punto añadimos el indicador de escritura: la señal que nace en cada tecla, su recorrido hasta el hub y la caducidad que apaga sola cada marca. Como en los privados, lo interesante no es la línea que aparece abajo, sino **las decisiones** que la sostienen: muestrear en vez de esperar, reenviar sin guardar, caducar en cada cliente y apagar en el momento exacto.
 
@@ -56,7 +56,7 @@ sequenceDiagram
     Note over L,R: cada marca caduca a los<br/>5 segundos sin renovación
 ```
 
-> 📝 **Nota:** `EscribiendoAsync` devuelve `string?` como casi todos los métodos del hub, por la regla de la casa... pero aquí el cliente descarta la respuesta: es un aviso ornamental, no una operación con resultado que notificar.
+> 📝 **Nota:** `EscribiendoAsync` devuelve `string?` como casi todos los métodos del hub... pero aquí el cliente descarta la respuesta: es un aviso ornamental, no una operación con resultado que notificar.
 
 📌 **Ejemplo real:** en Discord el indicador no sale en la lista de conectados sino pegado a la caja de texto, con la frase "Ana está escribiendo..." y tres puntos. En WhatsApp desaparece a los pocos segundos de que la otra persona deja de teclear. El truco de ambos, que este proyecto reproduce, es que **nunca se entera nadie de qué se está escribiendo**: solo de que alguien lo está haciendo.
 
@@ -132,14 +132,14 @@ Lo único que hace el hub es comprobar el registro y reenviar. El log de la señ
 
 📌 **Ejemplo real:** es el mismo criterio de los mensajes privados (ver [`05-mensajes-privados.md`](05-mensajes-privados.md)): **estado que necesita limpieza, es estado que se pudre**. Si el servidor guardara quién escribe, haría falta un temporizador por conexión, una limpieza al desconectar y —lo que siempre se olvida— una limpieza por si el proceso se cae a mitad de frase. Con la caducidad en el cliente, nada de eso existe: el que se desconecta a mitad de una palabra no deja rastro en nadie, y sus marcas mueren solas en las pantallas que las tenían, a los cinco segundos.
 
-> ⚠️ **Advertencia:** no confundas "el servidor no guarda ESTO" con "el servidor no guarda nada": la presencia y la unicidad de nicks siguen en memoria desde la Fase 1 y el historial en SQLite desde la Fase 2. La pregunta correcta es siempre **¿esto es información con valor que alguien tiene derecho a recuperar más tarde?** Una señal de "sigue escribiendo" no lo es.
+> ⚠️ **Advertencia:** no confundas "el servidor no guarda ESTO" con "el servidor no guarda nada": la presencia y la unicidad de nicks siguen en memoria y el historial en SQLite. La pregunta correcta es siempre **¿esto es información con valor que alguien tiene derecho a recuperar más tarde?** Una señal de "sigue escribiendo" no lo es.
 
 ## 6.5. La caducidad vive en cada cliente
 
 `SeguimientoEscritura` (vive en `Shared`, para que los dos clientes se comporten igual y se pruebe una sola vez) es quien lleva la cuenta local. Por dentro tiene:
 
 - Un **diccionario** de nombre → última hora en que señaló, comparando sin distinguir mayúsculas — en un canal dos personas no pueden llamarse "Ana" y "ana", que eso ya lo impide el registro
-- Un `BehaviorSubject<IReadOnlyList<string>>` con la lista de activos, al que se llama **`Activos`** (observable, para la web) y **`Vista`** (el último valor, para que la TUI de la terminal lo repinte sin suscribirse)
+- Un `BehaviorSubject<IReadOnlyList<string>>` con la lista de activos, al que se llama **`Activos`** (observable, para la web) y **`Vista`** (el último valor, para que la TUI (interfaz de usuario de terminal) lo repinte sin suscribirse)
 - Un **latido** (`Observable.Interval` de 1 segundo) que descarta a quien lleve 5 segundos o más sin renovar. Con la lista vacía sale sin mirar: es el caso normal durante toda la vida de la store
 
 Tres detalles que no son pequeños:
@@ -236,7 +236,23 @@ Lo interesante de esta funcionalidad es que se parte por la mitad: el TIEMPO en 
 
 > 💡 **Consejo:** la prueba de red vuelve a ser la que más vale: con dobles puedes equivocarte sobre QUÉ emite el hub, pero nunca sobre lo que la otra punta del WebSocket recibe de verdad. Y se espera con tiempo máximo (`WaitAsync(5 s)`), nunca "hasta que llegue": un test que se cuelga no dice qué falló; uno que falla a los cinco segundos te dice exactamente qué no llegó.
 
-## 6.9. Resumen del punto
+## 6.9. Decisiones, patrones y técnicas del punto
+
+Más allá de la señal concreta, este punto deja una caja de herramientas reactiva completa. Éstas son sus piezas:
+
+| Patrón o técnica | Dónde vive en AulaChatNet | La lección transferible |
+|------------------|---------------------------|-------------------------|
+| `Sample` en vez de `Throttle`/`Debounce` | La señal de escritura con ventanas de un segundo | Elige el operador por lo que pasa mientras la gente sigue actuando, no por el nombre |
+| Cinco destinos de emisión | `OthersInGroup` para la señal de escritura | Conoce el arsenal de SignalR y elige el destinatario exacto: ni a todo el grupo ni solo a ti |
+| Estado efímero con caducidad en el cliente | Cada cliente apaga la marca a los cinco segundos | Si el estado caduca donde se muestra, el servidor no necesita limpieza |
+| Nunca el contenido | Solo viaja quién escribe, jamás el texto tecleado | Señala la intención, no los datos: privacidad por diseño |
+| Reloj inyectable | `IScheduler` por constructor y `TestScheduler` en los tests | El tiempo es una dependencia: ponlo en un parámetro y los tests no esperan segundos reales |
+| Apagado en el instante exacto | `SenalEscritura.Envio()` corta la ventana en curso | Los fantasmas nacen de los bordes: dibuja el estado final, no el intermedio |
+| Frase compartida | `EscribiendoTexto` vive en `Shared` | Los dos clientes dicen literalmente lo mismo: presentación compartida, no duplicada |
+
+---
+
+**Resumen del punto:**
 
 | Decisión | Por qué |
 |----------|---------|
@@ -249,3 +265,5 @@ Lo interesante de esta funcionalidad es que se parte por la mitad: el TIEMPO en 
 | Reloj `IScheduler` inyectable | Probar el tiempo con un reloj virtual, sin esperas reales |
 | Frase, orden y caducidad en `Shared` | La terminal y la web dicen, pintan y olvidan lo mismo |
 | Log de la señal a nivel Debug | Una señal por segundo y persona no debe llenar el log |
+
+**Anterior:** [5. Los mensajes privados](05-mensajes-privados.md) · **Índice:** [README](../README.md)

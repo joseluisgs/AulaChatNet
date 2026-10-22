@@ -5,12 +5,18 @@
   - [3.4. La estética de Discord con CSS propio](#34-la-estética-de-discord-con-css-propio)
   - [3.5. Una sola página y una store que manda](#35-una-sola-página-y-una-store-que-manda)
   - [3.6. La store central y la capa reactiva](#36-la-store-central-y-la-capa-reactiva)
+    - [Cómo se comunican los componentes: propiedades y eventos](#cómo-se-comunican-los-componentes-propiedades-y-eventos)
+    - [¿Qué es una store central?](#qué-es-una-store-central)
+    - [Propiedades y eventos: el contrato de la store](#propiedades-y-eventos-el-contrato-de-la-store)
+    - [Por qué nadie se pasa datos: adiós a los "saltos"](#por-qué-nadie-se-pasa-datos-adiós-a-los-saltos)
+    - [La vida de una suscripción](#la-vida-de-una-suscripción)
+    - [¿Qué aporta frente a otras alternativas?](#qué-aporta-frente-a-otras-alternativas)
   - [3.7. Los comandos / también en la web](#37-los-comandos--también-en-la-web)
-  - [3.8. Un bug real: el Closed fantasma](#38-un-bug-real-el-closed-fantasma)
+  - [3.8. Un caso de estudio: el Closed fantasma](#38-un-caso-de-estudio-el-closed-fantasma)
   - [3.9. La sesión en el navegador](#39-la-sesión-en-el-navegador)
   - [3.10. Desarrollo: dotnet watch y el manifiesto de assets](#310-desarrollo-dotnet-watch-y-el-manifiesto-de-assets)
   - [3.11. Cómo se prueba](#311-cómo-se-prueba)
-  - [3.12. Resumen del punto](#312-resumen-del-punto)
+  - [3.12. Decisiones, patrones y técnicas del punto](#312-decisiones-patrones-y-técnicas-del-punto)
 
 
 
@@ -18,7 +24,7 @@
 
 > 💡 **Punto de partida:** abres Discord en el navegador y, sin recargar la página, van cayendo los mensajes de tus compañeros. Nadie pulsa F5. La página "escucha" mientras tú haces otra cosa. ¿Cómo sabe una web que alguien ha escrito en el aula de al lado sin que tú le preguntes? Y aún más: esa misma web se acuerda de tu nick la próxima vez que la abras, ¿de dónde sale ese recuerdo si la web no tiene disco?
 
-Este punto es el hermano web del [cliente terminal](02-cliente-terminal.md): **mismo hub, mismos comandos, misma capa reactiva**, con dos piezas propias — Blazor WebAssembly y la estética de Discord en CSS puro— y un final de película: dos bugs reales que se cazaron probando la app de verdad, con sus arreglos.
+Este punto es el hermano web del [cliente terminal](02-cliente-terminal.md): **mismo hub, mismos comandos, misma capa reactiva**, con dos piezas propias — Blazor WebAssembly y la estética de Discord en CSS puro— y un final de película: dos casos de estudio que se cazaron probando la app de verdad, con sus arreglos.
 
 **Objetivos de aprendizaje:**
 
@@ -42,7 +48,7 @@ Antes de mirar una sola línea de código, conviene aterrizar la plataforma: est
 
 **WebAssembly (WASM)** es, junto a HTML y JavaScript, el tercer lenguaje del navegador: un formato **binario** que los navegadores ejecutan casi a velocidad nativo, dentro de una caja de arena (sandbox) sin acceso al disco ni al DOM. Desde 2017 lo soportan Chrome, Firefox, Edge y Safari.
 
-> 📌 **Ejemplo real:** Figma, la web de Photoshop y Google Earth se apoyan en WebAssembly para rendir en el navegador — tareas que antes solo JavaScript podía hacer hoy corren ahí dentro con código compilado.
+📌 **Ejemplo real:** Figma, la web de Photoshop y Google Earth se apoyan en WebAssembly para rendir en el navegador — tareas que antes solo JavaScript podía hacer hoy corren ahí dentro con código compilado.
 
 Blazor WebAssembly combina las dos cosas: el runtime de .NET (Mono) **compilado a WebAssembly** junto con tus DLLs. La primera vez que entras, el navegador descarga unos megas de runtime (el *splash* que verás en la 3.2) y a partir de ahí todo tu C# corre dentro de la pestaña:
 
@@ -51,7 +57,7 @@ flowchart TD
     P["Pestaña del navegador<br/>(corre TODO el cliente)"] --> R["Runtime .NET (Mono)<br/>ejecutado como WebAssembly"]
     R --> C["Tu C#: ChatStore, Rx,<br/>componentes y comandos"]
     P -->|"WebSocket (SignalR)"| H["Servidor 5030<br/>ChatHub + ChatStore"]
-    H --> F["Historial en SQLite<br/>(Fase 2, EF Core)"]
+    H --> F["Historial en SQLite<br/>(con EF Core)"]
 
     style P fill:#2196F3,color:#fff
     style R fill:#9C27B0,color:#fff
@@ -67,7 +73,7 @@ flowchart TD
 3. **Mismo modelo que ya conoces.** Componentes, inyección de dependencias, `ILogger<T>`, NUnit con Moq: lo aprendido en el servidor se traslada al cliente sin tener que aprender React o Vue por el camino.
 4. **Encaja con SignalR y Rx.NET.** El `HubConnection` de .NET y `System.Reactive` funcionan en la pestaña igual que en la terminal — el cliente puede "escuchar" sin que nadie pregunte, que es justo lo que pide este chat.
 
-> 📝 **Nota:** ¿y por no una SPA en JavaScript (React o Vue) o Blazor Server? JavaScript obligaría a dos lenguajes y a reescribir el parser de `Shared`; Blazor Server mantendría la interfaz en el servidor y perderíamos el cliente autónomo (con su `localStorage` y su CSS propio) que es la mitad interesante de este módulo. Todas son opciones válidas: esta es la que mejor encaja con los objetivos didácticos.
+> 📝 **Nota:** ¿y por qué no una SPA (*single-page application*, aplicación de una sola página) en JavaScript (React o Vue) o Blazor Server? JavaScript obligaría a dos lenguajes y a reescribir el parser de `Shared`; Blazor Server mantendría la interfaz en el servidor y perderíamos el cliente autónomo (con su `localStorage` y su CSS propio) que es la mitad interesante de este módulo. Todas son opciones válidas: esta es la que mejor encaja con los objetivos didácticos.
 
 Dos contras honestas que conviene conocer:
 
@@ -80,9 +86,9 @@ El cliente es una aplicación de Blazor WebAssembly (WASM) que corre en **su pro
 
 | Carpeta | Contenido | Ejemplo |
 |---------|-----------|---------|
-| `Components/Pages/` | Páginas con ruta (`@page`) | `Chat.razor` (la única) |
-| `Components/Layout/` | Esqueleto de la app | `MainLayout.razor` (columna vertebral de `100vh`) |
-| `Components/Shared/` | Trozos de interfaz | `PanelEntrada`, `BarraConexion`, `ListaCanales`, `ListaMensajes`, `ListaUsuarios`, `CajaMensaje`, `MensajeItem`, `Avatar` |
+| `Pages/` | Páginas con ruta (`@page`) | `Chat.razor` (la única) |
+| `Layout/` | Esqueleto de la app | `MainLayout.razor` (columna vertebral de `100vh`) |
+| `Shared/` | Trozos de interfaz | `PanelEntrada`, `BarraConexion`, `ListaCanales`, `ListaMensajes`, `ListaUsuarios`, `CajaMensaje`, `MensajeItem`, `Avatar` |
 | `State/` | Stores reactivas y sesión | `ChatStore`, `SesionStore`, `SesionGuardada` |
 | `Services/` | Lógica de servicio | `ProcesadorComandos`, `Storage/LocalStorageService` |
 | `Configuracion/` | Sección `Web` del appsettings | `WebConfig` (`UrlServidor`, `RecordarSesion`) |
@@ -96,12 +102,12 @@ El cliente es una aplicación de Blazor WebAssembly (WASM) que corre en **su pro
 La primera vez que entras, el navegador descarga unos megas de runtime: mientras tanto ves el **splash** que vive en `index.html` (`# AulaChatNet · Cargando el chat…` con su barra). Blazor vacía ese `div` en cuanto arranca y pinta la app encima. Ese mismo HTML trae dos joyas didácticas:
 
 - `#blazor-error-ui`: el aviso por si el runtime se cae en mitad de la sesión (con su botón Recargar).
-- Unas **funciones JavaScript de dos líneas** (`window.aulachat.abajo` y `window.aulachat.enfocar`) que la web llama desde C# con JSInterop para bajar el scroll de los mensajes y devolver el foco al cuadro de texto. Sin librerías: JavaScript puro donde JavaScript es la única salida (mover el DOM).
+- Unas **funciones JavaScript de dos líneas** (`window.aulachat.abajo` y `window.aulachat.enfocar`) que la web llama desde C# con JSInterop (el puente entre C# y JavaScript de Blazor) para bajar el scroll de los mensajes y devolver el foco al cuadro de texto. Sin librerías: JavaScript puro donde JavaScript es la única salida (mover el DOM).
 
 El `Program.cs` del cliente hace, en orden:
 
 1. **Lee la configuración** que el propio `WebAssemblyHostBuilder` ya cargó de `wwwroot/appsettings.json`. Ojo con el detalle de seguridad: en WASM **todo lo que aquí se lee viaja al navegador**, así que solo puede haber ajustes de presentación (canales, límites, URL del avatar) — nunca secretos. La validación real la hace el servidor.
-2. **Monta Serilog** con un solo sink: `BrowserConsole`, la pestaña "Console" de las herramientas de desarrollo del navegador. Un solo `Log.Logger` que ataca por estático y, además, se registra como provider para que las stores reciban su `ILogger<T>` por DI.
+2. **Monta Serilog** con un solo sink: `BrowserConsole`, la pestaña "Console" de las herramientas de desarrollo del navegador. Un solo `Log.Logger` que ataca por estático y, además, se registra como provider para que las stores reciban su `ILogger<T>` por DI (inyección de dependencias).
 3. **Calcula la URL del servidor**: `Web:UrlServidor` es la base del servidor (`http://localhost:5030`). Es imprescindible porque la web vive en **otro proceso y otro origen** que el servidor: sin esa URL la app buscaría el hub en el `5031` y no lo encontraría. El `HttpClient` del `GET /estadisticas` apunta ahí con un timeout corto de 3 segundos: la cifra de bienvenida es opcional, no puede frenar el arranque.
 4. **Registra los servicios** con `AddChatStores($"{baseServidor}{chat.HubRuta}")`: la URL del hub se compone desde la configuración, igual que en la terminal.
 
@@ -125,7 +131,7 @@ flowchart TD
 
 ## 3.4. La estética de Discord con CSS propio
 
-La regla de la casa: **CSS propio, sin librerías pesadas**, con TODOS los colores en variables de `:root` — si un día hay que cambiar la paleta, se toca un solo sitio. La paleta es la de Discord clásica: fondo `#36393f`, sidebar `#2f3136`, cabeceras `#202225`, input `#40444b`, acento *blurple* `#5865f2` y verde en línea `#43b581`.
+La convención del proyecto: **CSS propio, sin librerías pesadas**, con TODOS los colores en variables de `:root` — si un día hay que cambiar la paleta, se toca un solo sitio. La paleta es la de Discord clásica: fondo `#36393f`, sidebar `#2f3136`, cabeceras `#202225`, input `#40444b`, acento *blurple* `#5865f2` y verde en línea `#43b581`.
 
 El mapa de la interfaz (dos columnas, la regla del proyecto):
 
@@ -369,7 +375,7 @@ flowchart TD
 - **Reutilización**: `ListaMensajes` sirve en cualquier página; no pide parámetros a su padre, se suscribe a `Store.Mensajes`.
 - **Pruebas**: un componente se prueba solo, contra una `StoreFalsa` — no hace falta montar la página entera.
 - **Añadir componentes**: un nuevo panel (p. ej. estadísticas) se suscribe y listo; no hay que tocar la página ni tender cables.
-- **Menos bugs de desincronización**: si dos componentes muestran el nick, muestran el MISMO nick, porque leen de la misma fuente.
+- **Menos fallos de desincronización**: si dos componentes muestran el nick, muestran el MISMO nick, porque leen de la misma fuente.
 
 > 💡 **Consejo:** el único sitio donde SÍ se "pasan datos" es `Chat.razor`, y solo para decidir qué mitad pintar según `EnSesion` — que no es compartir estado, es consultar la puerta de entrada.
 
@@ -466,7 +472,7 @@ flowchart TD
     style Z fill:#607D8B,color:#fff
 ```
 
-Dos reglas de la casa, aplicadas al pie de la letra:
+Dos convenciones del proyecto, aplicadas al pie de la letra:
 
 - **Los errores de campo van junto al campo** (rojo bajo el cuadro): el texto está mal, no la conexión.
 - **Los fallos de conexión van al flujo de mensajes**: el campo estaba perfecto, lo que falla es el mundo.
@@ -513,7 +519,7 @@ Sesión guardada: Ana → #general
 
 > 💡 **Consejo:** añadir un comando nuevo es **tocar cuatro sitios y solo cuatro**: su `record` y su caso en el parser (Shared), su fila en el catálogo `AyudaComandos` (Shared), su caso en `ProcesarLinea` (terminal) y su caso en `ProcesadorComandos` (web). Las dos ayudas salen del catálogo, así que **nunca divergen**.
 
-## 3.8. Un bug real: el Closed fantasma
+## 3.8. Un caso de estudio: el Closed fantasma
 
 Al probar la web en el navegador con dos pestañas (mismo nick "Ambas dicen llamarse Ana"), el servidor rechazó correctamente el segundo alta — pero **en la consola del navegador aparecía un warning fantasma**: `Conexión perdida de forma inesperada…`, justo después del aviso legítimo del rechazo. El servidor estaba en lo cierto, el cliente mentía.
 
@@ -556,7 +562,7 @@ Blazor WASM emite un **manifiesto de assets** con los hashes de todos los ficher
 
 La solución, en dos mitades:
 
-1. **`dotnet watch --project AulaChatNet.Client.Blazor`** en desarrollo: al tocar cualquier fichero del cliente, watch reconstruye y **relanza su DevServer** — el manifiesto nuevo se lee en el arranque limpio. Fíjate en el proyecto: el servidor ya no interviene, es agnóstico y no sirve la web, así que hacer watch sobre él no arreglaría nada.
+1. **`dotnet watch --project AulaChatNet.Client.Web`** en desarrollo: al tocar cualquier fichero del cliente, watch reconstruye y **relanza su DevServer** — el manifiesto nuevo se lee en el arranque limpio. Fíjate en el proyecto: el servidor ya no interviene, es agnóstico y no sirve la web, así que hacer watch sobre él no arreglaría nada.
 2. **La caché la resuelve el propio DevServer.** Medido en el `5031`: `GET /index.html` devuelve `Cache-Control: no-cache` de serie, así que el navegador pide siempre la última versión sin necesidad de ningún middleware propio.
 
 > 📝 **Nota:** este es un cambio de modelo respecto a lo que documentaba esta guía al principio. Antes el servidor del `5030` alojaba la web y había que añadirle a mano un middleware `no-cache` y hacer watch sobre él. Con el servidor agnóstico, la web tiene su proceso y sus problemas de desarrollo propios, resueltos por su propia herramienta.
@@ -576,15 +582,36 @@ La web tiene su propia suite (bUnit + NUnit + FluentAssertions + Moq), con el mi
 | `ListaUsuariosTests` / `MensajeItemTests` / `AvatarTests` | Filas de conectados, mensajes (sistema vs normal, hora local) y avatares con respaldo |
 | `ChatTests` | La página cambia de mitad según `EnSesion` |
 | `CajaMensajeTests` | Validación de campo, envío y **despacho de comandos** |
-| `ProcesadorComandosTests` | Los comandos: avisos correctos, validación de canal, `/sesion`, `/salir`, y de la Fase 3 el `/privado` y el `/reaccion` (objetivo, validación sin red y traducción de errores) |
+| `ProcesadorComandosTests` | Los comandos: avisos correctos, validación de canal, `/sesion`, `/salir`, y también el `/privado` y el `/reaccion` (objetivo, validación sin red y traducción de errores) |
 
 El truco de los tests de componentes es la **`StoreFalsa`**: en lugar de una conexión a SignalR real, expone `BehaviorSubject` que el test "menea" para simular lo que llegaría del servidor, y deja verificar las llamadas con Moq. A un componente no le importa de dónde vienen los datos: **le importa cómo los pinta y qué le dice al pulsar**. Los "valores actuales" (`Canal`, `EstadoValor`…) se resuelven en el momento de la llamada contra el sujeto correspondiente, así que "menear" el flujo desde el test se refleja al instante.
 
 > 📝 **Nota:** un detalle de Moq aprendido a golpe: `It.Is<T>(x => x is Tipo)` no compila (CS8122) porque los árboles de expresión no admiten `is`; en su lugar se verifica sobre `_procesador.Invocations[0].Arguments[0]`, que es lo que de verdad se invocó.
 
-Y más allá de los tests unitarios, la verificación de esta fase se hizo en **navegador de verdad** contra el servidor real: los comandos de la época (los 9 de la Fase 1) tecleados en la caja (incluido `/limpiar` con sus 6 mensajes borrados y `/salir` volviendo al panel) y la carrera del nick duplicado con dos pestañas. La misma filosofía que en la terminal: **probar la app como la usaría el alumno**.
+Y más allá de los tests unitarios, la verificación de esta versión se hizo en **navegador de verdad** contra el servidor real: los comandos de la época (los 9 originales) tecleados en la caja (incluido `/limpiar` con sus 6 mensajes borrados y `/salir` volviendo al panel) y la carrera del nick duplicado con dos pestañas. La misma filosofía que en la terminal: **probar la app como la usaría el alumno**.
 
-## 3.12. Resumen del punto
+> 📝 **Nota (evolución):** con los dos clientes listos sobre el mismo hub, abrió el siguiente capítulo la persistencia: sacar el historial de las `ConcurrentDictionary` a una base de datos real (SQLite + EF Core, Entity Framework Core) **sin tocar el hub ni la lógica de los clientes**. Y así salió: el contrato ya estaba hecho y no hubo que moverlo — la web sigue suscribiéndose a `MensajeNuevo` y pidiendo el historial exactamente igual que cuando todo vivía en memoria, solo que ahora ese historial procede de SQLite. El detalle de las decisiones y de sus trampas, en [4. La persistencia con SQLite](04-persistencia.md).
+
+> 📝 **Nota:** el boceto previo de estas vistas sigue disponible en [`docs/boceto-vistas.html`](boceto-vistas.html), por si quieres comparar el dibujo con lo que acabó saliendo.
+
+## 3.12. Decisiones, patrones y técnicas del punto
+
+La web es el cliente con más piezas móviles, y cada una es una decisión que volverás a tomar en cualquier SPA. El resumen, para la cabeza:
+
+| Patrón o técnica | Dónde vive en AulaChatNet | La lección transferible |
+|------------------|---------------------------|-------------------------|
+| Blazor WebAssembly | El cliente corre entero en la pestaña (runtime .NET + DLLs) | Un lenguaje y un modelo en los dos extremos; el navegador es solo un ejecutor más |
+| Store central (fuente única de verdad) | `ChatStore` con `BehaviorSubject`, al estilo de Redux o Pinia | Ningún componente calcula: lee el estado. Adiós a los "saltos" de datos |
+| Propiedades y eventos | Componentes que solo reciben datos por arriba y emiten eventos | La flecha nunca va al revés: la interfaz baja, los hechos suben |
+| Interfaz con CSS propio | Paleta de Discord escrita a mano, sin librerías de estilos | Aprender a componer interfaz sin un framework que tape el HTML |
+| JSInterop mínimo | Dos funciones de JavaScript para scroll y foco | JavaScript solo donde es la única salida: mover el DOM |
+| Fallo seguro en el almacenamiento | `SesionStore` traduce cualquier `JSException` en "no hay sesión" | Una app no se tumbe por un dato de confort: degrada y sigue |
+| Configuración solo de presentación | `wwwroot/appsettings.json` sin secretos | Todo lo que viaja al cliente es público: la seguridad se decide en el servidor |
+| Pruebas sin navegador | Stores y `ProcesadorComandos` con Moq y bUnit | Separa lógica de presentación y el navegador deja de ser requisito para testear |
+
+---
+
+**Resumen del punto:**
 
 | Concepto | Qué retener |
 |----------|-------------|
@@ -597,12 +624,10 @@ Y más allá de los tests unitarios, la verificación de esta fase se hizo en **
 | Reconexión | El transporte vuelve solo; el ALTA se reenvía con `ReenviarAltaAsync` — sin eso, "conectado de escayola" |
 | Comandos | Mismo parser (`Shared`) y mismo catálogo (`AyudaComandos`); ejecución en `ProcesadorComandos`; feedback por el flujo de mensajes |
 | Errores | De campo → junto al campo; de conexión → al flujo de mensajes; nunca tipos de excepción en pantalla |
-| Bug Closed | SignalR entrega `Closed` tarde: el flag de cierre se resetea al INICIAR la siguiente conexión, nunca al cerrar |
+| Fallo Closed | SignalR entrega `Closed` tarde: el flag de cierre se resetea al INICIAR la siguiente conexión, nunca al cerrar |
 | Sesión | `localStorage` clave `aulachat.sesion`; un navegador bloqueado no rompe nada |
-| Desarrollo | `dotnet watch --project AulaChatNet.Client.Blazor` (reconstruye y relanza su DevServer) — el manifiesto se lee al arrancar |
+| Desarrollo | `dotnet watch --project AulaChatNet.Client.Web` (reconstruye y relanza su DevServer) — el manifiesto se lee al arrancar |
 | Pruebas | Stores con red de verdad y componentes contra `StoreFalsa` con sujetos "meneables" |
 | CSS | Propio, con variables en `:root`; paleta Discord clásica; avatares DiceBear con respaldo de iniciales |
 
-> 📝 **Nota (evolución de la Fase 2):** con los dos clientes listos sobre el mismo hub, la Fase 2 abrió el siguiente capítulo: sacar el historial de las `ConcurrentDictionary` a una base de datos real (SQLite + EF Core) **sin tocar el hub ni la lógica de los clientes**. Y así salió: el contrato ya estaba hecho y no hubo que moverlo — la web sigue suscribiéndose a `MensajeNuevo` y pidiendo el historial exactamente igual que en la Fase 1, solo que ahora ese historial procede de SQLite. El detalle de las decisiones y de sus trampas, en [4. La persistencia con SQLite](04-persistencia.md).
-
-> 📝 **Nota:** el boceto previo de estas vistas sigue disponible en [`docs/boceto-vistas.html`](boceto-vistas.html), por si quieres comparar el dibujo con lo que acabó saliendo.
+**Anterior:** [2. El cliente terminal](02-cliente-terminal.md) · **Índice:** [README](../README.md)

@@ -1,5 +1,5 @@
 - [12. El cliente de escritorio (WPF + Blazor Hybrid)](#12-el-cliente-de-escritorio-wpf--blazor-hybrid)
-  - [12.1. Qué es Blazor Hybrid y por qué un tercer cliente](#121-qués-es-blazor-hybrid-y-por-qué-un-tercer-cliente)
+  - [12.1. Qué es Blazor Hybrid y por qué un tercer cliente](#121-qué-es-blazor-hybrid-y-por-qué-un-tercer-cliente)
   - [12.2. Crear el proyecto paso a paso](#122-crear-el-proyecto-paso-a-paso)
   - [12.3. Qué hay dentro del proyecto](#123-qué-hay-dentro-del-proyecto)
   - [12.4. El arranque: de App.xaml.cs a la ventana con chat](#124-el-arranque-de-appxamlcs-a-la-ventana-con-chat)
@@ -8,25 +8,27 @@
   - [12.7. Guardar la sesión sin navegador](#127-guardar-la-sesión-sin-navegador)
   - [12.8. Recursos estáticos: cada host sirve lo suyo](#128-recursos-estáticos-cada-host-sirve-lo-suyo)
   - [12.9. Logging sin consola: Serilog a fichero](#129-logging-sin-consola-serilog-a-fichero)
-  - [12.10. Cómo se prueba](#1210-cómo-se-prueba)
-  - [12.11. Resumen del punto](#1211-resumen-del-punto)
+  - [12.10. La bandeja del sistema: la X no mata la app](#1210-la-bandeja-del-sistema-la-x-no-mata-la-app)
+  - [12.11. Cómo se prueba](#1211-cómo-se-prueba)
+  - [12.12. Decisiones, patrones y técnicas del punto](#1212-decisiones-patrones-y-técnicas-del-punto)
 
 
 # 12. El cliente de escritorio (WPF + Blazor Hybrid)
 
-> 💡 **Punto de partida:** has creado el chat de Discord del aula, y funciona… pero tus alumnos lo ven **en el navegador**, colgado de una pestaña que se puede cerrar sin querer. Si abres Discord de verdad en Windows, ves una **ventana** con su icono en la barra de tareas, que se puede maximizar, cerrar con la X y arrancar con doble clic desde el escritorio. ¿Se puede hacer lo mismo con *nuestro* chat sin reescribir toda la interfaz? ¿Y si te digo que la misma carpeta `Components/` con los mismos `.razor` puede correr dentro de una ventana WPF?
+> 💡 **Punto de partida:** has creado el chat de Discord del aula, y funciona… pero tus alumnos lo ven **en el navegador**, colgado de una pestaña que se puede cerrar sin querer. Si abres Discord de verdad en Windows, ves una **ventana** con su icono en la barra de tareas, que se puede maximizar, cerrar con la X y arrancar con doble clic desde el escritorio. ¿Se puede hacer lo mismo con *nuestro* chat sin reescribir toda la interfaz? ¿Y si te digo que los mismos `.razor` de la librería pueden correr dentro de una ventana WPF?
 
-Este punto cierra la fase de clientes: después de extraer toda la UI a la librería compartida `AulaChatNet.Client.Web`, aquí la **reutilizamos de verdad** en un cliente de escritorio. Lo haremos como se hace en clase: **paso a paso, desde un proyecto vacío hasta la ventana con el chat en marcha**, entendiendo en cada paso de dónde salen los ficheros, por qué no hace falta CORS y qué hacer cuando una aplicación "sin navegador" necesita guardar datos en local.
+Este punto cierra los clientes de la solución: después de extraer toda la UI a la librería `AulaChatNet.Client.Blazor.Components`, aquí la **reutilizamos de verdad** en un cliente de escritorio. Lo haremos como se hace en clase: **paso a paso, desde un proyecto vacío hasta la ventana con el chat en marcha**, entendiendo en cada paso de dónde salen los ficheros, por qué no hace falta CORS, qué hacer cuando una aplicación "sin navegador" necesita guardar datos en local y cómo se comporta la app cuando el usuario pulsa la X.
 
 **Objetivos de aprendizaje:**
 
 - Situar los tres modelos de Blazor (Server, WebAssembly y Hybrid) y decidir cuál encaja para un cliente de escritorio
-- Crear el proyecto paso a paso: SDK Razor, paquetes NuGet, `wwwroot` propio y la ventana XAML con su `BlazorWebView`
+- Crear el proyecto paso a paso: SDK Razor, paquetes NuGet, `wwwroot` propio y la ventana XAML (el lenguaje de marcado de WPF) con su `BlazorWebView`
 - Seguir el arranque completo desde `App.OnStartup` hasta la ventana mostrando el chat
 - Explicar de dónde salen el HTML, el CSS y el JS **sin servidor detrás** (el origen virtual `https://0.0.0.1/`)
 - Entender qué puede pedirle JavaScript a WebView2 y qué no: el interop funciona para los **componentes**, no para todo el proceso
 - Aplicar el patrón **mismo contrato, implementación por host** para guardar la sesión en un fichero en lugar de en el `localStorage`
 - Saber qué recursos estáticos tiene que servir cada host y comprobarlo con la lista de humo
+- Comportarse como una app de escritorio de verdad: barra de título propia estilo Discord, paso a la bandeja del sistema al cerrar la ventana y salida solo desde el menú de la bandeja
 
 ## 12.1. Qué es Blazor Hybrid y por qué un tercer cliente
 
@@ -38,11 +40,11 @@ Blazor tiene **tres formas de vivir**, y la tercera es la que nos ocupa:
 | Blazor WebAssembly (nuestro [cliente web](03-cliente-blazor.md)) | Dentro del navegador | El navegador descarga tu código y lo ejecuta él mismo |
 | **Blazor Hybrid (este punto)** | **Dentro de una app nativa** | Un control **WebView2** (el motor de Edge) embebido en la ventana pinta el DOM que tu C# le manda |
 
-**Blazor Hybrid** no compila a WebAssembly ni necesita servidor: monta tus componentes Razor en un **navegador embebido** — `WebView2`, el componente de Chromium que Windows trae de serie desde Windows 11 — dentro de una app de escritorio (WPF, WinForms) o móvil (MAUI). La diferencia clave con la web es **de dónde salen los ficheros**: en WASM los descarga un servidor; aquí salen del propio `.exe`, sin red de por medio.
+**Blazor Hybrid** no compila a WebAssembly ni necesita servidor: monta tus componentes Razor en un **navegador embebido** — `WebView2`, el componente de Chromium que Windows trae de serie desde Windows 11 — dentro de una app de escritorio (WPF, WinForms) o móvil (MAUI, .NET *Multi-platform App UI*). La diferencia clave con la web es **de dónde salen los ficheros**: en WASM los descarga un servidor; aquí salen del propio `.exe`, sin red de por medio.
 
-> 📌 **Ejemplo real:** las apps de escritorio de Teams, Spotify o Steam no son "webs guardadas": son ventanas nativas con un motor web dentro. Blazor Hybrid hace lo mismo, pero **reutilizando tu C# y tus componentes Razor**, no reescribiéndolos en JavaScript como hace Electron.
+📌 **Ejemplo real:** las apps de escritorio de Teams, Spotify o Steam no son "webs guardadas": son ventanas nativas con un motor web dentro. Blazor Hybrid hace lo mismo, pero **reutilizando tu C# y tus componentes Razor**, no reescribiéndolos en JavaScript como hace Electron.
 
-**¿Por qué este cliente y no otro lenguaje?** Porque ya extrajimos toda la UI a `AulaChatNet.Client.Web` *pensando* en esto: los componentes, las stores reactivas, el `ProcesadorComandos` y hasta el CSS son **exactamente los mismos**. El cliente de escritorio es, en esencia, un `MainWindow.xaml` con un `BlazorWebView` dentro y un `App.xaml.cs` que registra los mismos servicios. Si mañana sale un cuarto cliente (MAUI, por ejemplo), repite el patrón.
+**¿Por qué este cliente y no otro lenguaje?** Porque ya extrajimos toda la UI a `AulaChatNet.Client.Blazor.Components` —nuestra **RCL**, del inglés *Razor Class Library*, librería de clases Razor— *pensando* en esto: los componentes, las stores reactivas, el `ProcesadorComandos` y hasta el CSS son **exactamente los mismos**. El cliente de escritorio es, en esencia, un `MainWindow.xaml` con un `BlazorWebView` dentro y un `App.xaml.cs` que registra los mismos servicios. Si mañana sale un cuarto cliente (MAUI, por ejemplo), repite el patrón.
 
 > 📝 **Nota:** ¿y no valdría **Electron.NET** (la web dentro de Node.js)? Es una opción real, pero pesa cada ventana cientos de MB (trae su propio Chromium y Node), obliga a mantener dos mundos de dependencias y se aleja del "100% .NET" del módulo. Blazor Hybrid usa el WebView2 que **ya está en Windows**: el `.exe` pesa lo que pesa tu app.
 
@@ -89,8 +91,9 @@ Junto al SDK van dos propiedades que **no son cosméticas**:
 | `Microsoft.AspNetCore.Components.WebView.Wpf` | El control `BlazorWebView`, el runtime embebido y el puente de JSInterop |
 | `Microsoft.Extensions.Configuration.Json` + `.Binder` | Leer `appsettings.json` del disco |
 | `Serilog` + `Serilog.Sinks.File` + `Serilog.Extensions.Logging` | Logging a fichero (la 12.9) |
+| `H.NotifyIcon.Wpf` | El icono y el menú de la bandeja del sistema (la 12.10) |
 
-**Paso 4 — Las referencias de proyecto**: `AulaChatNet.Client.Web` (¡toda la UI!) y `AulaChatNet.Shared` (contratos y constantes). Cero UI duplicada.
+**Paso 4 — Las referencias de proyecto**: `AulaChatNet.Client.Blazor.Components` (¡toda la UI!) y `AulaChatNet.Shared` (contratos y constantes). Cero UI duplicada.
 
 **Paso 5 — El `wwwroot` del host.** Cada app necesita su `index.html` (el marco que el WebView2 carga). El nuestro es casi idéntico al de la web, con dos detalles propios de Hybrid:
 
@@ -99,7 +102,7 @@ Junto al SDK van dos propiedades que **no son cosméticas**:
 <div id="blazor-error-ui" data-nosnippet>Ha ocurrido un error no controlado. …</div>
 
 <!-- La UI de la librería: mismo fichero que la web, ruta _content/... -->
-<script src="_content/AulaChatNet.Client.Web/js/aulachat.js"></script>
+<script src="_content/AulaChatNet.Client.Blazor.Components/js/aulachat.js"></script>
 <!-- OJO al nombre: webview, NO webassembly: no hay runtime wasm que descargar -->
 <script src="_framework/blazor.webview.js"></script>
 ```
@@ -108,23 +111,40 @@ Junto al SDK van dos propiedades que **no son cosméticas**:
 
 **Paso 6 — El `appsettings.json` al lado del ejecutable.** No hay servidor que lo sirva: viaja con el `.exe` (`CopyToOutputDirectory`). Contiene las secciones `Chat` y `Web` de siempre.
 
-**Paso 7 — La ventana.** Todo el `MainWindow.xaml` se reduce a esto:
+**Paso 7 — La ventana.** Todo el `MainWindow.xaml` se reduce a dos piezas: la barra de título propia (estilo Discord, la 12.10) y el navegador embebido a sangre:
 
 ```xml
 <Window x:Class="AulaChatNet.Client.Wpf.MainWindow"
         Title="AulaChatNet"
-        Background="#36393f" …>
-    <blazor:BlazorWebView x:Name="Navegador" HostPage="wwwroot/index.html">
-        <blazor:BlazorWebView.RootComponents>
-            <!-- El #app del index.html lo pinta el App.razor DE LA RCL -->
-            <blazor:RootComponent Selector="#app"
-                                  ComponentType="{x:Type componentes:App}" />
-        </blazor:BlazorWebView.RootComponents>
-    </blazor:BlazorWebView>
+        Background="#36393f"
+        Closing="AlCerrarVentana">
+
+    <!-- Barra de título PROPIA: tapa la de Windows pero conserva
+         arrastre, redimensionado y doble clic para maximizar -->
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="38"
+                      ResizeBorderThickness="6"
+                      GlassFrameThickness="0"
+                      CornerRadius="0"
+                      UseAeroCaptionButtons="False" />
+    </WindowChrome.WindowChrome>
+
+    <Grid>
+        <!-- Fila 1: icono + "AulaChatNet" + minimizar + X (los botones
+             necesitan WindowChrome.IsHitTestVisibleInChrome, la 12.10) -->
+        <!-- Fila 2: -->
+        <blazor:BlazorWebView x:Name="Navegador" HostPage="wwwroot/index.html">
+            <blazor:BlazorWebView.RootComponents>
+                <!-- El #app del index.html lo pinta el App.razor DE LA RCL -->
+                <blazor:RootComponent Selector="#app"
+                                      ComponentType="{x:Type componentes:App}" />
+            </blazor:BlazorWebView.RootComponents>
+        </blazor:BlazorWebView>
+    </Grid>
 </Window>
 ```
 
-`HostPage` es el HTML "embebido" (el del paso 5) y el selector `#app` monta el `App.razor` de la librería compartida: **la misma UI que la web, dentro de una ventana**.
+`HostPage` es el HTML "embebido" (el del paso 5) y el selector `#app` monta el `App.razor` de la librería compartida: **la misma UI que la web, dentro de una ventana**. Y ojo al atributo `Closing`: la X de esta ventana no cierra la app, la manda a la bandeja del sistema (la 12.10).
 
 ## 12.3. Qué hay dentro del proyecto
 
@@ -132,11 +152,12 @@ Junto al SDK van dos propiedades que **no son cosméticas**:
 
 | Carpeta o fichero | Contenido | Detalle |
 |-------------------|-----------|---------|
-| `App.xaml.cs` | El arranque entero | Serilog, red de seguridad de excepciones, configuración del disco, servicios y ventana |
-| `MainWindow.xaml(.cs)` | La ventana | El `BlazorWebView` (llamado `Navegador`): en el constructor recibe `App.Servicios` y comprueba que exista WebView2 |
+| `App.xaml.cs` | El arranque entero | Serilog, redes de seguridad de excepciones, configuración del disco, servicios, ventana y salida ordenada |
+| `MainWindow.xaml(.cs)` | La ventana | Barra de título propia con `WindowChrome` y el `BlazorWebView` (llamado `Navegador`): recibe `App.Servicios`, comprueba WebView2 y gestiona la X (bandeja) |
 | `Configuracion/` | `SerilogConfig.cs` | Solo fichero, en `%LOCALAPPDATA%\AulaChatNet\logs\` |
-| `Infrastructures/` | `ServicesConfig.AddClienteWpf(...)` | El mismo esqueleto de DI que la web, con un `Replace` (la 12.5) |
-| `Services/` | `FileStorageService` | `ILocalStorageService` persistido en un fichero JSON (la 12.7) |
+| `Infrastructures/` | `ServicesConfig.AddClienteWpf(...)` | El mismo esqueleto de DI que la web, con un `Replace` (la 12.5) y la bandeja |
+| `Recursos/` | `EstilosDiscord.xaml` | Paleta Discord congelada y los estilos `BotonTitulo`, `BotonTituloCerrar`, `MenuBandeja` e `ItemMenuBandeja` (la 12.10) |
+| `Services/` | `FileStorageService`, `BandejaService`, `PreferenciasBandeja` | Sesión en fichero (la 12.7) y bandeja del sistema (la 12.10) |
 | `wwwroot/` | `index.html` + `resources/icon-app.png` | El HTML del BlazorWebView y **el icono servible** (la 12.8) |
 | `appsettings.json` | Secciones `Chat` y `Web` | **Viaja al lado del `.exe`**: no hay servidor que lo sirva |
 
@@ -154,7 +175,7 @@ catch (WebView2RuntimeNotFoundException)
 }
 ```
 
-> ⚠️ **Advertencia:** el `wwwroot` del host WPF es **el suyo**: la RCL pone lo suyo bajo `_content/AulaChatNet.Client.Web/...`, pero cualquier fichero que tus componentes referencien **por ruta relativa** (como `resources/icon-app.png`, que se escribe igual en la web y aquí) tiene que existir también en el `wwwroot` del host. Olvidarlo da un 404 y una imagen rota — lo vemos en la 12.8.
+> ⚠️ **Advertencia:** el `wwwroot` del host WPF es **el suyo**: la RCL pone lo suyo bajo `_content/AulaChatNet.Client.Blazor.Components/...`, pero cualquier fichero que tus componentes referencien **por ruta relativa** (como `resources/icon-app.png`, que se escribe igual en la web y aquí) tiene que existir también en el `wwwroot` del host. Olvidarlo da un 404 y una imagen rota — lo vemos en la 12.8.
 
 ## 12.4. El arranque: de App.xaml.cs a la ventana con chat
 
@@ -163,7 +184,7 @@ catch (WebView2RuntimeNotFoundException)
 ```mermaid
 flowchart TD
     A["OnStartup"] --> B["Serilog a FICHERO<br/>(%LOCALAPPDATA%)"]
-    B --> C["AppDomain.UnhandledException<br/>red de seguridad"]
+    B --> C["Redes de seguridad<br/>Dispatcher + AppDomain"]
     C --> D["ConfigurationBuilder:<br/>appsettings.json DEL DISCO"]
     D --> E["ServiceCollection:<br/>AddWpfBlazorWebView + logging<br/>+ AddClienteWpf(config)"]
     E --> F["BuildServiceProvider → App.Servicios"]
@@ -193,9 +214,9 @@ Cuatro ideas de ese arranque:
    Navegador.Services = App.Servicios;
    ```
 
-4. **La red de seguridad** (`AppDomain.UnhandledException`) deja constancia en el log antes de morir: un `.exe` sin consola no puede permitirse fallar en silencio.
+4. **Dos redes de seguridad**: `AppDomain.UnhandledException` deja constancia de un fallo de proceso antes de morir; `DispatcherUnhandledException` cubre la INTERFAZ — un fallo al pintar o al abrir un menú (el de la bandeja, por ejemplo) se registra y se sigue (`args.Handled = true`), porque una app de escritorio no se tumba por un error de UI.
 
-Y al salir, `OnExit` hace `Log.CloseAndFlush()` para no perder los últimos eventos del fichero.
+Y al salir, `OnExit` libera el contenedor (`Servicios?.Dispose()`, que entre otros libera el servicio de bandeja y **retira su icono**) y cierra Serilog con `Log.CloseAndFlush()` para no perder los últimos eventos del fichero.
 
 ## 12.5. El mismo esqueleto de DI, con una diferencia
 
@@ -207,6 +228,7 @@ Y al salir, `OnExit` hace `Log.CloseAndFlush()` para no perder los últimos even
 | CORS | Imprescindible | **No aplica** | No hay navegador de verdad: el `HubConnection` es el de .NET, sin política de origen |
 | `appsettings.json` | Lo sirve el DevServer | Al lado del `.exe` | Disco local |
 | Almacenamiento de sesión | `LocalStorageService` (JS) | `FileStorageService` (fichero) | La 12.7 |
+| Bandeja del sistema | No aplica (una pestaña no tiene bandeja) | `IBandejaService` + `PreferenciasBandeja` | La 12.10 |
 
 Ese último `Replace` merece una segunda lectura porque es **arquitectura, no apaño**: la RCL registra `ILocalStorageService → LocalStorageService` (navegador), y el host WPF **sustituye** esa implementación por la suya:
 
@@ -216,6 +238,8 @@ services.Replace(ServiceDescriptor
 ```
 
 Ni `SesionStore` ni los componentes se enteran: reciben el mismo contrato y la política de "recordar al usuario" sigue viva en escritorio. Misma abstracción, implementación por host — el patrón de toda la vida de la inyección de dependencias.
+
+Y como la ventana necesita su icono de bandeja, `AddClienteWpf` registra además `IBandejaService → BandejaService` y la `PreferenciasBandeja` (la 12.10): los dos son *singletons*, como todo lo que vive mientras la app está abierta.
 
 ## 12.6. De dónde salen el HTML, el CSS y el JS
 
@@ -247,13 +271,13 @@ Con el nivel Debug de Serilog se ve el espectáculo completo en el log:
 ```
 
 - El `https://0.0.0.1/` es un **origen virtual**: no hay servidor escuchando, el `StaticContentProvider` del control intercepta las peticiones y responde desde el `wwwroot` del `.exe` (el suyo + los `_content/...` de la RCL).
-- Los estáticos de la RCL (`app.css`, `aulachat.js`, `blazor.webview.js`) salen igual que en la web, con la misma ruta `_content/AulaChatNet.Client.Web/...`.
+- Los estáticos de la RCL (`app.css`, `aulachat.js`, `blazor.webview.js`) salen igual que en la web, con la misma ruta `_content/AulaChatNet.Client.Blazor.Components/...`.
 
 **¿Y el JavaScript?** Aquí hay una idea central de Blazor Hybrid: *en este proceso no hay un navegador "haciendo lo suyo", hay un motor pintando lo que los componentes le mandan*. Consecuencias prácticas, en orden de lo que funciona a lo que no:
 
 1. **Tu JS de UI (`aulachat.js`) funciona igual**: hay DOM de verdad (scroll, foco, parpadeo de pestaña…).
 2. **El JSInterop desde un componente funciona**: el `BlazorWebView` cablea el `IJSRuntime` del ámbito en el que renderiza — por eso `LocalStorageService` (usado por `PanelEntrada`) funcionaría si lo llamaras desde ahí.
-3. **El JSInterop desde fuera de ese ámbito NO**: el `IJSRuntime` de Hybrid es *scoped* y solo la instancia de los componentes está cableada; cualquier otro consumidor (por ejemplo, una store singleton resuelta desde la raíz del contenedor) recibe una instancia «en el aire» y la primera llamada lanza:
+3. **El JSInterop desde fuera de ese ámbito NO**: el `IJSRuntime` de Hybrid es *scoped* y solo la instancia de los componentes está cableada; cualquier otro consumidor (por ejemplo, una store singleton resuelta desde la raíz del contenedor) recibe una instancia "en el aire" y la primera llamada lanza:
 
    ```text
    InvalidOperationException: Cannot invoke JavaScript outside of a WebView context.
@@ -299,7 +323,7 @@ Si aun así sustituyeras el registro por el `LocalStorageService` de navegador (
 - **La sesión nunca puede tumbar el chat**: `SesionStore` captura cualquier excepción en sus tres métodos; si la sesión no se puede leer, se empieza de cero, y si no se puede guardar, se avisa pero la app sigue.
 - **No se arregla bajando el ámbito a *scoped***: las stores son *singletons* a propósito (una por ventana) y el `ProcesadorComandos` las consume; bajarles el ámbito contagiaría medio grafo de DI para parchear un síntoma. La implementación por host ataca la causa.
 
-> 💡 **Consejo:** con la app cerrada, abre `almacenamiento.json` con cualquier editor: verás `{"aulachat.sesion":{"Nick":"...","Canal":"#general"}}`. «¿No eres tú? Borrar sesión» lo vuelve a dejar vacío.
+> 💡 **Consejo:** con la app cerrada, abre `almacenamiento.json` con cualquier editor: verás `{"aulachat.sesion":{"Nick":"...","Canal":"#general"}}`. "¿No eres tú? Borrar sesión" lo vuelve a dejar vacío.
 
 ## 12.8. Recursos estáticos: cada host sirve lo suyo
 
@@ -307,8 +331,8 @@ La regla, en una frase: **lo que la UI pida por ruta relativa debe existir en el
 
 | Recurso | ¿Quién lo sirve? | Dónde vive |
 |---------|------------------|------------|
-| `css/app.css`, `js/aulachat.js` (de la RCL) | Cualquier host, por la ruta `_content/AulaChatNet.Client.Web/...` | En el propio ensamblado de la RCL: no hay que copiar nada |
-| `resources/icon-app.png` (ruta relativa escrita en los componentes) | El host concreto | En su `wwwroot`: `Client.Blazor/wwwroot/resources/` **y** `Client.Wpf/wwwroot/resources/` |
+| `css/app.css`, `js/aulachat.js` (de la RCL) | Cualquier host, por la ruta `_content/AulaChatNet.Client.Blazor.Components/...` | En el propio ensamblado de la RCL: no hay que copiar nada |
+| `resources/icon-app.png` (ruta relativa escrita en los componentes) | El host concreto | En su `wwwroot`: `Client.Web/wwwroot/resources/` **y** `Client.Wpf/wwwroot/resources/` |
 | `favicon.ico` | El host | Su `wwwroot`; si falta, el `StaticContentProvider` responde con el `index.html` (fallback) y no se entera nadie |
 
 Si falta un fichero servible, el `LogDebug` lo dice sin ambigüedad (`Handling web request ... 404`) y el síntoma a pantalla es una imagen rota. Por eso la copia del icono maestro (`resources/icon-app.png` de la raíz) está en **cada** host: mismo origen, misma carpeta relativa, un fichero por app.
@@ -321,16 +345,119 @@ Un `.exe` de Windows arrancado con doble clic **no tiene consola**: `WriteTo.Con
 
 > 📝 **Nota:** y no es capricho, es coherente con todo el punto: si la web loguea a la consola del navegador porque *ahí* hay consola, el escritorio loguea a fichero porque *ahí* hay disco. Cada host usa el medio que tiene.
 
-## 12.10. Cómo se prueba
+## 12.10. La bandeja del sistema: la X no mata la app
 
-Como en todo el proyecto, lo automatizable va a tests (`AulaChatNet.Client.Wpf.Tests`, hoy **14**):
+Si usas Discord de escritorio sabes que la X no lo cierra: la ventana desaparece, pero en la bandeja de Windows queda su icono y el chat sigue escuchando. Ese es el comportamiento de una app de escritorio de verdad — Discord, Slack y Steam lo hacen así —, y el nuestro también: **la ventana es la cara visible; el proceso es el chat, y el chat no muere porque cierres la cara**.
+
+El paquete que lo permite es **`H.NotifyIcon.Wpf`** (versión `2.4.1`, fijada en `Directory.Packages.props`): aporta el `TaskbarIcon` de bandeja, su menú contextual y las burbujas. No usamos el histórico Hardcodet.NotifyIcon porque lleva sin publicarse desde 2013.
+
+📌 **Ejemplo real:** Discord. Pulsa la X y mira la bandeja: el icono sigue ahí, las menciones siguen llegando y un doble clic devuelve la ventana como si nunca se hubiera ido.
+
+**La barra de título no es de Windows.** Para que la ventana parezca de Discord (y para controlar la X), la barra de título es NUESTRA: `WindowChrome` tapa la nativa pero conserva el arrastre, el borde de redimensionado y los atajos del sistema:
+
+```xml
+<WindowChrome.WindowChrome>
+    <WindowChrome CaptionHeight="38"
+                  ResizeBorderThickness="6"
+                  GlassFrameThickness="0"
+                  CornerRadius="0"
+                  UseAeroCaptionButtons="False" />
+</WindowChrome.WindowChrome>
+```
+
+La fila de arriba (`#202225`) lleva el icono, el título "AulaChatNet" y a la derecha los botones de minimizar y cerrar (la X se pone roja al pasar el ratón). Ojo con un detalle que costó encontrar: **los 38 px de `CaptionHeight` son zona NO cliente de Windows**, y lo que se ponga encima no recibe el ratón por defecto. Por eso el grupo de botones declara `WindowChrome.IsHitTestVisibleInChrome="True"`; el resto de la barra —fondo, icono y título— queda en manos del sistema, que así la hace arrastrable de serie y a doble clic maximiza y restaura.
+
+**La X no cierra: manda a la bandeja.** El ciclo completo de la ventana:
+
+```mermaid
+flowchart TD
+    V["Ventana visible"] -->|"X o Alt+F4"| C["Closing CANCELADO<br/>la ventana se OCULTA"]
+    C --> I["BandejaService.Mostrar()<br/>icono + menú oscuro"]
+    I --> A["¿Primera vez?<br/>burbuja de aviso"]
+    A --> S["App VIVA y conectada<br/>al aula"]
+    S -->|"doble clic / Abrir"| V
+    S -->|"menú: Salir de AulaChatNet"| F["_salidaConfirmada = true<br/>Application.Shutdown()"]
+    F --> E["OnExit: Dispose del contenedor<br/>el icono se RETIRA"]
+
+    style V fill:#4CAF50,color:#fff
+    style C fill:#FF9800,color:#fff
+    style I fill:#2196F3,color:#fff
+    style A fill:#9C27B0,color:#fff
+    style S fill:#9C27B0,color:#fff
+    style F fill:#f44336,color:#fff
+    style E fill:#607D8B,color:#fff
+```
+
+El manejador `AlCerrarVentana` es corto y dice todo:
+
+```csharp
+// Cierre REAL (Salir del menú de la bandeja): dejamos pasar
+if (_salidaConfirmada)
+    return;
+
+// Cualquier otro intento (la X, Alt+F4) se cancela: la ventana se
+// oculta y la app se queda en la bandeja, con la conexión intacta
+e.Cancel = true;
+Hide();
+```
+
+Detrás de `Hide()` van dos ideas: primero, `_bandeja.Mostrar()` (el icono aparece; la llamada es idempotente, ocultar dos veces no crea dos iconos) y después el aviso de segundo plano **solo la primera vez**. Y todo va envuelto en un `try/catch` que registra el error y sigue: **la bandeja es comodidad, jamás se tumba el chat por un icono**.
+
+**El icono nace del código.** El `TaskbarIcon` se construye en C# —icono `pack://` (el mismo maestro de la ventana y del `.exe`), tooltip "AulaChatNet" y menú—, y hay un detalle que rompió la primera prueba:
+
+```csharp
+// Un TaskbarIcon creado desde CÓDIGO no monta el icono nativo hasta
+// que se lo pides (el declarado en XAML lo hace al cargar): sin
+// esto, el icono no aparece y la burbuja revienta con
+// "TrayIcon is not created"
+_icono.ForceCreate();
+```
+
+Además, el clic izquierdo y el doble clic del icono emiten el evento `AbrirPulsado`. Fíjate en el desacople: `IBandejaService` solo expone `AbrirPulsado` y `SalirPulsado`; **la bandeja no conoce la ventana**. La ventana se suscribe en su constructor y es ella la que sabe ocultarse, restaurarse y salir. Interfaz corta = testeable y sustituible.
+
+**Un menú que no choca con la app.** El menú contextual nativo de Windows es claro y, al teñirlo de oscuro, deja recortes blancos en Windows 11; la solución es una **plantilla completa propia** (`MenuBandeja` + `ItemMenuBandeja`, en `Recursos/EstilosDiscord.xaml`) con los mismos pinceles congelados de la app. Dos ítems: **Abrir AulaChatNet** y **Salir de AulaChatNet**, separados por una raya.
+
+> ⚠️ **Advertencia:** el estilo se pone **en cada `MenuItem`**, nunca en `ItemContainerStyle` de la colección: ese aplica a TODOS los contenedores del menú, y un estilo de `MenuItem` sobre un `Separator` hace que WPF lance una excepción. Es el típico fallo que solo aparece al abrir el menú — y el `DispatcherUnhandledException` del `App` (la 12.4) lo registra para que la app no se caiga.
+
+**La burbuja, una sola vez en la vida.** La notificación NATIVA de Windows sale blanca en Windows 11 (una app sin manifiesto de tema no puede oscurecerla), así que el aviso es un `Border` WPF con la paleta de la app, enseñado con `ShowCustomBalloon` junto al icono y con desvanecido a los 7 segundos. Y el texto ("La app sigue en segundo plano y conectada al aula…") se muestra **una sola vez**: la marca queda en el MISMO fichero que la sesión del usuario, en la clave `aulachat:bandeja:aviso-mostrado`, gestionada por `PreferenciasBandeja`:
+
+```csharp
+public async Task<bool> EsPrimeraVezAsync()
+{
+    // Si la clave no existe, el almacenamiento devuelve el valor por
+    // defecto del tipo (false) — es decir, "nunca visto" → primera vez
+    var visto = await almacen.GetItemAsync<bool>(ClaveAvisoMostrado);
+    return !visto;
+}
+```
+
+Como `PreferenciasBandeja` es lógica pura (no toca WPF), se prueba con un doble de su almacenamiento, sin crear ventanas.
+
+**Salir, solo desde el menú y sin confirmación.** Elegir **Salir de AulaChatNet** en el menú de la bandeja YA es el paso deliberado — abrir el menú y apuntar a esa opción no es un accidente—, así que la app sale directo, como cualquier app nativa: se marca `_salidaConfirmada`, se llama a `Application.Shutdown()` y, al llegar el `Closing`, el manejador deja pasar el cierre en vez de mandar la ventana a la bandeja otra vez. Al morir, `OnExit` dispone el contenedor de servicios: `BandejaService.Dispose()` retira el icono — sin ese paso, el icono queda **huérfano** en la bandeja hasta el siguiente logoff de Windows.
+
+Estas son las trampas que enseñó este punto, resumidas:
+
+| Trampa | Síntoma | Solución |
+|--------|---------|----------|
+| `CaptionHeight` = zona no cliente | Los botones de la barra no reciben el ratón | `WindowChrome.IsHitTestVisibleInChrome="True"` en el grupo de botones |
+| `TaskbarIcon` de código | El icono no aparece y la burbuja revienta con "TrayIcon is not created" | `_icono.ForceCreate()` tras crearlo |
+| `ItemContainerStyle` del menú | Estilo de `MenuItem` sobre `Separator` → excepción al abrir el menú | Estilo puesto **en cada item** |
+| Menú nativo teñido | Recortes blancos en Windows 11 | Plantilla `MenuBandeja` completa, propia |
+| Burbuja nativa | Sale blanca y rompe la estética | `ShowCustomBalloon` con un `Border` WPF oscuro |
+| Fallo de UI sin red | Un menú que revienta tumba la ventana entera | `DispatcherUnhandledException` en `App`: se registra y se sigue |
+
+## 12.11. Cómo se prueba
+
+Como en todo el proyecto, lo automatizable va a tests (`AulaChatNet.Client.Wpf.Tests`, hoy **18**):
 
 | Qué | Cómo | Claves |
 |-----|------|--------|
 | `ResolverUrlServidor` | Tests puros | Vacío/espacios → `localhost:5030`; con URL → sin barra final |
 | `AddClienteWpf` | `ConfigurationBuilder` real sobre JSON temporal + `BuildServiceProvider` | Secciones tipadas, `HttpClient` con `BaseAddress`, stores construidas y… |
 | …el `Replace` | Assert sobre el proveedor | `GetRequiredService<ILocalStorageService>()` es `FileStorageService` |
+| …los servicios de la bandeja | Assert sobre el proveedor | `IBandejaService` resuelve a `BandejaService` y `PreferenciasBandeja` está dada de alta |
 | `FileStorageService` | Carpeta **temporal** por test (`[SetUp]`/`[TearDown]`), servicio real | Roundtrip, claves múltiples, borrar, limpiar, JSON corrupto → `null` sin lanzar, valor de otra versión → `null` y dos instancias compartiendo fichero |
+| `PreferenciasBandeja` | 3 tests con un doble de `ILocalStorageService` | Primera vez → `true`; ya visto → `false`; marcarlo escribe la clave de aviso |
 
 La carpeta temporal es posible porque `FileStorageService` acepta la carpeta en el constructor (por defecto, `%LOCALAPPDATA%`): se prueba el servicio **real**, no un doble.
 
@@ -339,23 +466,46 @@ Lo que no se automatiza (todavía), la **lista de humo** manual con el servidor 
 1. `dotnet run --project AulaChatNet.Server` y `dotnet run --project AulaChatNet.Client.Wpf`.
 2. Entrar con un nick → conecta y el chat se pinta, sin avisos de error.
 3. Enviar un mensaje → viaja y vuelve (SignalR de verdad).
-4. Cerrar y reabrir la app → el nick llega recordado (¡y se puede ver el `almacenamiento.json`!); «Olvidar sesión» lo borra.
-5. Dos ventanas + la web + la terminal a la vez → los cuatro en el mismo `#general`.
+4. Pulsar la X → la ventana se oculta, aparece el icono en la bandeja y —solo la primera vez— la burbuja de segundo plano; doble clic en el icono → la ventana vuelve restaurada.
+5. Menú del icono → "Salir de AulaChatNet" → la app sale del todo y el icono desaparece de la bandeja.
+6. Cerrar y reabrir la app → el nick llega recordado (¡y se puede ver el `almacenamiento.json`!); "Olvidar sesión" lo borra.
+7. Dos ventanas + la web + la terminal a la vez → los cuatro en el mismo `#general`.
 
-## 12.11. Resumen del punto
+## 12.12. Decisiones, patrones y técnicas del punto
+
+El cliente de escritorio cierra el curso demostrando que la misma UI se lleva a otro sitio con decisiones de host, no de aplicación. Éstas son:
+
+| Patrón o técnica | Dónde vive en AulaChatNet | La lección transferible |
+|------------------|---------------------------|-------------------------|
+| Blazor Hybrid | `BlazorWebView` con el WebView2 del sistema | Reutiliza la UI web en una ventana nativa sin bajar a Electron ni reescribir nada |
+| Mismo contrato, implementación por host | `ILocalStorageService`: navegador en la web, fichero en el escritorio | Interfaz pequeña y cambio por host: el código que la usa no se entera |
+| Un host, su `wwwroot` | Ficheros servibles del propio host; la librería, bajo `_content/...` | Lo relativo pertenece al host que lo sirve: la regla que evita 404 y imágenes rotas |
+| Arranque por capas | Serilog → configuración → DI (`AddClienteWpf`) → ventana | El mismo esqueleto de arranque que la web, con lo mínimo cambiado y con motivo |
+| Dos redes de seguridad | `AppDomain.UnhandledException` y `DispatcherUnhandledException` con `Handled = true` | Una app de escritorio no se tumba por un fallo de pintado: se registra y se sigue |
+| Comportamiento nativo de verdad | La X de la ventana lleva a la bandeja; la salida, desde su menú | Aprende las convenciones del sistema: en Windows la X no es "cerrar" |
+| Logging al medio disponible | Serilog a fichero en `%LOCALAPPDATA%\AulaChatNet\logs\` | Cada host loguea donde tiene sitio: consola del navegador, fichero de escritorio |
+
+---
+
+**Resumen del punto:**
 
 | Concepto | En una frase |
 |----------|-------------|
 | Blazor Hybrid | Componentes Razor corriendo en un **WebView2 embebido** en una app nativa; mismos `.razor`, otro host |
 | SDK Razor + TFM de Windows | Sin el SDK Razor no hay static web assets (ventana en blanco); sin el TFM `windows10.0.19041` no hay ensamblados de composición (crash al pintar) |
 | `BlazorWebView` | El control WPF que pone el navegador dentro de la ventana; `HostPage` + selector `#app` + `App.Servicios` |
-| `AddWpfBlazorWebView` | El registro imprescindible del paquete WPF: sin él, «Unable to find the required services» |
+| `AddWpfBlazorWebView` | El registro imprescindible del paquete WPF: sin él, `Unable to find the required services` |
+| Barra de título propia | `WindowChrome` con la paleta Discord: arrastre y redimensionado del sistema; los botones necesitan `IsHitTestVisibleInChrome` porque la `CaptionHeight` es zona no cliente |
+| Bandeja del sistema | La X **no sale**: cancela el cierre, oculta la ventana y muestra el icono (`H.NotifyIcon.Wpf` + `ForceCreate()`); salir, SOLO desde su menú y sin confirmación |
+| Aviso de segundo plano | Burbuja propia oscura con `ShowCustomBalloon` (la nativa sale blanca en Win11) y una sola vez en la vida (`PreferenciasBandeja`, en el fichero de la sesión) |
 | Origen virtual | Los estáticos salen del propio `.exe` (`StaticContentProvider` ante `https://0.0.0.1/`), sin red |
-| JS con horario | El interop funciona **desde los componentes**; fuera de ese ámbito, «Cannot invoke JavaScript outside of a WebView context» — por eso no se le pide JS a un singleton |
+| JS con horario | El interop funciona **desde los componentes**; fuera de ese ámbito, `Cannot invoke JavaScript outside of a WebView context` — por eso no se le pide JS a un singleton |
 | Sesión sin navegador | **Mismo contrato, implementación por host**: `FileStorageService` (JSON en `%LOCALAPPDATA%`) sustituye al `LocalStorageService` con `Replace`; ni `SesionStore` ni la UI se enteran |
 | Recursos relativos | Cada host sirve lo suyo: `_content/...` es de la RCL; `resources/icon-app.png` tiene que estar en el `wwwroot` de cada host |
 | Sin CORS | El escritorio no es un navegador de verdad: su `HubConnection` es el de .NET y habla directo a `Web:UrlServidor` |
 | Logging | Solo fichero en `%LOCALAPPDATA%\AulaChatNet\logs\`: un `.exe` no tiene consola |
-| Tests | 14 en `Client.Wpf.Tests`: DI (incluido el `Replace`) + `FileStorageService` real sobre carpetas temporales |
+| Tests | 18 en `Client.Wpf.Tests`: DI (incluido el `Replace` y la bandeja) + `FileStorageService` real sobre carpetas temporales + `PreferenciasBandeja` |
 
 Con este punto cerrado, la solución tiene **tres clientes** — terminal, web y escritorio — apoyados en la misma capa `Shared`, el mismo hub y la misma librería de interfaz. Ese es el mensaje de este punto: **el cliente es una decisión de host, no una reescritura**.
+
+**Anterior:** [11. Editar y borrar mensajes](11-editar-y-borrar.md) · **Índice:** [README](../README.md)

@@ -5,16 +5,16 @@
   - [7.4. Un interruptor, no una suma](#74-un-interruptor-no-una-suma)
   - [7.5. Las reacciones se van con su mensaje](#75-las-reacciones-se-van-con-su-mensaje)
   - [7.6. Cómo se pinta en los dos clientes](#76-cómo-se-pinta-en-los-dos-clientes)
-  - [7.7. El comando /reaccion](#77-el-comando-reaccion)
+  - [7.7. El comando `/reaccion`](#77-el-comando-reaccion)
   - [7.8. Cómo se prueba](#78-cómo-se-prueba)
-  - [7.9. Resumen del punto](#79-resumen-del-punto)
+  - [7.9. Decisiones, patrones y técnicas del punto](#79-decisiones-patrones-y-técnicas-del-punto)
 
 
 # 7. Las reacciones
 
 > 💡 **Punto de partida:** en cualquier chat moderno, bajo cada mensaje hay un puñadito de emoji con un número al lado: 👍 3, ❤️ 1. Pulsas el tuyo y aparece; vuelves a pulsar y se va. Parece lo más sencillo del mundo... hasta que dos personas reaccionan al MISMO tiempo y la cifra se desincroniza, o hasta que el mensaje envejece y sus reacciones quedan flotando sin dueño. ¿Cómo se mantiene el tablero de chips igual en todas las pantallas sin contadores que se peleen y sin que nadie guarde lo que ya no significa nada?
 
-En este punto cerramos la Fase 3 con las reacciones: la lista cerrada de emoji, el alternar del servidor y los chips de los dos clientes. Como en los puntos anteriores, lo que enseña no es el chip, sino **las decisiones**: conjuntos en vez de contadores, estado completo en vez de diferencias, y una pieza de estado que muere junto con su mensaje.
+En este punto añadimos las reacciones: la lista cerrada de emoji, el alternar del servidor y los chips de los dos clientes. Como en los puntos anteriores, lo que enseña no es el chip, sino **las decisiones**: conjuntos en vez de contadores, estado completo en vez de diferencias, y una pieza de estado que muere junto con su mensaje.
 
 **Objetivos de aprendizaje:**
 
@@ -71,7 +71,7 @@ La primera decisión es de seguridad y de sanidad: **la lista de emoji es cerrad
 
 ¿Y qué pasa si alguien escribe `/reaccion 🔥`? El parser acepta cualquier texto, pero `EmojisReaccion.Canonico()` devuelve `null` y el cliente avisa mostrando la lista, sin siquiera tocar la red. El servidor vuelve a validar igual, porque de la red llega lo que quiera: **la validación es en dos capas, la del cliente es comodidad, la del servidor es la que vale**.
 
-La función `Canonico` hace algo más fino que mirar la lista: primero normaliza. En Unicode, la misma carita puede escribirse de varias formas — ❤️, por ejemplo, es `U+2764` seguido del selector `U+FE0F`, y muchos teclados y apps pegan la versión sin él. `Canonico` recorta espacios, quita ese selector y devuelve la forma canónica de la lista... o `null` si no se parece a nada admitido. Sin esta normalización, el mismo corazón daría dos chips distintos: un bug invisible que en un chat real se ve feo en cuanto alguien pega un emoji desde el móvil.
+La función `Canonico` hace algo más fino que mirar la lista: primero normaliza. En Unicode, la misma carita puede escribirse de varias formas — ❤️, por ejemplo, es `U+2764` seguido del selector `U+FE0F`, y muchos teclados y apps pegan la versión sin él. `Canonico` recorta espacios, quita ese selector y devuelve la forma canónica de la lista... o `null` si no se parece a nada admitido. Sin esta normalización, el mismo corazón daría dos chips distintos: un fallo invisible que en un chat real se ve feo en cuanto alguien pega un emoji desde el móvil.
 
 > 💡 **Consejo:** una lista cerrada no es pereza, es contrato. Con ella, el selector de la web pinta lo MISMO que admite el servidor, el comando puede enseñar la lista en el error, y no hace falta tabla de emoji en la base de datos: seis literales en `Shared` y ya está.
 
@@ -86,7 +86,7 @@ Dentro de `EstadoCanal` (la caché en memoria de cada sala) ahora vive un diccio
 | ¿Cuántos son? | El número guardado | El tamaño del conjunto |
 | ¿Quiénes son? | Habría que guardarlo aparte | Es el propio conjunto |
 
-El DTO que viaja (`ReaccionesMensajeDto`) expone por mensaje la lista de chips, y cada chip (`ReaccionDto`) lleva el emoji y los NOMBRES de quienes lo pusieron — el contador no viaja: se deriva del tamaño del conjunto en el momento de crear el DTO. Y el orden es fijo: los chips se ordenan por su posición en la lista cerrada, y las personas alfabéticamente. Sin ese orden, dos clientes con la misma información pintarían los chips en distinto orden y cada emisión daría la sensación de parpadeo.
+El DTO (objeto de transferencia de datos) que viaja (`ReaccionesMensajeDto`) expone por mensaje la lista de chips, y cada chip (`ReaccionDto`) lleva el emoji y los NOMBRES de quienes lo pusieron — el contador no viaja: se deriva del tamaño del conjunto en el momento de crear el DTO. Y el orden es fijo: los chips se ordenan por su posición en la lista cerrada, y las personas alfabéticamente. Sin ese orden, dos clientes con la misma información pintarían los chips en distinto orden y cada emisión daría la sensación de parpadeo.
 
 Dos detalles de emisión que no son menores:
 
@@ -97,7 +97,7 @@ Dos detalles de emisión que no son menores:
 
 ## 7.4. Un interruptor, no una suma
 
-La semántica del gesto es la de un interruptor, y hay que decirla en voz alta porque es donde suelen salir los bugs:
+La semántica del gesto es la de un interruptor, y hay que decirla en voz alta porque es donde suelen salir los fallos:
 
 - Pulsas un emoji que no tenías → te añade al conjunto de ese chip
 - Pulsas un emoji que YA tenías → te quita: es la única forma de deshacer
@@ -135,7 +135,7 @@ flowchart TD
     style N fill:#9C27B0,color:#fff
 ```
 
-📌 **Ejemplo real:** en Discord, cuando un mensaje se edita o la conversación envejece fuera del caché, sus reacciones no viajan a un segundo plano: viven y mueren con la fila. Y como en el resto de la Fase 3, **nada de esto se guarda en SQLite**: las reacciones son efímeras por diseño, memoria del caché y no más.
+📌 **Ejemplo real:** en Discord, cuando un mensaje se edita o la conversación envejece fuera del caché, sus reacciones no viajan a un segundo plano: viven y mueren con la fila. Y como en los puntos anteriores, **nada de esto se guarda en SQLite**: las reacciones son efímeras por diseño, memoria del caché y no más.
 
 > 💡 **Consejo:** cuando añadas estado a un contenedor con poda (aquí, el historial), busca en el MISMO momento dónde se poda tu estado nuevo. Si tu estado no aparece junto a la poda, es que tiene un agujero de memoria — literalmente.
 
@@ -145,7 +145,7 @@ flowchart TD
 
 **Web** (`ReaccionesMensaje.razor`): un componente por mensaje que pinta tres cosas — los chips debajo del texto (el tuyo con la clase `mia`, resaltado), el botón "+" que asoma al pasar el ratón por la fila, y el selector con los seis emoji de `Shared`, que se cierra al elegir. La lista de conectados no entra aquí: `ListaMensajes` se suscribe a `Store.Reacciones` (junto a las otras) y le pasa a cada fila SUS chips; el mapa se reemplaza entero con el snapshot y se vacía con el historial de otra sala. El nick local también llega por suscripción, porque decide qué chip sale resaltado como tuyo — y ese nick puede cambiar con `/nick` a mitad de sesión.
 
-Las dos pantallas comparten la misma regla de presentación que el resto de fases: **el chip no se calcula, se pinta**. Ni la terminal ni la web suman, restan o guardan el resultado de su propio clic: el eco del servidor manda.
+Las dos pantallas comparten la misma regla de presentación que el resto del proyecto: **el chip no se calcula, se pinta**. Ni la terminal ni la web suman, restan o guardan el resultado de su propio clic: el eco del servidor manda.
 
 ## 7.7. El comando `/reaccion`
 
@@ -171,9 +171,25 @@ La suite vuelve a atacar por capas, y aquí hay una novedad: la prueba de red de
 | Terminal | Los chips en markup: vacíos sin reacciones, contador, nombres con corchetes inofensivos y ausencia en el modo tubería |
 | Web | El componente: chips con contador, resaltado del propio, selector con EXACTAMENTE la lista cerrada, la invocación al pulsar y el aviso si el servidor rechaza; y el procesador: objetivo correcto, validación sin tocar la red y traducción de errores |
 
-> 💡 **Consejo:** la prueba que más enseña de este punto es la de red: con dobles puedes equivocarte sobre QUÉ emite el hub, pero nunca sobre lo que la otra punta del WebSocket recibe. Y al probar el alterna, haz SIEMPRE la ronda completa (alta, baja, alta): los bugs de alternar viven en el segundo paso, no en el primero.
+> 💡 **Consejo:** la prueba que más enseña de este punto es la de red: con dobles puedes equivocarte sobre QUÉ emite el hub, pero nunca sobre lo que la otra punta del WebSocket recibe. Y al probar el alterna, haz SIEMPRE la ronda completa (alta, baja, alta): los fallos de alternar viven en el segundo paso, no en el primero.
 
-## 7.9. Resumen del punto
+## 7.9. Decisiones, patrones y técnicas del punto
+
+Detrás de un emoji aparentemente trivial hay siete decisiones que cualquier red social tomaría igual. Éstas son:
+
+| Patrón o técnica | Dónde vive en AulaChatNet | La lección transferible |
+|------------------|---------------------------|-------------------------|
+| Conjunto, no contador | `ReaccionDto` lleva los NOMBRES; el número se deriva al pintar | El recuento deriva del estado: dos clics simultáneos no pueden desfasarlo |
+| Fuente de verdad en el servidor | El cliente alterna y el servidor acepta y difunde el resultado | Los datos de estado no se delegan en las pantallas: el servidor manda |
+| Vida atada a su mensaje | Al salir de la caché, `AddMensaje` borra también sus reacciones | El estado huérfano es una fuga: dale dueño y fecha de caducidad |
+| Orden determinista | Chips por posición en la lista cerrada; personas alfabéticamente | Con la misma información, los dos clientes pintan igual; sin orden, hay parpadeo |
+| Lista cerrada de emoji | `EmojisReaccion` con normalización (`U+FE0F` y basura → `null`) | Valida contra un catálogo conocido; lo que admite texto libre es inseguro y se desordena |
+| Validación en dos capas | El cliente con la lógica de `Shared`; el servidor, otra vez, al recibir | La validación del cliente es comodidad; la del servidor es la que vale |
+| Comando nacido en `Shared` | `/reaccion` y su ayuda en el catálogo común | Una sola implementación de comando, con ayuda incluida, para los dos clientes |
+
+---
+
+**Resumen del punto:**
 
 | Decisión | Por qué |
 |----------|---------|
@@ -187,3 +203,5 @@ La suite vuelve a atacar por capas, y aquí hay una novedad: la prueba de red de
 | Sin persistencia | Comentario del momento, no historia |
 | `/reaccion` y `/react` nacidos en el catálogo de `Shared` | Un solo parser, una sola fila de ayuda y dos clientes alineados |
 | El eco manda: los clientes no calculan ni guardan su propio gesto | Nadie pinta una foto antes de que llegue el plato |
+
+**Anterior:** [6. La escritura en vivo](06-escritura-en-vivo.md) · **Índice:** [README](../README.md)

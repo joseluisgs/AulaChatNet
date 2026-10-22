@@ -7,12 +7,12 @@
   - [5.6. Avisar de que no se guarda sin convertirlo en ruido](#56-avisar-de-que-no-se-guarda-sin-convertirlo-en-ruido)
   - [5.7. El parser como única fuente de verdad](#57-el-parser-como-única-fuente-de-verdad)
   - [5.8. Cómo se prueba](#58-cómo-se-prueba)
-  - [5.9. Resumen del punto](#59-resumen-del-punto)
+  - [5.9. Decisiones, patrones y técnicas del punto](#59-decisiones-patrones-y-técnicas-del-punto)
 
 
 # 5. Los mensajes privados
 
-> 💡 **Punto de partida:** en el chat de la Fase 1 todo es pizarra común: lo que escribe uno lo leen todos los de la sala. En WhatsApp, cuando le escribes a alguien, ese mensaje no lo ve nadie más. ¿Cómo se manda algo que solo puede leer UNA persona concreta... y qué se decide sobre él cuando la gente se va?
+> 💡 **Punto de partida:** en el chat de la versión inicial todo es pizarra común: lo que escribe uno lo leen todos los de la sala. En WhatsApp, cuando le escribes a alguien, ese mensaje no lo ve nadie más. ¿Cómo se manda algo que solo puede leer UNA persona concreta... y qué se decide sobre él cuando la gente se va?
 
 En este punto añadimos los mensajes privados: el comando `/privado`, su recorrido hasta los dos implicados y las decisiones que lo sostienen — sobre todo la de que **no se guarda nada**, que no es un detalle de implementación, sino la razón de ser de este punto.
 
@@ -74,7 +74,7 @@ sequenceDiagram
 
 Este es el corazón de la decisión y conviene decirlo claro: **los privados son efímeros a propósito**. No es que se haya dejado para más adelante.
 
-Para entenderlo hay que mirar cómo funciona la Fase 2. Todo lo que va a SQLite pasa por `ChatStore.AddMensaje`: esa llamada llena la caché del historial Y encola el mensaje para que un servicio en segundo plano lo escriba en el fichero. Es la única puerta a disco... y `EnviarPrivadoAsync` no la toca.
+Para entenderlo hay que mirar cómo funciona la persistencia. Todo lo que va a SQLite pasa por `ChatStore.AddMensaje`: esa llamada llena la caché del historial Y encola el mensaje para que un servicio en segundo plano lo escriba en el fichero. Es la única puerta a disco... y `EnviarPrivadoAsync` no la toca.
 
 ```mermaid
 flowchart TD
@@ -110,11 +110,11 @@ Efímero es, dicho con crudeza, la única opción honesta. Y la decisión se cum
 
 > ⚠️ **Advertencia:** si alguna vez decidieras persistirlos, haría falta autenticación de verdad (contraseña o token) ANTES de tocar la base de datos. Sin eso, guardarlos no es "más funcional": es exponer conversaciones ajenas.
 
-> 💡 **Consejo:** en la Fase 2 el criterio era *se separa por longevidad, no por entidad*. Aquí aparece un segundo criterio que conviene memorizar: **se separa por quién tiene derecho a leerlo**. No todo lo que puede guardarse merece guardarse.
+> 💡 **Consejo:** en el capítulo de la persistencia el criterio era *se separa por longevidad, no por entidad*. Aquí aparece un segundo criterio que conviene memorizar: **se separa por quién tiene derecho a leerlo**. No todo lo que puede guardarse merece guardarse.
 
 ## 5.3. Encontrar al destinatario: el canal manda
 
-La búsqueda parece trivial y no lo es, porque arrastra una decisión de la Fase 1: **los nombres solo son únicos dentro de una sala**. Sin ese filtro, dos personas de clases distintas podrían llamarse igual y los privados se cruzarían.
+La búsqueda parece trivial y no lo es, porque arrastra una decisión heredada de la versión inicial: **los nombres solo son únicos dentro de una sala**. Sin ese filtro, dos personas de clases distintas podrían llamarse igual y los privados se cruzarían.
 
 `GetConnectionId(canal, usuario)` es la operación inversa de `GetConexion`: recorre las conexiones vivas filtrando por canal y comparando el nombre normalizado (sin espacios de más y sin distinguir mayúsculas). De ahí salen tres reglas que se ven en pantalla:
 
@@ -166,7 +166,7 @@ flowchart TD
     style V fill:#4CAF50,color:#fff
 ```
 
-El resultado no es un tipo inventado en los DTOs, sino `FilaChat`: un registro mínimo que dice *esta fila es un privado* o *esta fila es un mensaje del canal*, con el valor en su sitio. Basta para ordenar y deja que cada cliente decida cómo pintarla.
+El resultado no es un tipo inventado en los DTOs (objetos de transferencia de datos), sino `FilaChat`: un registro mínimo que dice *esta fila es un privado* o *esta fila es un mensaje del canal*, con el valor en su sitio. Basta para ordenar y deja que cada cliente decida cómo pintarla.
 
 Tres detalles que no son pequeños:
 
@@ -184,7 +184,7 @@ La regla estética es que **un privado no cambia la forma de leer el chat**: mis
 
 **Web** (`PrivadoItem`): reutiliza la estructura de `MensajeItem` — nunca burbujas, que Discord y Slack son filas — y añade `.privado-marca` con el candado y el contexto. El "para/de quien" se decide comparando el emisor con mi nombre, que la fila lee de la store: el DTO no lo trae, y no lo trae a propósito.
 
-Y aquí aparece la diferencia de plataforma. En la terminal hay que **teclear** `/privado Ana ...`, pero en la web se puede **hacer clic en la lista de conectados**. Los componentes no se hablan entre sí (regla de la casa: hablan con la store), así que el clic no va a la caja de texto: llama a `Store.PrepararPrivado("Ana")` y la caja, que está suscrita, rellena la línea con el comando y coloca el foco para que solo falte escribir el mensaje. El clic en uno mismo no hace nada: el servidor lo rechazaría, y mejor no abrir siquiera la puerta.
+Y aquí aparece la diferencia de plataforma. En la terminal hay que **teclear** `/privado Ana ...`, pero en la web se puede **hacer clic en la lista de conectados**. Los componentes no se hablan entre sí (convención del proyecto: hablan con la store), así que el clic no va a la caja de texto: llama a `Store.PrepararPrivado("Ana")` y la caja, que está suscrita, rellena la línea con el comando y coloca el foco para que solo falte escribir el mensaje. El clic en uno mismo no hace nada: el servidor lo rechazaría, y mejor no abrir siquiera la puerta.
 
 📌 **Ejemplo real:** en Slack y en Discord, pasar el ratón por un nombre de la lista y elegir "mensaje directo" hace exactamente esto: prepara el destino y te deja escribir. La diferencia aquí es que no hay un canal aparte que abrir: el privado sigue siendo parte de la misma sala, y por eso la web pone un chip sobre tu propia caja en lugar de cambiar de pantalla.
 
@@ -235,7 +235,23 @@ La privacidad es el tipo de requisito que **solo se prueba por el lado de "quié
 
 > 💡 **Consejo:** en la prueba de red, espera con tiempo máximo (`WaitAsync(5 s)`), nunca "hasta que llegue". Un test que se cuelga no dice qué falló; uno que falla a los cinco segundos te dice exactamente qué no llegó.
 
-## 5.9. Resumen del punto
+## 5.9. Decisiones, patrones y técnicas del punto
+
+Este punto parece de interfaz y es, sobre todo, de diseño de sistema. Éstas son las decisiones que lo sostienen:
+
+| Patrón o técnica | Dónde vive en AulaChatNet | La lección transferible |
+|------------------|---------------------------|-------------------------|
+| Efimeridad deliberada | Los mensajes privados no se persisten jamás | Que algo no se guarde es una decisión de diseño, con su argumento: privacidad y tamaño |
+| El canal manda | Solo puedes enviar a alguien de tu propio canal | Autoriza con lo que ya sabes (tu registro) y nunca con parámetros que el cliente pueda falsear |
+| Una sola cronología | `FilaChat` mezcla público y privado ordenado por hora | Los clientes no inventan el orden: un único criterio, decidido en servidor |
+| Eco al emisor | El servidor envía el mismo objeto al destino y a quien lo escribe | Misma identidad y misma hora en las dos pantallas, sin negociar nada |
+| Aviso integrado en la fila | El "esto no se guarda" es un mensaje de sistema en la propia conversación | Informa donde se vive la experiencia; no conviertas un aviso en un diálogo modal |
+| Parser único | `/privado` y sus alias viven en `Shared` | Añadir un comando es una línea, y los dos clientes lo entienden sin tocarlos |
+| Validación en dos capas | El cliente valida con el parser; el servidor, con su registro | La validación del cliente es comodidad; la del servidor es la que vale |
+
+---
+
+**Resumen del punto:**
 
 | Decisión | Por qué |
 |----------|---------|
@@ -247,3 +263,5 @@ La privacidad es el tipo de requisito que **solo se prueba por el lado de "quié
 | El aviso, una vez y en el momento oportuno | Lo que se repite deja de leerse |
 | El clic en la lista va por la store | Los componentes no se hablan entre sí |
 | Pruebas por el lado de "quién NO lo recibe" | La privacidad solo se prueba con la lista de los que no deben verlo |
+
+**Anterior:** [4. La persistencia con SQLite](04-persistencia.md) · **Índice:** [README](../README.md)

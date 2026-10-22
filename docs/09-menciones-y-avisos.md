@@ -7,14 +7,14 @@
   - [9.6. Cómo suena la terminal](#96-cómo-suena-la-terminal)
   - [9.7. Qué queda fuera (y por qué)](#97-qué-queda-fuera-y-por-qué)
   - [9.8. Cómo se prueba](#98-cómo-se-prueba)
-  - [9.9. Resumen del punto](#99-resumen-del-punto)
+  - [9.9. Decisiones, patrones y técnicas del punto](#99-decisiones-patrones-y-técnicas-del-punto)
 
 
 # 9. Menciones y avisos
 
 > 💡 **Punto de partida:** escribes un mensaje en un grupo de veinte personas y empiezas por "@Ana". En WhatsApp, en Discord, en Slack... alguien hace clic en el nombre, se pinta en azul, y si esa persona tenía la aplicación abajo recibe un aviso distinto al de cualquier otro mensaje: campana, badge, parpadeo de la pestaña. Nada de eso es magia: es un mensaje que va a TODOS... y además un empujoncito pequeño y dirigido a UNO. ¿Cómo se consigue eso en SignalR sin duplicar mensajes ni crear un canal paralelo?
 
-En este punto cerramos la primera mitad de la Fase 4 con las menciones. Lo interesante no es el `if` que busca la arroba —aunque también—, sino tres cosas: **por qué la detección vive en `Shared` y no en cada cliente, por qué el aviso es un evento aparte con DTO propio, y cómo se convierte en ruido —badge, parpadeo, campana— SIN tocar el contrato del servidor dos veces**.
+En este punto seguimos con las menciones. Lo interesante no es el `if` que busca la arroba —aunque también—, sino tres cosas: **por qué la detección vive en `Shared` y no en cada cliente, por qué el aviso es un evento aparte con DTO (objeto de transferencia de datos) propio, y cómo se convierte en ruido —badge, parpadeo, campana— SIN tocar el contrato del servidor dos veces**.
 
 **Objetivos de aprendizaje:**
 
@@ -135,7 +135,7 @@ Y una guardia barata al principio: si el texto no contiene ni una arroba, el mé
 
 En el cliente web, el evento `MencionRecibida` llega a la store —los componentes no hablan con SignalR directamente— y de ahí salen DOS consumidores distintos, cada uno con su flujo:
 
-1. **El badge de "sin mirar":** la store mantiene un contador (`BehaviorSubject<int>`), lo incrementa con cada aviso y lo pone a cero con `MarcarMencionesVistas()`, que solo llama quien corresponde: el clic del badge. El componente `AvisoMenciones` se suscribe, pinta la píldora "💬 2" cuando el contador es mayor que cero y libera sus suscripciones en `Dispose()`, la regla de la casa.
+1. **El badge de "sin mirar":** la store mantiene un contador (`BehaviorSubject<int>`), lo incrementa con cada aviso y lo pone a cero con `MarcarMencionesVistas()`, que solo llama quien corresponde: el clic del badge. El componente `AvisoMenciones` se suscribe, pinta la píldora "💬 2" cuando el contador es mayor que cero y libera sus suscripciones en `Dispose()`, como todo componente de la app.
 
 2. **El parpadeo de la pestaña:** `document.title` es JavaScript, y desde Blazor no se "pinta" —se pide. `index.html` expone `aulachat.empezarParpadeo(texto)`, que alterna el título con el aviso cada pocos segundos y se PARA SOLO en cuanto la pestaña recupera el foco. Ni botones que apagar, ni temporizadores huérfanos: el navegador ya sabe cuándo vuelves.
 
@@ -159,7 +159,7 @@ La distinción entre "resaltar cualquier mención" —para eso basta el token—
 
 ## 9.7. Qué queda fuera (y por qué)
 
-Toda fase de este proyecto tiene su "no adelantamos nada" documentado, y esta no es menos:
+Todo punto de este proyecto tiene su "no adelantamos nada" documentado, y esta no es menos:
 
 | Queda fuera | Por qué |
 |-------------|---------|
@@ -185,7 +185,22 @@ En el cliente, `AvisoMencionesTests` prueba el contrato del badge (oculto a cero
 
 > 📝 **Nota:** el parpadeo de la pestaña y la campana no se prueban en unitario: son APIs del navegador y de la consola. Se verifican en ejecución —dos pestañas y una terminal—, que es donde además se comprueba que las piezas conviven de verdad.
 
-## 9.9. Resumen del punto
+## 9.9. Decisiones, patrones y técnicas del punto
+
+Un aviso de mención parece pequeño y obliga a decisiones de arquitectura de verdad. Éstas son las que deja este punto:
+
+| Patrón o técnica | Dónde vive en AulaChatNet | La lección transferible |
+|------------------|---------------------------|-------------------------|
+| Una regla de detección compartida | `Menciones` en `Shared`, usada por hub y clientes | La lógica que todos necesitan vive donde todos la ven; repetirla la desvía |
+| Dos eventos, dos razones | `MensajeNuevo` al grupo; `MencionRecibida` a una sola conexión | Separa el hecho público de la notificación privada: distinto destinatario, distinto DTO |
+| Aviso por el camino de los privados | Mismo envío dirigido que los mensajes privados | Reutiliza el canal de entrega que ya funciona y está probado |
+| Cuatro decisiones del servidor | Quién se menciona, cuándo, a quién y cuántas veces | El servidor decide con su estado; el cliente solo pinta lo decidido |
+| Escapado por construcción | `TextoMencion` pinta trozos de texto; sin `MarkupString` en ninguna parte | Inyección de HTML imposible por diseño; la seguridad no se apoya en acordarse |
+| El "no visto" es del cliente | El badge cuenta lo que la pestaña aún no ha mirado | Lo que el usuario ha visto es estado de su pestaña, no del servidor |
+
+---
+
+**Resumen del punto:**
 
 | Concepto | Decisión en AulaChatNet |
 |----------|-------------------------|
@@ -199,3 +214,5 @@ En el cliente, `AvisoMencionesTests` prueba el contrato del badge (oculto a cero
 | Terminal | token en amarillo con la paleta del tema y `Console.Beep()` si te nombra |
 | Persistencia | ninguna: como los privados, el aviso vive en la conexión |
 | Límites honestos | nicks con espacios no se mencionan; una conexión por persona, como en los privados |
+
+**Anterior:** [8. El control de ráfagas](08-control-de-rafagas.md) · **Índice:** [README](../README.md)
