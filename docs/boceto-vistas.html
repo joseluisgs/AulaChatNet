@@ -6,9 +6,10 @@
     <title>Boceto de vistas — AulaChatNet</title>
 
     <!-- Estilos de la app: NO es una copia — este documento enlaza el MISMO
-         wwwroot/css/app.css que usa el cliente Blazor. Si cambia la app,
-         cambia también este boceto. -->
-    <link rel="stylesheet" href="../AulaChatNet.Client.Blazor/wwwroot/css/app.css">
+         wwwroot/css/app.css de la librería compartida (Client.Web), el que
+         usan la web y el escritorio. Si cambia la app, cambia también este
+         boceto. (Antes vivía en Client.Blazor: la Fase 5.1 lo mudó a la RCL.) -->
+    <link rel="stylesheet" href="../AulaChatNet.Client.Web/wwwroot/css/app.css">
 
     <style>
         /* ==========================================================================
@@ -412,7 +413,7 @@
 
     <footer class="doc-pie">
         Boceto estático sin SignalR ni Rx.NET — solo maqueta visual.<br>
-        Fuente de estilos: <code>AulaChatNet.Client.Blazor/wwwroot/css/app.css</code> ·
+        Fuente de estilos: <code>AulaChatNet.Client.Web/wwwroot/css/app.css</code> ·
         Colores de nombre y avatares: mismo algoritmo determinista que la app (FNV-1a → HSV → RGB;
         estilos DiceBear <code>lorelei</code> (Ana), <code>adventurer</code> (Profesor) y
         <code>croodles</code> (Lucía)).

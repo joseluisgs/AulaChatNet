@@ -14,7 +14,7 @@
 
 > 💡 **Punto de partida:** en el chat de la Fase 1, si alguien se queda tecleando una respuesta larga, tú no te enteras: el mensaje llega de golpe o no llega. En WhatsApp, Discord o Slack, mientras la otra persona escribe ves "está escribiendo...". ¿Cómo se consigue ese aviso SIN que el servidor lleve la cuenta de nadie, SIN mandar una llamada al servidor por cada tecla y SIN que viaje jamás lo que se está escribiendo?
 
-En este punto añadimos el indicador de escritura de la Fase 3.2: la señal que nace en cada tecla, su recorrido hasta el hub y la caducidad que apaga sola cada marca. Como en los privados, lo interesante no es la línea que aparece abajo, sino **las decisiones** que la sostienen: muestrear en vez de esperar, reenviar sin guardar, caducar en cada cliente y apagar en el momento exacto.
+En este punto añadimos el indicador de escritura: la señal que nace en cada tecla, su recorrido hasta el hub y la caducidad que apaga sola cada marca. Como en los privados, lo interesante no es la línea que aparece abajo, sino **las decisiones** que la sostienen: muestrear en vez de esperar, reenviar sin guardar, caducar en cada cliente y apagar en el momento exacto.
 
 **Objetivos de aprendizaje:**
 
@@ -106,7 +106,7 @@ Además, por coherencia con todo lo que se ha decidido en este proyecto: **el se
 
 ## 6.3. El quinto destino de SignalR
 
-Hasta ahora el proyecto usaba cuatro formas de emitir con SignalR. La Fase 3.2 añade la quinta:
+Hasta ahora el proyecto usaba cuatro formas de emitir con SignalR. Este punto añade la quinta:
 
 | Destino | Quién lo recibe | Para qué vive en este proyecto |
 |---------|-----------------|--------------------------------|
@@ -130,7 +130,7 @@ De las tres formas de estado que podría tener esto, el servidor no tiene NINGUN
 
 Lo único que hace el hub es comprobar el registro y reenviar. El log de la señal es `LogDebug` **a propósito**: una señal por segundo y persona, con el nivel Information por defecto, llenaría el fichero de log en minutos con información que nadie va a querer leer.
 
-📌 **Ejemplo real:** es el mismo criterio de los mensajes privados de la Fase 3.1 (ver [`05-mensajes-privados.md`](05-mensajes-privados.md)): **estado que necesita limpieza, es estado que se pudre**. Si el servidor guardara quién escribe, haría falta un temporizador por conexión, una limpieza al desconectar y —lo que siempre se olvida— una limpieza por si el proceso se cae a mitad de frase. Con la caducidad en el cliente, nada de eso existe: el que se desconecta a mitad de una palabra no deja rastro en nadie, y sus marcas mueren solas en las pantallas que las tenían, a los cinco segundos.
+📌 **Ejemplo real:** es el mismo criterio de los mensajes privados (ver [`05-mensajes-privados.md`](05-mensajes-privados.md)): **estado que necesita limpieza, es estado que se pudre**. Si el servidor guardara quién escribe, haría falta un temporizador por conexión, una limpieza al desconectar y —lo que siempre se olvida— una limpieza por si el proceso se cae a mitad de frase. Con la caducidad en el cliente, nada de eso existe: el que se desconecta a mitad de una palabra no deja rastro en nadie, y sus marcas mueren solas en las pantallas que las tenían, a los cinco segundos.
 
 > ⚠️ **Advertencia:** no confundas "el servidor no guarda ESTO" con "el servidor no guarda nada": la presencia y la unicidad de nicks siguen en memoria desde la Fase 1 y el historial en SQLite desde la Fase 2. La pregunta correcta es siempre **¿esto es información con valor que alguien tiene derecho a recuperar más tarde?** Una señal de "sigue escribiendo" no lo es.
 

@@ -1,3 +1,16 @@
+- [10. Historial paginado](#10-historial-paginado)
+  - [10.1. Un botón por encima del chat](#101-un-botón-por-encima-del-chat)
+  - [10.2. La caché no basta: lo anterior vive en SQLite](#102-la-caché-no-basta-lo-anterior-vive-en-sqlite)
+  - [10.3. Invocación con retorno, no evento](#103-invocación-con-retorno-no-evento)
+  - [10.4. El cursor: tiempo, no número](#104-el-cursor-tiempo-no-número)
+  - [10.5. El canal sale del registro, no de un parámetro](#105-el-canal-sale-del-registro-no-de-un-parámetro)
+  - [10.6. Invocación en la web: store reactiva, como todo](#106-invocación-en-la-web-store-reactiva-como-todo)
+  - [10.7. Cómo se pinta: scroll, altura y recuperación](#107-cómo-se-pinta-scroll-altura-y-recuperación)
+  - [10.8. Qué queda fuera (y por qué)](#108-qué-queda-fuera-y-por-qué)
+  - [10.9. Cómo se prueba](#109-cómo-se-prueba)
+  - [10.10. Resumen del punto](#1010-resumen-del-punto)
+
+
 # 10. Historial paginado
 
 > 💡 **Punto de partida:** estás leyendo la charla de `#general` de ayer en Discord y llegas arriba del todo. ¿Se carga entera la sala en el navegador? No: hay un botón (o un simple gesto de scroll) que pide **la página anterior** y la pone por delante, sin arrancar de sitio a nadie. Hasta ahora AulaChatNet solo recuerda los últimos mensajes en pantalla... ¿y lo anterior?
@@ -43,7 +56,7 @@ cliente (ve 50) ──¿más antiguos?──► caché (50) ✗ ──► SQLite
 
 ## 10.3. Invocación con retorno, no evento
 
-La Fase 4.2 añadió un **evento** (`MencionRecibida`) porque el servidor necesitaba *avisar* a alguien sin que nadie lo pidiera. Aquí pasa lo contrario: el cliente **pregunta** y quiere **una respuesta**. En SignalR eso es una invocación con retorno:
+El punto de las menciones añadió un **evento** (`MencionRecibida`) porque el servidor necesitaba *avisar* a alguien sin que nadie lo pidiera. Aquí pasa lo contrario: el cliente **pregunta** y quiere **una respuesta**. En SignalR eso es una invocación con retorno:
 
 ```csharp
 // Shared/Constantes/ChatHubMetodos.cs
@@ -166,7 +179,7 @@ Un detalle elegante del ajuste: si la carga no produce repintado (sin conexión,
 ## 10.8. Qué queda fuera (y por qué)
 
 - **La terminal no pagina.** Su vista es impresión incremental: cada mensaje se pinta al llegar y no hay una lista que "recrecer" por arriba sin repintar la pantalla entera. Añadir `/historial` obligaría a un repintor nuevo y a retocar ayuda y menú; no compensa para lo que enseña esta fase. Si se quisiera, sería el próximo paso natural.
-- **Reacciones sobre mensajes paginados.** Las reacciones viven en la caché con su mensaje (Fase 3.3) y no se persisten; un mensaje paginado que ya salió de la ventana no tiene chips, y reaccionar a él devuelve el error habitual de "ya no está en el canal". Son contexto de solo lectura.
+- **Reacciones sobre mensajes paginados.** Las reacciones viven en la caché con su mensaje y no se persisten; un mensaje paginado que ya salió de la ventana no tiene chips, y reaccionar a él devuelve el error habitual de "ya no está en el canal". Son contexto de solo lectura.
 - **Cursor por tiempo, no por identificador.** Un cursor compuesto (`Timestamp + Id`) podría atravesar gemelos sin el techo descrito; a cambio, el DTO del cursor crece y el alumno carga con más conceptos. Se eligió la fecha por claridad, con el límite escrito a la vista.
 
 ## 10.9. Cómo se prueba
@@ -182,7 +195,7 @@ La paginación toca cuatro anillos, y cada uno se prueba donde vive:
 
 El E2E es el único que enciende la persistencia en el arnés, y no es capricho: bajando `HistorialMaximo` a 3 se garantiza que cualquier página profunda **pisa disco de verdad**. Y como la escritura es *write-behind* (Fase 2), el test espera a que la cola haya persistido el último mensaje antes de paginar — FIFO: si el último está, los anteriores también. Ese "punto de sincronía" es el mismo truco del TCS de los E2E de menciones, cruzando el proceso de un servicio en segundo plano.
 
-> 📝 **Nota:** en los tests de componentes de Blazor (bUnit), un ayudante de JS que **coincide pero no tiene resultado fijado** no devuelve nada: cuelga la invocación. Por eso cada uno se configura con su `SetResult`/`SetVoidResult`, igual que el parpadeo de la Fase 4.2.
+> 📝 **Nota:** en los tests de componentes de Blazor (bUnit), un ayudante de JS que **coincide pero no tiene resultado fijado** no devuelve nada: cuelga la invocación. Por eso cada uno se configura con su `SetResult`/`SetVoidResult`, igual que el parpadeo de las menciones.
 
 ## 10.10. Resumen del punto
 

@@ -14,7 +14,7 @@
 
 > 💡 **Punto de partida:** en el chat de la Fase 1 todo es pizarra común: lo que escribe uno lo leen todos los de la sala. En WhatsApp, cuando le escribes a alguien, ese mensaje no lo ve nadie más. ¿Cómo se manda algo que solo puede leer UNA persona concreta... y qué se decide sobre él cuando la gente se va?
 
-En este punto añadimos los mensajes privados de la Fase 3.1: el comando `/privado`, su recorrido hasta los dos implicados y las decisiones que lo sostienen — sobre todo la de que **no se guarda nada**, que no es un detalle de implementación, sino la razón de ser de este punto.
+En este punto añadimos los mensajes privados: el comando `/privado`, su recorrido hasta los dos implicados y las decisiones que lo sostienen — sobre todo la de que **no se guarda nada**, que no es un detalle de implementación, sino la razón de ser de este punto.
 
 **Objetivos de aprendizaje:**
 

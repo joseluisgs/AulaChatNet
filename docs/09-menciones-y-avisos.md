@@ -79,7 +79,7 @@ El patrón corta el token en cuanto aparece un carácter que no sea letra, dígi
 
 ## 9.3. El aviso viaja por el camino de los privados
 
-Una vez detectada la mención, el hub tiene que emitirla. La buena noticia: **no hace falta inventar nada**. SignalR ya tiene el destino "esta conexión concreta" —`Clients.Client(id)`—, que es el mismo por el que circulan los privados desde la Fase 3.1. El aviso de mención no abre ningún destino nuevo; reutiliza el quinto que ya existía en el proyecto (All, Caller, Group, Client, OthersInGroup).
+Una vez detectada la mención, el hub tiene que emitirla. La buena noticia: **no hace falta inventar nada**. SignalR ya tiene el destino "esta conexión concreta" —`Clients.Client(id)`—, que es el mismo por el que circulan los mensajes privados. El aviso de mención no abre ningún destino nuevo; reutiliza el quinto que ya existía en el proyecto (All, Caller, Group, Client, OthersInGroup).
 
 El código del hub cabe en un método con comentario propio, y su posición importa: **después** de emitir el mensaje al grupo.
 

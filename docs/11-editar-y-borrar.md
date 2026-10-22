@@ -1,6 +1,6 @@
 # 11. Editar y borrar mensajes
 
-> 💡 **Punto de partida:** En Discord borras un mensaje con la papelera y lo editas escribiendo encima. Ese mensaje *cambia* sin que se publique uno nuevo: mismo sitio, mismo momento de publicación, texto distinto. En WhatsApp pasa igual cuando ves la etiqueta *Editado*. ¿Cómo se hace sin liar la página y sin romper la persistencia? Esa es la Fase 4.4: **editar y borrar mensajes propios**.
+> 💡 **Punto de partida:** en Discord borras un mensaje con la papelera y lo editas escribiendo encima. Ese mensaje *cambia* sin que se publique uno nuevo: mismo sitio, mismo momento de publicación, texto distinto. En WhatsApp pasa igual cuando ves la etiqueta *Editado*. ¿Cómo se hace sin liar la página y sin romper la persistencia? Ese es el trabajo de este punto: **editar y borrar mensajes propios**.
 
 📌 **Ejemplo real:** Discord permite editar y borrar tus mensajes (y en canales con permisos, los de cualquiera). WhatsApp solo los tuyos, con aviso. Slack borra y edita también los suyos. La regla que comparten: **tú tocas lo tuyo, el servidor lo decide**. Y si el registro ya no existe (alguien lo borró, se fue la conexión...), el cliente se re-sincroniza en vez de quedarse con texto fantasma.
 
@@ -131,7 +131,7 @@ Una sola casuística compartida por los dos métodos: `EditarMensajeAsync` devue
 Aquí está la parte difícil de la fase (y la que más se parece a un sistema real). Tenemos dos frentes:
 
 1. **Fase 3**: la persistencia es *write-behind*: los mensajes se encolan y se escriben en segundo plano con un `SemaphoreSlim` para no bloquear el hub.
-2. **Fase 4.3**: el historial se pagina y se cachea por offset+limit.
+2. **El historial paginado**: el historial se pagina y se cachea por offset+limit.
 
 Si editas o borras sin coordinar, pasan cosas feas:
 
@@ -146,7 +146,7 @@ La solución combina dos mecanismos en el `ChatStore` del servidor:
 | **Cola bajo candado** | Las mutaciones (editar, borrar, encolar) se ejecutan **bajo el mismo `SemaphoreSlim`** que el escritor de fondo: cada operación se serializa, y al terminar se vacía la cola pendiente para que ninguna escritura diferida se quede huérfana. |
 | **Ventana de bloqueo** | El store recuerda `BloqueoHistorial` (offset y timestamp del primer mensaje del último tramo servido). Bajo el candado se recalcula: si el borrado afecta a la ventana, se re-bloquea en el primer mensaje vivo restante; si no queda ninguno, se vacía el bloqueo y el `cacheOffset`. Y lo más importante: **al borrar se decrementa `cacheOffset`**, porque el total baja y la siguiente página 2 pediría un desplazamiento obsoleto. |
 
-> ⚠️ **Advertencia:** sin el bloqueo, la Fase 4.3 y la 4.4 se pisan: el bloqueo es el contrato que dice "a partir de aquí, todo cambio invalida lo que el historial cacheado daba por hecho". En un proyecto con más tiempo se usaría un `Channel<T>` como cola de escritura (ya se valoró en la 3.2); el `SemaphoreSlim` con espera activa mantiene el código didáctico con la misma semántica de serialización.
+> ⚠️ **Advertencia:** sin el bloqueo, el paginado del historial y las mutaciones de este punto se pisan: el bloqueo es el contrato que dice "a partir de aquí, todo cambio invalida lo que el historial cacheado daba por hecho". En un proyecto con más tiempo se usaría un `Channel<T>` como cola de escritura (la opción ya comentada para el escritor de fondo); el `SemaphoreSlim` con espera activa mantiene el código didáctico con la misma semántica de serialización.
 
 ---
 
