@@ -575,6 +575,30 @@ async Task ProcesarLinea(string linea)
 
             break;
 
+        case Comando.Editar { Texto: var textoEdicion }:
+            // El eco vuelve por MENSAJE EDITADO (la fila se repinta con el
+            // texto nuevo y su marca): aquí solo importa si fue rechazado
+            error = await ProcesarEdicionAsync(textoEdicion);
+
+            if (error is not null)
+                PublicarLinea($"[red]✗ {Markup.Escape(error)}[/]");
+            else if (enVivo)
+                salidas.Clear(); // el texto cambia EN SU FILA, sin salida
+
+            break;
+
+        case Comando.Borrar:
+            // El eco vuelve por MENSAJE BORRADO (la fila desaparece): mismo
+            // esquema que editar, con el Id como única pista
+            error = await ProcesarBorradoAsync();
+
+            if (error is not null)
+                PublicarLinea($"[red]✗ {Markup.Escape(error)}[/]");
+            else if (enVivo)
+                salidas.Clear(); // la fila ya no está, sin salida
+
+            break;
+
         case Comando.Reconectar:
             // Solo tiene sentido con la conexión caída: si la reconexión
             // automática aún va en marcha o ya estamos dentro, se avisa
@@ -655,6 +679,43 @@ async Task<string?> ProcesarReaccionAsync(string emoji)
 
     return await cliente.ReaccionarAsync(ultimo.Id, canonico);
 }
+
+// /editar texto: en terminal no hay ratón con el que elegir fila, así que
+// el objetivo es TU ÚLTIMO mensaje propio del canal — el mismo criterio
+// estrechado de /reaccion. El servidor vuelve a validar la propiedad y el
+// texto: aquí solo se elige QUÉ mensaje se edita.
+async Task<string?> ProcesarEdicionAsync(string texto)
+{
+    var mio = UltimoMensajePropio();
+
+    if (mio is null)
+        return "No hay ningún mensaje tuyo que editar en este canal.";
+
+    return await cliente.EditarAsync(mio.Id, texto);
+}
+
+// /borrar: mismo objetivo que /editar —tu último mensaje propio— y el
+// mismo eco por evento (la fila se reconstruye desde la vista local). Sin
+// confirmación previa a propósito: el gesto ya es explícito y no se puede
+// deshacer, igual que /salir (la web sí confirma, porque allí el ratón
+// tropieza con más facilidad que el teclado).
+async Task<string?> ProcesarBorradoAsync()
+{
+    var mio = UltimoMensajePropio();
+
+    if (mio is null)
+        return "No hay ningún mensaje tuyo que borrar en este canal.";
+
+    return await cliente.BorrarAsync(mio.Id);
+}
+
+// Tu último mensaje de PERSONA en el canal actual: los avisos de sistema
+// no son tuyos aunque salgan con nombre de la casa, y la comparación es
+// por nick ignorando mayúsculas (mismo criterio que las menciones)
+MensajeDto? UltimoMensajePropio() =>
+    cliente.VistaMensajes.LastOrDefault(m =>
+        m.Tipo == TipoMensaje.Normal
+        && string.Equals(m.Usuario, nickActual, StringComparison.OrdinalIgnoreCase));
 
 // /sesion [borrar]: ver qué hay guardado en el perfil o borrarlo (en aulas
 // compartidas, para no heredar el nick del compañero). Tras "borrar" se

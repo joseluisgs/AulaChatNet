@@ -336,4 +336,33 @@ public class VistaChatTests
     }
 
     #endregion
+
+    #region Editado Tests
+
+    [Test]
+    public void LineaMensajeMarkup_MensajeEditado_LaMarcaVaGrisTrasElTexto()
+    {
+        // Arrange: el DTO es inmutable; editar es una COPIA con la marca
+        var mensaje = Mensaje("Ana", "Buenas tardes a todos") with { Editado = true };
+
+        // Act
+        var linea = VistaChat.LineaMensajeMarkup(mensaje);
+
+        // Assert: el MISMO "(editado)" que pinta la web — la frase vive en
+        // Shared, y aquí solo se teñe de gris
+        linea.Should().Contain($"[grey]{Markup.Escape(EditadoTexto.Marca)}[/]");
+    }
+
+    [Test]
+    public void LineaMensajeMarkup_MensajeSinEditar_NoLlevaMarca()
+    {
+        // Act
+        var linea = VistaChat.LineaMensajeMarkup(Mensaje("Ana", "Buenas a todos"));
+
+        // Assert: el gris no es exclusivo de la marca (hora y chips también
+        // lo usan), así que la comprobación es sobre el TEXTO de la marca
+        linea.Should().NotContain("editado");
+    }
+
+    #endregion
 }

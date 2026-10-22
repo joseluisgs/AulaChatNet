@@ -339,6 +339,48 @@ public class ChatStoreTests
 
     #endregion
 
+    #region Editar y borrar Tests
+
+    [Test]
+    public async Task EditarMensajeAsync_SinConexion_DevuelveErrorDeUsuario()
+    {
+        // Arrange
+        using var store = new ChatStore(UrlMuerta, Config());
+
+        // Act: InvokeAsync LANZA con la conexión caída; la store lo
+        // convierte al patrón string? con mensaje de usuario
+        var error = await store.EditarMensajeAsync(Guid.NewGuid(), "Texto nuevo");
+
+        // Assert
+        error.Should().Be("Sin conexión con el servidor");
+    }
+
+    [Test]
+    public async Task BorrarMensajeAsync_SinConexion_DevuelveErrorDeUsuario()
+    {
+        // Arrange
+        using var store = new ChatStore(UrlMuerta, Config());
+
+        // Act
+        var error = await store.BorrarMensajeAsync(Guid.NewGuid());
+
+        // Assert
+        error.Should().Be("Sin conexión con el servidor");
+    }
+
+    [Test]
+    public void VistaNick_AlCrearLaStore_EsNulo()
+    {
+        // Arrange: el nick llega con el alta; antes, el procesador de
+        // comandos no tiene a quién buscar mensajes propios
+        using var store = new ChatStore(UrlMuerta, Config());
+
+        // Act y assert
+        store.VistaNick.Should().BeNull();
+    }
+
+    #endregion
+
     // ── Ayudante ──
 
     /// <summary>Lee el valor ACTUAL de un observable (el BehaviorSubject lo guarda).</summary>

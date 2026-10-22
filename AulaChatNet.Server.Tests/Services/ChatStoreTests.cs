@@ -2,6 +2,7 @@ using AulaChatNet.Server.Models;
 using AulaChatNet.Server.Services;
 using AulaChatNet.Shared.Configuracion;
 using AulaChatNet.Shared.Dtos;
+using AulaChatNet.Shared.Helpers;
 using FluentAssertions;
 using Microsoft.Extensions.Options;
 
@@ -773,6 +774,213 @@ public class ChatStoreTests
 
         // Assert
         _store.GetReacciones(General)[0].Reacciones[0].Personas.Should().Equal("Ana");
+    }
+
+    #endregion
+
+    #region Editar y borrar Tests
+
+    [Test]
+    public async Task EditarMensajeAsync_MensajePropio_CambiaElTextoYLoMarcaEditado()
+    {
+        // Arrange
+        var mensaje = Mensaje("Buenas a todos");
+        _store.AddMensaje(General, mensaje);
+
+        // Act
+        var (editado, error) = await _store.EditarMensajeAsync(
+            General, mensaje.Id, "Buenas tardes a todos", "Ana");
+
+        // Assert: sin error y con el MISMO Id — los clientes buscan por Id
+        // y sustituyen su fila en el sitio donde estaba
+        error.Should().BeNull();
+        editado.Should().NotBeNull();
+        editado!.Id.Should().Be(mensaje.Id);
+        editado.Texto.Should().Be("Buenas tardes a todos");
+        editado.Editado.Should().BeTrue("una edición deja marca para todos");
+    }
+
+    [Test]
+    public async Task EditarMensajeAsync_ElTimestampNoCambia()
+    {
+        // Arrange: la hora es el cursor de la paginación (Fase 4.3) y el
+        // orden de la vista; moverla descolocaría a todos los clientes
+        var mensaje = Mensaje("Buenas a todos");
+        _store.AddMensaje(General, mensaje);
+
+        // Act
+        var (editado, _) = await _store.EditarMensajeAsync(
+            General, mensaje.Id, "Texto nuevo", "Ana");
+
+        // Assert
+        editado!.Timestamp.Should().Be(mensaje.Timestamp);
+    }
+
+    [Test]
+    public async Task EditarMensajeAsync_ConservaElOrdenDelHistorial()
+    {
+        // Arrange: tres mensajes, se edita el del MEDIO. La cola se
+        // reconstruye entera, así que este test es la garantía de que el
+        // orden no se rompe en el intento
+        var primero = Mensaje("primero");
+        var medio = Mensaje("medio");
+        var ultimo = Mensaje("ultimo");
+        _store.AddMensaje(General, primero);
+        _store.AddMensaje(General, medio);
+        _store.AddMensaje(General, ultimo);
+
+        // Act
+        await _store.EditarMensajeAsync(General, medio.Id, "medio editado", "Ana");
+
+        // Assert
+        _store.GetHistorial(General).Select(m => m.Texto)
+            .Should().Equal("primero", "medio editado", "ultimo");
+    }
+
+    [Test]
+    public async Task EditarMensajeAsync_NickConOtrasMayusculas_SeAdmite()
+    {
+        // Arrange: la identidad es el nick NORMALIZADO, igual que en el
+        // resto del proyecto ("Ana" y "ANA" son la misma persona)
+        var mensaje = Mensaje("Buenas a todos");
+        _store.AddMensaje(General, mensaje);
+
+        // Act
+        var (editado, error) = await _store.EditarMensajeAsync(
+            General, mensaje.Id, "Corrijo una cosa", "ANA");
+
+        // Assert
+        error.Should().BeNull();
+        editado!.Texto.Should().Be("Corrijo una cosa");
+    }
+
+    [Test]
+    public async Task EditarMensajeAsync_MensajeDeOtro_DevuelveErrorYNoTocaElTexto()
+    {
+        // Arrange: el mensaje es de Ana y Beto intenta editarlo
+        var mensaje = Mensaje("Buenas a todos");
+        _store.AddMensaje(General, mensaje);
+
+        // Act
+        var (editado, error) = await _store.EditarMensajeAsync(
+            General, mensaje.Id, "Texto ajeno", "Beto");
+
+        // Assert
+        editado.Should().BeNull();
+        error.Should().Be("Solo puedes modificar tus propios mensajes");
+        _store.GetHistorial(General)[0].Texto.Should().Be("Buenas a todos");
+    }
+
+    [Test]
+    public async Task EditarMensajeAsync_MensajeDeSistema_DevuelveErrorNoModificable()
+    {
+        // Arrange: un aviso de sistema no es mensaje de persona
+        var sistema = new MensajeDto(
+            Guid.NewGuid(), MensajesSistema.Autor, "Ana entró en el canal",
+            DateTime.UtcNow, TipoMensaje.Sistema);
+        _store.AddMensaje(General, sistema);
+
+        // Act
+        var (editado, error) = await _store.EditarMensajeAsync(
+            General, sistema.Id, "Texto trucado", "Ana");
+
+        // Assert
+        editado.Should().BeNull();
+        error.Should().Be("Ese mensaje no se puede modificar");
+    }
+
+    [Test]
+    public async Task EditarMensajeAsync_MensajeInexistente_DevuelveError()
+    {
+        // Act: el Id no está en la cola del canal (ya borrado, de otra
+        // sala, inventado...)
+        var (editado, error) = await _store.EditarMensajeAsync(
+            General, Guid.NewGuid(), "Texto nuevo", "Ana");
+
+        // Assert
+        editado.Should().BeNull();
+        error.Should().Be("Ese mensaje ya no está en el canal");
+    }
+
+    [Test]
+    public async Task BorrarMensajeAsync_MensajePropio_QuitaElMensajeDeLaCola()
+    {
+        // Arrange
+        var primero = Mensaje("primero");
+        var segundo = Mensaje("segundo");
+        _store.AddMensaje(General, primero);
+        _store.AddMensaje(General, segundo);
+
+        // Act
+        var (borrado, error) = await _store.BorrarMensajeAsync(General, segundo.Id, "Ana");
+
+        // Assert: fuera de la cola, y el orden del resto intacto
+        borrado.Should().BeTrue();
+        error.Should().BeNull();
+        _store.GetHistorial(General).Should().ContainSingle()
+            .Which.Id.Should().Be(primero.Id);
+    }
+
+    [Test]
+    public async Task BorrarMensajeAsync_LiberaLasReaccionesDelMensaje()
+    {
+        // Arrange: un chip sobre un mensaje que ya no se puede ver es
+        // basura con dueño perdido — la misma razón que la poda circular
+        var mensaje = Mensaje("Este tiene un 👍");
+        _store.AddMensaje(General, mensaje);
+        _store.AlternarReaccion(General, mensaje.Id, "👍", "Ana");
+
+        // Act
+        await _store.BorrarMensajeAsync(General, mensaje.Id, "Ana");
+
+        // Assert
+        _store.GetReacciones(General).Should().BeEmpty();
+    }
+
+    [Test]
+    public async Task BorrarMensajeAsync_MensajeDeOtro_DevuelveErrorYConservaElMensaje()
+    {
+        // Arrange: el mensaje es de Ana y Beto intenta borrarlo
+        var mensaje = Mensaje("Buenas a todos");
+        _store.AddMensaje(General, mensaje);
+
+        // Act
+        var (borrado, error) = await _store.BorrarMensajeAsync(General, mensaje.Id, "Beto");
+
+        // Assert: el borrado es definitivo, así que el rechazo tiene que
+        // ser EXACTO — nada de "borrado a medias"
+        borrado.Should().BeFalse();
+        error.Should().Be("Solo puedes modificar tus propios mensajes");
+        _store.GetHistorial(General).Should().ContainSingle();
+    }
+
+    [Test]
+    public async Task BorrarMensajeAsync_MensajeDeSistema_DevuelveErrorNoModificable()
+    {
+        // Arrange
+        var sistema = new MensajeDto(
+            Guid.NewGuid(), MensajesSistema.Autor, "Ana salió del canal",
+            DateTime.UtcNow, TipoMensaje.Sistema);
+        _store.AddMensaje(General, sistema);
+
+        // Act
+        var (borrado, error) = await _store.BorrarMensajeAsync(General, sistema.Id, "Ana");
+
+        // Assert
+        borrado.Should().BeFalse();
+        error.Should().Be("Ese mensaje no se puede modificar");
+    }
+
+    [Test]
+    public async Task BorrarMensajeAsync_MensajeInexistente_DevuelveError()
+    {
+        // Act
+        var (borrado, error) = await _store.BorrarMensajeAsync(
+            General, Guid.NewGuid(), "Ana");
+
+        // Assert
+        borrado.Should().BeFalse();
+        error.Should().Be("Ese mensaje ya no está en el canal");
     }
 
     #endregion

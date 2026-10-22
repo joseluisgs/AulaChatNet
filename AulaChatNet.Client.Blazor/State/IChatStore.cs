@@ -78,6 +78,14 @@ public interface IChatStore : IDisposable
     /// <summary>Último valor del canal canónico en el que estamos (null hasta conectar).</summary>
     string? Canal { get; }
 
+    /// <summary>
+    /// Último valor del nick con el que estamos dados de alta (null hasta
+    /// conectar). El procesador de comandos lo necesita para saber CUÁL de
+    /// los mensajes de la vista es tuyo — /editar y /borrar actúan sobre tu
+    /// último mensaje propio, igual que en la terminal.
+    /// </summary>
+    string? VistaNick { get; }
+
     /// <summary>Último valor de la lista de mensajes del canal actual (lo lee el comando /reaccion).</summary>
     IReadOnlyList<MensajeDto> VistaMensajes { get; }
 
@@ -172,6 +180,28 @@ public interface IChatStore : IDisposable
     /// <param name="emoji">Emoji YA validado contra la lista cerrada por el llamador (el servidor vuelve a validar).</param>
     /// <returns>null si fue correcto; el error del servidor o de conexión si no.</returns>
     Task<string?> ReaccionarAsync(Guid idMensaje, string emoji);
+
+    /// <summary>
+    /// Edita el texto de UN mensaje propio del canal actual (Fase 4.4). El
+    /// servidor valida que el mensaje sea tuyo y normal; el eco vuelve por
+    /// el evento de mensaje editado (mensaje completo con la misma marca),
+    /// y la vista se pinta SOLO desde ahí — igual que con los mensajes y
+    /// las reacciones, la store no calcula nada.
+    /// </summary>
+    /// <param name="idMensaje">Mensaje a editar (el de la fila elegida).</param>
+    /// <param name="texto">Nuevo texto ya recortado y validado en local.</param>
+    /// <returns>null si fue correcto; el error del servidor o de conexión si no.</returns>
+    Task<string?> EditarMensajeAsync(Guid idMensaje, string texto);
+
+    /// <summary>
+    /// Borra UN mensaje propio del canal actual (Fase 4.4), con las mismas
+    /// reglas que editar. El eco vuelve por el evento de mensaje borrado
+    /// (solo el Id): la store quita la fila de la vista y sus chips del
+    /// mapa de reacciones. El borrado es definitivo.
+    /// </summary>
+    /// <param name="idMensaje">Mensaje a borrar (el de la fila elegida).</param>
+    /// <returns>null si fue correcto; el error del servidor o de conexión si no.</returns>
+    Task<string?> BorrarMensajeAsync(Guid idMensaje);
 
     /// <summary>Cambia al canal dado (el historial nuevo llega después por evento).</summary>
     /// <param name="canal">Canal de destino.</param>

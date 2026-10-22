@@ -168,6 +168,36 @@ public class ClienteChat : IDisposable
                 _reacciones.OnNext(nuevas);
             });
 
+        // Un mensaje del canal ha cambiado de texto (Fase 4.4): llega el
+        // mensaje COMPLETO con su Id, así que la vista solo SUSTITUYE la
+        // fila que coincide — misma posición, mismo orden, texto nuevo y
+        // marca de editado. Si el Id no está en la vista (una página que
+        // aún no se pidió), no hay nada que tocar: la próxima carga traerá
+        // el texto ya editado, porque el servidor solo guarda uno.
+        _conexion.On<MensajeDto>(ChatHubEventos.MensajeEditado, editado =>
+        {
+            var vista = _mensajes.Value;
+
+            if (!vista.Any(m => m.Id == editado.Id))
+                return;
+
+            _mensajes.OnNext([.. vista.Select(m => m.Id == editado.Id ? editado : m)]);
+        });
+
+        // Un mensaje del canal se ha borrado: solo hace falta el Id.
+        // Quitarlo de la vista, y también SUS chips del mapa de reacciones:
+        // sin mensaje que los muestre, el mapa los retendría en contra de
+        // su dueño (mismo criterio con el que el servidor los libera)
+        _conexion.On<Guid>(ChatHubEventos.MensajeBorrado, idBorrado =>
+        {
+            _mensajes.OnNext([.. _mensajes.Value.Where(m => m.Id != idBorrado)]);
+
+            var chips = new Dictionary<Guid, ReaccionesMensajeDto>(_reacciones.Value);
+
+            if (chips.Remove(idBorrado))
+                _reacciones.OnNext(chips);
+        });
+
         // ── Ciclo de vida de la conexión → punto de estado de la cabecera ──
         _conexion.Reconnecting += _ =>
         {
@@ -421,6 +451,48 @@ public class ClienteChat : IDisposable
         try
         {
             return await _conexion.InvokeAsync<string?>(ChatHubMetodos.Reaccionar, idMensaje, emoji);
+        }
+        catch (Exception)
+        {
+            // Mismo traductor que EnviarAsync: sin conexión, error en español
+            return ErrorSinConexion;
+        }
+    }
+
+    /// <summary>
+    /// Edita el texto de UN mensaje propio del canal actual (Fase 4.4). El
+    /// eco vuelve por el evento <c>MensajeEditado</c> con el mensaje
+    /// completo: la vista se pinta SOLO desde ahí — igual que con los
+    /// mensajes y las reacciones, el cliente no calcula nada.
+    /// </summary>
+    /// <param name="idMensaje">Mensaje a editar (el de tu último mensaje propio del canal).</param>
+    /// <param name="texto">Nuevo texto ya recortado.</param>
+    /// <returns>null si todo fue correcto; el error del servidor o de conexión si no.</returns>
+    public async Task<string?> EditarAsync(Guid idMensaje, string texto)
+    {
+        try
+        {
+            return await _conexion.InvokeAsync<string?>(ChatHubMetodos.Editar, idMensaje, texto);
+        }
+        catch (Exception)
+        {
+            // Mismo traductor que EnviarAsync: sin conexión, error en español
+            return ErrorSinConexion;
+        }
+    }
+
+    /// <summary>
+    /// Borra UN mensaje propio del canal actual (Fase 4.4). El eco vuelve
+    /// por el evento <c>MensajeBorrado</c> con solo el Id: cada cliente
+    /// quita la fila si la tiene, y el borrado es definitivo.
+    /// </summary>
+    /// <param name="idMensaje">Mensaje a borrar (el de tu último mensaje propio del canal).</param>
+    /// <returns>null si todo fue correcto; el error del servidor o de conexión si no.</returns>
+    public async Task<string?> BorrarAsync(Guid idMensaje)
+    {
+        try
+        {
+            return await _conexion.InvokeAsync<string?>(ChatHubMetodos.Borrar, idMensaje);
         }
         catch (Exception)
         {

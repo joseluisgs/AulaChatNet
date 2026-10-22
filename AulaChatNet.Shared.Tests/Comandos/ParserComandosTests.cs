@@ -442,4 +442,54 @@ public class ParserComandosTests
     }
 
     #endregion
+
+    #region Editar y borrar Tests
+
+    [Test]
+    [TestCase("/editar Buenos días a todos", "Buenos días a todos")]
+    [TestCase("/edit  Buenos días  a todos ", "Buenos días  a todos")]  // alias; los espacios INTERNOS se conservan
+    [TestCase("/EDITAR corrijo la fecha", "corrijo la fecha")]          // mayúsculas dan igual
+    public void Parse_Editartexto_DevuelveEditarConElTextoNuevo(string entrada, string esperado)
+    {
+        // Act
+        var comando = ParserComandos.Parse(entrada);
+
+        // Assert: todo lo que va tras /editar es el NUEVO texto, recortado
+        // solo por los extremos (misma regla que un envío normal)
+        comando.Should().BeOfType<Comando.Editar>()
+            .Which.Texto.Should().Be(esperado);
+    }
+
+    [Test]
+    [TestCase("/editar")]
+    [TestCase("/editar   ")]
+    [TestCase("/edit")]
+    public void Parse_EditartSinTexto_DevuelveInvalidoConElUso(string entrada)
+    {
+        // Act: sin texto nuevo no se manda nada a la red, y el uso se
+        // enseña ya
+        var comando = ParserComandos.Parse(entrada);
+
+        // Assert
+        var invalido = comando.Should().BeOfType<Comando.Invalido>().Subject;
+        invalido.Motivo.Should().Contain("texto");
+        invalido.Uso.Should().Contain("/editar <texto>");
+    }
+
+    [Test]
+    [TestCase("/borrar")]
+    [TestCase("/delete")]      // alias en inglés
+    [TestCase("/del")]         // alias corto
+    [TestCase("  /BORRAR  ")]  // mayúsculas y espacios sobrantes
+    public void Parse_Borrar_DevuelveBorrar(string entrada)
+    {
+        // Act: no lleva argumentos — el objetivo (tu último mensaje) lo
+        // decide el cliente, no la línea escrita
+        var comando = ParserComandos.Parse(entrada);
+
+        // Assert
+        comando.Should().BeOfType<Comando.Borrar>();
+    }
+
+    #endregion
 }

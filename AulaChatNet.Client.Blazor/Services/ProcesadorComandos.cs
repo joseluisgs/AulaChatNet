@@ -96,6 +96,26 @@ public class ProcesadorComandos(IChatStore store, ChatConfig config, ISesionStor
 
                 break;
 
+            case Comando.Editar { Texto: var textoEdicion }:
+                // El eco vuelve por MENSAJE EDITADO (la fila se repinta con
+                // el texto nuevo y su marca): aquí solo salen los ERRORES
+                var errorEdicion = await EditarUltimoPropioAsync(textoEdicion);
+
+                if (errorEdicion is not null)
+                    store.Aviso(errorEdicion);
+
+                break;
+
+            case Comando.Borrar:
+                // El eco vuelve por MENSAJE BORRADO (la fila desaparece):
+                // mismos criterios que editar, con el Id como única pista
+                var errorBorrado = await BorrarUltimoPropioAsync();
+
+                if (errorBorrado is not null)
+                    store.Aviso(errorBorrado);
+
+                break;
+
             case Comando.Reconectar:
                 store.Aviso(await CrearTextoReconectarAsync());
                 break;
@@ -151,6 +171,53 @@ public class ProcesadorComandos(IChatStore store, ChatConfig config, ISesionStor
 
         return await store.ReaccionarAsync(ultimo.Id, canonico);
     }
+
+    /// <summary>
+    /// /editar texto por COMANDO (la web además tiene botones sobre
+    /// cualquier mensaje propio): el objetivo es TU Último mensaje del
+    /// canal, el mismo criterio estrechado de /reaccion. El servidor vuelve
+    /// a validar la propiedad y el texto: aquí solo se elige QUÉ mensaje.
+    /// </summary>
+    /// <param name="texto">Nuevo texto escrito por el usuario.</param>
+    /// <returns>null si la edición salió bien; el error, si no.</returns>
+    private async Task<string?> EditarUltimoPropioAsync(string texto)
+    {
+        var mio = UltimoMensajePropio();
+
+        if (mio is null)
+            return "No hay ningún mensaje tuyo que editar en este canal.";
+
+        return await store.EditarMensajeAsync(mio.Id, texto);
+    }
+
+    /// <summary>
+    /// /borrar por COMANDO: mismo objetivo que /editar —tu último mensaje
+    /// propio— y mismo eco por evento. Sin confirmación previa a
+    /// propósito: el gesto ya es explícito (los botones 🗑️ de la web sí
+    /// confirman, porque allí el ratón tropieza con más facilidad).
+    /// </summary>
+    /// <returns>null si el borrado salió bien; el error, si no.</returns>
+    private async Task<string?> BorrarUltimoPropioAsync()
+    {
+        var mio = UltimoMensajePropio();
+
+        if (mio is null)
+            return "No hay ningún mensaje tuyo que borrar en este canal.";
+
+        return await store.BorrarMensajeAsync(mio.Id);
+    }
+
+    /// <summary>
+    /// Tu último mensaje de PERSONA en el canal actual: los avisos de
+    /// sistema no son tuyos aunque salgan con nombre de la casa, y la
+    /// comparación es por nick ignorando mayúsculas (mismo criterio que la
+    /// tienda de identidad del servidor).
+    /// </summary>
+    /// <returns>El mensaje, o null si todavía no has escrito nada en el canal.</returns>
+    private MensajeDto? UltimoMensajePropio() =>
+        store.VistaMensajes.LastOrDefault(m =>
+            m.Tipo == TipoMensaje.Normal
+            && string.Equals(m.Usuario, store.VistaNick, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// Ayuda como TEXTO (la terminal la pinta como tabla de Spectre): una

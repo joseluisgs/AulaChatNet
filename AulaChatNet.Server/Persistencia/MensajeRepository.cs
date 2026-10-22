@@ -80,7 +80,7 @@ public class MensajeRepository(IDbContextFactory<AulaChatContexto> fabrica, ILog
             .Select(m => new MensajeDto(
                 m.Id, m.Usuario, m.Texto,
                 DateTime.SpecifyKind(m.Timestamp, DateTimeKind.Utc),
-                m.Tipo))
+                m.Tipo, m.Editado))
             .ToArray();
     }
 
@@ -114,7 +114,7 @@ public class MensajeRepository(IDbContextFactory<AulaChatContexto> fabrica, ILog
             .Select(m => new MensajeDto(
                 m.Id, m.Usuario, m.Texto,
                 DateTime.SpecifyKind(m.Timestamp, DateTimeKind.Utc),
-                m.Tipo))
+                m.Tipo, m.Editado))
             .ToArray();
     }
 
@@ -134,6 +134,49 @@ public class MensajeRepository(IDbContextFactory<AulaChatContexto> fabrica, ILog
                 "Limpieza: {Borrados} mensajes anteriores a {Fecha} eliminados", borrados, anteriorA);
 
         return borrados;
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> ActualizarAsync(MensajeDto mensaje, CancellationToken cancelacion = default)
+    {
+        // Misma política que GuardarAsync: los mensajes de sistema no existen
+        // en disco, así que no hay nada que actualizar para ellos
+        if (mensaje.Tipo != TipoMensaje.Normal)
+            return false;
+
+        await using var contexto = await fabrica.CreateDbContextAsync(cancelacion);
+
+        // ExecuteUpdateAsync genera UN SOLO UPDATE en SQL sin traer la fila
+        // a memoria (ni ponerla en tracking): misma filosofía que el
+        // ExecuteDeleteAsync de LimpiarAsync. Dos SET en la misma instrucción:
+        // el texto nuevo y la marca de editado viajan juntos, así que la fila
+        // nunca queda a medias.
+        var filas = await contexto.Mensajes
+            .Where(m => m.Id == mensaje.Id)
+            .ExecuteUpdateAsync(
+                campos => campos
+                    .SetProperty(m => m.Texto, mensaje.Texto)
+                    .SetProperty(m => m.Editado, true),
+                cancelacion);
+
+        // false = la fila no estaba (INSERT aún en la cola, fallo de disco
+        // anterior o limpieza). Quien lo decide —el store— lo deja en el log.
+        return filas > 0;
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> BorrarAsync(Guid idMensaje, CancellationToken cancelacion = default)
+    {
+        await using var contexto = await fabrica.CreateDbContextAsync(cancelacion);
+
+        // DELETE por Id: una instrucción, sin cargar nada a memoria. Una vez
+        // fuera de la base de datos, el mensaje ya no puede aparecer en
+        // ninguna página de historial: el borrado es definitivo.
+        var filas = await contexto.Mensajes
+            .Where(m => m.Id == idMensaje)
+            .ExecuteDeleteAsync(cancelacion);
+
+        return filas > 0;
     }
 
     /// <inheritdoc />

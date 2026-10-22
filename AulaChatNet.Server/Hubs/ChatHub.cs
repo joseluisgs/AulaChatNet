@@ -553,6 +553,131 @@ public class ChatHub(IChatStore store, IControlRafagas rafagas, IOptions<ChatCon
     }
 
     /// <summary>
+    /// Edita el texto de UN mensaje del canal: lo sustituye en la caché y en
+    /// SQLite, y difunde el resultado COMPLETO a todo el grupo — cada cliente
+    /// busca por Id y sustituye su fila en el sitio donde estaba, el mismo
+    /// mecanismo de reemplazo que ya usan las reacciones.
+    /// </summary>
+    /// <remarks>
+    /// Cinco reglas que sostienen este método y que conviene leer juntas:
+    /// <list type="number">
+    /// <item>El canal sale del REGISTRO de la conexión (como en la paginación
+    /// de la Fase 4.3): solo se puede editar en la sala en la que estás.</item>
+    /// <item>El nuevo texto pasa por la MISMA validación que un envío normal:
+    /// una edición no es una puerta trasera para saltarse los límites.</item>
+    /// <item>Solo mensajes NORMALES y PROPIOS: los avisos de sistema no los
+    /// edita nadie (el store lo comprueba con el nick normalizado), y lo
+    /// rechazado vuelve al cliente como error en español.</item>
+    /// <item>El <c>Timestamp</c> NO cambia: es el cursor con el que se pagina
+    /// el historial (Fase 4.3) y el orden de la vista; moverlo descolocaría a
+    /// todos los clientes.</item>
+    /// <item>Sin ráfaga ni reaviso de mención: no es un mensaje NUEVO. El
+    /// texto del canal cambia, pero nadie vuelve a pitar por una mención que
+    /// ya se notificó en su día.</item>
+    /// </list>
+    /// </remarks>
+    /// <param name="idMensaje">Identificador del mensaje a editar.</param>
+    /// <param name="texto">Nuevo texto (se valida con ChatConfig).</param>
+    /// <returns>null si todo fue correcto; el mensaje de error si no.</returns>
+    public async Task<string?> EditarMensajeAsync(Guid idMensaje, string? texto)
+    {
+        var conexion = store.GetConexion(Context.ConnectionId);
+
+        if (conexion is null)
+        {
+            logger.LogWarning(
+                "Edición rechazada: la conexión {ConnectionId} no está registrada",
+                Context.ConnectionId);
+
+            return "No estás registrado en el canal, vuelve a conectarte";
+        }
+
+        texto = texto?.Trim() ?? string.Empty;
+
+        var error = Config.ValidarMensaje(texto);
+
+        if (error is not null)
+        {
+            logger.LogWarning("Edición rechazada de {Usuario}: {Error}", conexion.Usuario, error);
+
+            return error;
+        }
+
+        var (mensaje, errorEdicion) = await store.EditarMensajeAsync(
+            conexion.Canal, idMensaje, texto, conexion.Usuario);
+
+        // El store nunca devuelve (null, null): o hay mensaje, o hay error.
+        // Esta guarda deja además a las dos variables estrechadas para
+        // compilar sin advertencias de nulabilidad
+        if (errorEdicion is not null || mensaje is null)
+        {
+            logger.LogWarning(
+                "Edición rechazada de {Usuario}: {Error} (mensaje {IdMensaje} en {Canal})",
+                conexion.Usuario, errorEdicion, idMensaje, conexion.Canal);
+
+            return errorEdicion;
+        }
+
+        // Se loguea la longitud, no el contenido (mismo criterio que SendAsync:
+        // los logs pueden verse personas no autorizadas)
+        logger.LogInformation(
+            "{Usuario} edita un mensaje de {Longitud} caracteres en {Canal}",
+            conexion.Usuario, texto.Length, conexion.Canal);
+
+        await Clients.Group(conexion.Canal).SendAsync(ChatHubEventos.MensajeEditado, mensaje);
+
+        return null;
+    }
+
+    /// <summary>
+    /// Borra UN mensaje del canal de la caché y de SQLite, y avisa a todo el
+    /// grupo con su Id: cada cliente quita la fila si la tiene. El borrado es
+    /// definitivo — no queda copia en disco ni en ninguna página de historial.
+    /// </summary>
+    /// <remarks>
+    /// Mismas reglas que <see cref="EditarMensajeAsync"/> (canal del registro,
+    /// propiedad normalizada, solo mensajes normales, sin ráfaga), y una más:
+    /// el servidor también libera las reacciones del mensaje borrado, que sin
+    /// fila que mostrar serían basura con dueño perdido. Los clientes, por su
+    /// parte, quitan además SU copia de esas reacciones al recibir el evento.
+    /// </remarks>
+    /// <param name="idMensaje">Identificador del mensaje a borrar.</param>
+    /// <returns>null si todo fue correcto; el mensaje de error si no.</returns>
+    public async Task<string?> BorrarMensajeAsync(Guid idMensaje)
+    {
+        var conexion = store.GetConexion(Context.ConnectionId);
+
+        if (conexion is null)
+        {
+            logger.LogWarning(
+                "Borrado rechazado: la conexión {ConnectionId} no está registrada",
+                Context.ConnectionId);
+
+            return "No estás registrado en el canal, vuelve a conectarte";
+        }
+
+        var (borrado, errorBorrado) = await store.BorrarMensajeAsync(
+            conexion.Canal, idMensaje, conexion.Usuario);
+
+        if (!borrado)
+        {
+            logger.LogWarning(
+                "Borrado rechazado de {Usuario}: {Error} (mensaje {IdMensaje} en {Canal})",
+                conexion.Usuario, errorBorrado, idMensaje, conexion.Canal);
+
+            return errorBorrado;
+        }
+
+        logger.LogInformation(
+            "{Usuario} borra un mensaje en {Canal} ({IdMensaje})",
+            conexion.Usuario, conexion.Canal, idMensaje);
+
+        await Clients.Group(conexion.Canal).SendAsync(ChatHubEventos.MensajeBorrado, idMensaje);
+
+        return null;
+    }
+
+    /// <summary>
     /// Envía un mensaje a UNA persona concreta del canal del emisor, sin que
     /// lo vea nadie más. Es el CUARTO destino de SignalR del proyecto:
     /// <c>Group</c> (todo el canal), <c>Caller</c> (solo el que pregunta) y

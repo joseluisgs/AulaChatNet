@@ -98,6 +98,15 @@ public class StoreFalsa
         // "await null" en el componente revienta: se da por hecho
         _mock.Setup(s => s.CargarAnterioresAsync()).Returns(Task.CompletedTask);
 
+        // Mismo motivo que CargarAnterioresAsync: el editor inline (Enter
+        // guarda) y los botones ✏️/🗑️ hacen await de estos métodos. El
+        // resultado por defecto es "sin error"; un test que quiera simular
+        // un rechazo del servidor vuelve a montar el Setup con su mensaje
+        _mock.Setup(s => s.EditarMensajeAsync(It.IsAny<Guid>(), It.IsAny<string>()))
+            .ReturnsAsync((string?)null);
+        _mock.Setup(s => s.BorrarMensajeAsync(It.IsAny<Guid>()))
+            .ReturnsAsync((string?)null);
+
         // Valores actuales: leídos del SUJETO en cada llamada (lazy), así
         // que "menear" el flujo desde el test se refleja al instante
         _mock.Setup(s => s.Canal).Returns(() => CanalActual.Value);
@@ -106,6 +115,7 @@ public class StoreFalsa
         _mock.Setup(s => s.VistaPrivados).Returns(() => Privados.Value);
         _mock.Setup(s => s.VistaMensajes).Returns(() => Mensajes.Value);
         _mock.Setup(s => s.VistaReacciones).Returns(() => Reacciones.Value);
+        _mock.Setup(s => s.VistaNick).Returns(() => Nick.Value);
         _mock.Setup(s => s.EstadisticasActuales).Returns(() => Estadisticas.Value);
     }
 

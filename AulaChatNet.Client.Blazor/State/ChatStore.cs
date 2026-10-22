@@ -206,6 +206,37 @@ public class ChatStore : IChatStore
                 _reacciones.OnNext(nuevas);
             });
 
+        // Un mensaje del canal ha cambiado de texto (Fase 4.4): llega el
+        // mensaje COMPLETO con su Id, así que la vista solo SUSTITUYE la
+        // fila que coincide — misma posición, mismo orden, texto nuevo y
+        // marca de editado. Si el Id no está en la vista (una página que
+        // aún no se pidió), no hay nada que tocar: la próxima carga traerá
+        // el texto ya editado, porque el servidor solo guarda uno.
+        _conexion.On<MensajeDto>(ChatHubEventos.MensajeEditado, editado =>
+        {
+            var vista = _mensajes.Value;
+
+            if (!vista.Any(m => m.Id == editado.Id))
+                return;
+
+            _mensajes.OnNext([.. vista.Select(m => m.Id == editado.Id ? editado : m)]);
+        });
+
+        // Un mensaje del canal se ha borrado: solo hace falta el Id.
+        // Quitarlo de la vista, y también SUS chips del mapa de
+        // reacciones: sin mensaje que los muestre, el mapa los retendría
+        // en contra de su dueño (mismo criterio con el que el servidor
+        // los libera al borrar la fila)
+        _conexion.On<Guid>(ChatHubEventos.MensajeBorrado, idBorrado =>
+        {
+            _mensajes.OnNext([.. _mensajes.Value.Where(m => m.Id != idBorrado)]);
+
+            var chips = new Dictionary<Guid, ReaccionesMensajeDto>(_reacciones.Value);
+
+            if (chips.Remove(idBorrado))
+                _reacciones.OnNext(chips);
+        });
+
         // ── Ciclo de vida de la conexión → punto de la barra ──
         _conexion.Reconnecting += _ =>
         {
@@ -288,6 +319,9 @@ public class ChatStore : IChatStore
 
     /// <inheritdoc />
     public string? Canal => _canalActual.Value;
+
+    /// <inheritdoc />
+    public string? VistaNick => _nick.Value;
 
     /// <inheritdoc />
     public IReadOnlyList<MensajeDto> VistaMensajes => _mensajes.Value;
@@ -415,6 +449,39 @@ public class ChatStore : IChatStore
             // desde ahí, igual que con los mensajes — el cliente no calcula nada
             return await _conexion.InvokeAsync<string?>(
                 ChatHubMetodos.Reaccionar, idMensaje, emoji);
+        }
+        catch (Exception)
+        {
+            return ErrorSinConexion;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<string?> EditarMensajeAsync(Guid idMensaje, string texto)
+    {
+        try
+        {
+            // El eco vuelve por MENSAJE EDITADO con el mensaje completo: la
+            // store solo sustituye la fila que cambia — mismo camino de
+            // reemplazo que los mensajes y las reacciones
+            return await _conexion.InvokeAsync<string?>(
+                ChatHubMetodos.Editar, idMensaje, texto);
+        }
+        catch (Exception)
+        {
+            return ErrorSinConexion;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<string?> BorrarMensajeAsync(Guid idMensaje)
+    {
+        try
+        {
+            // El eco vuelve por MENSAJE BORRADO con solo el Id: la store
+            // quita la fila y sus chips de la vista
+            return await _conexion.InvokeAsync<string?>(
+                ChatHubMetodos.Borrar, idMensaje);
         }
         catch (Exception)
         {

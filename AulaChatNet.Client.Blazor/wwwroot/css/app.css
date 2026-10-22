@@ -625,6 +625,89 @@ body {
 }
 
 /* ==========================================================================
+   6c. Editar y borrar mensajes propios (Fase 4.4): ✏️ y 🗑️ junto al "+"
+   de reacciones —solo en tus mensajes de persona— y el editor INLINE que
+   los sustituye: Enter guarda, Escape cancela. La marca "(editado)" va
+   gris tras el texto, con el MISMO texto que pinta la terminal.
+   ========================================================================== */
+
+.acciones-edicion {
+    position: absolute;
+    top: -12px;
+    right: 44px; /* pegado al "+" de reacciones, que vive en right: 8px */
+    display: none;
+}
+
+.mensaje:hover .acciones-edicion {
+    display: flex;
+}
+
+.boton-edicion {
+    width: 26px;
+    height: 24px;
+    border: 1px solid var(--dc-gris-medio);
+    border-radius: 6px;
+    background: var(--dc-fondo);
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+/* El rojo solo al pasar el ratón por el 🗑️: borrar es destructivo, y el
+   color avisa sin gritar (el ✏️ se ilumina como el "+") */
+.boton-edicion:hover {
+    border-color: var(--dc-gris);
+    background: var(--dc-hover);
+}
+
+.boton-edicion[title^="Borrar"]:hover {
+    color: var(--dc-rojo);
+    border-color: var(--dc-rojo);
+}
+
+/* El verde del punto de "en línea" para el ✔: confirmar construye,
+   no destruye (el ✕ se queda en el gris neutro del resto) */
+.boton-edicion[title^="Confirmar"]:hover {
+    color: var(--dc-verde);
+    border-color: var(--dc-verde);
+}
+
+/* "¿Borrar? ✔" no es un icono: crece para que quepa la pregunta */
+.boton-edicion.boton-confirmar {
+    width: auto;
+    padding: 0 8px;
+}
+
+/* Editor inline: ocupa el ancho del texto (se envuelve en la fila) y usa
+   el MISMO gris azulado de la caja de mensajes, para que la edición no
+   parezca otro componente */
+.editor-inline {
+    width: 100%;
+    max-width: 640px;
+    background: var(--dc-input);
+    color: var(--dc-texto);
+    border: none;
+    border-radius: 6px;
+    outline: none;
+    padding: 4px 8px;
+    font-size: 15px;
+    font-family: inherit;
+}
+
+/* Error de validación LOCAL: junto al campo, en rojo — regla de la casa */
+.editor-aviso {
+    color: var(--dc-rojo);
+    font-size: 12px;
+    margin: 2px 0 0;
+}
+
+.mensaje-editado {
+    color: var(--dc-hora);
+    font-size: 11px;
+    margin-left: 4px;
+}
+
+/* ==========================================================================
    7. Caja de texto (fija abajo, placeholder "Escribe un mensaje...")
    ========================================================================== */
 

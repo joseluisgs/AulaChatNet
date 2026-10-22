@@ -66,6 +66,7 @@ public static class VistaChat
         return $"[grey]{hora}[/] " +
                $"[{hex}][[{iniciales}]][/] " +
                $"[{hex}]{Markup.Escape(mensaje.Usuario)}[/]: {TextoConMencionesMarkup(mensaje.Texto)}" +
+               EditadoMarkup(mensaje) +
                ChipsReaccionesMarkup(mensaje, reacciones);
     }
 
@@ -89,6 +90,24 @@ public static class VistaChat
                 : Markup.Escape(trozo));
 
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// La marca gris "(editado)" al final del texto —el mismo "(editado)"
+    /// de Discord— con el texto PUESTO en Shared, para que la terminal y la
+    /// web digan exactamente lo mismo. Solo los mensajes de persona pueden
+    /// llevarla (los avisos de sistema no se editan), y la marca escapada
+    /// no come el formato de la línea entera.
+    /// </summary>
+    /// <param name="mensaje">Mensaje del canal.</param>
+    /// <returns>Cadena de markup (con el espacio que la precede) o vacía.</returns>
+    private static string EditadoMarkup(MensajeDto mensaje)
+    {
+        var marca = EditadoTexto.Descripcion(mensaje.Editado);
+
+        return marca.Length == 0
+            ? string.Empty
+            : $" [grey]{Markup.Escape(marca)}[/]";
     }
 
     /// <summary>

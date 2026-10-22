@@ -159,4 +159,39 @@ public interface IChatStore
     /// <param name="canal">Canal canónico.</param>
     /// <returns>Un DTO por mensaje con al menos una reacción; vacío si no hay ninguna.</returns>
     IReadOnlyList<ReaccionesMensajeDto> GetReacciones(string canal);
+
+    /// <summary>
+    /// Edita el texto de un mensaje del canal (Fase 4.4), pero SOLO si es de
+    /// una persona, es de tipo normal y le pertenece a <paramref name="usuario"/>.
+    /// Si todo cuadra, la caché guarda el mensaje sustituido (mismo Id y
+    /// Timestamp, texto nuevo y Editado = true) y se actualiza SQLite.
+    /// </summary>
+    /// <remarks>
+    /// La escritura en disco va DIRECTA, sin pasar por la cola de insertados:
+    /// una fila que aún no existe no se puede actualizar dentro de esa cola.
+    /// El repositorio es opcional (modo Fase 1): sin él solo cambia la caché,
+    /// que es la fuente de verdad mientras dura la sesión.
+    /// </remarks>
+    /// <param name="canal">Canal canónico donde está el mensaje.</param>
+    /// <param name="idMensaje">Identificador del mensaje a editar.</param>
+    /// <param name="texto">Nuevo texto (ya validado y recortado por el hub).</param>
+    /// <param name="usuario">Quien intenta editar (se compara normalizado con el autor).</param>
+    /// <param name="cancelacion">Token para cancelar la operación.</param>
+    /// <returns>El mensaje editado si todo cuadra (con Error = null); o el error en español si no.</returns>
+    Task<(MensajeDto? Mensaje, string? Error)> EditarMensajeAsync(
+        string canal, Guid idMensaje, string texto, string usuario, CancellationToken cancelacion = default);
+
+    /// <summary>
+    /// Borra un mensaje del canal (Fase 4.4) con las MISMAS reglas que
+    /// editar: solo mensajes normales propios. Quita el mensaje de la caché,
+    /// libera sus reacciones (sin mensaje no hay chip que mantener) y lo
+    /// borra de SQLite — el borrado es definitivo.
+    /// </summary>
+    /// <param name="canal">Canal canónico donde está el mensaje.</param>
+    /// <param name="idMensaje">Identificador del mensaje a borrar.</param>
+    /// <param name="usuario">Quien intenta borrar (se compara normalizado con el autor).</param>
+    /// <param name="cancelacion">Token para cancelar la operación.</param>
+    /// <returns>(true, null) si se borró; o (false, error en español) si no.</returns>
+    Task<(bool Borrado, string? Error)> BorrarMensajeAsync(
+        string canal, Guid idMensaje, string usuario, CancellationToken cancelacion = default);
 }

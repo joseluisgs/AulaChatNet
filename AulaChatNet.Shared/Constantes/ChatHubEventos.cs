@@ -16,6 +16,8 @@ namespace AulaChatNet.Shared.Constantes;
 /// - <see cref="Escribiendo"/> → a todos los del canal MENOS al que escribe
 /// - <see cref="ReaccionActualizada"/> → a TODO el canal, el emisor incluido
 /// - <see cref="ReaccionesRecibidas"/> → solo al que se conecta o cambia de canal
+/// - <see cref="MensajeEditado"/> → a TODO el canal, con el mensaje completo
+/// - <see cref="MensajeBorrado"/> → a TODO el canal, solo con el Id
 /// </remarks>
 /// </summary>
 public static class ChatHubEventos
@@ -80,4 +82,21 @@ public static class ChatHubEventos
     /// privados, <c>Clients.Client</c> con la conexión de quien nombra.
     /// </summary>
     public const string MencionRecibida = "MencionRecibida";
+
+    /// <summary>
+    /// Notifica al canal que UN mensaje ha cambiado de texto (Fase 4.4).
+    /// Argumento: el MISMO <c>MensajeDto</c> con el texto nuevo — mismo Id
+    /// y misma hora, con <c>Editado = true</c>. Cada cliente busca por Id y
+    /// sustituye la fila en el sitio donde estaba: nadie tiene que repintar
+    /// la lista entera ni recalcular nada.
+    /// </summary>
+    public const string MensajeEditado = "MensajeEditado";
+
+    /// <summary>
+    /// Notifica al canal que UN mensaje ha sido borrado (Fase 4.4).
+    /// Argumento: <c>Guid</c> con el Id del mensaje. Con el Id basta: cada
+    /// cliente quita la fila si la tiene, y a quien no le llegaba (páginas
+    /// que no ha pedido aún) el mensaje simplemente ya no existe en SQLite.
+    /// </summary>
+    public const string MensajeBorrado = "MensajeBorrado";
 }

@@ -58,6 +58,8 @@ public static class ParserComandos
             _ when EsNombrePrivado(nombre) => CrearPrivado(argumento),
 
             "/reaccion" or "/react" => CrearReaccion(argumento),
+            "/editar" or "/edit" => CrearEditar(argumento),
+            "/borrar" or "/delete" or "/del" => new Comando.Borrar(),
             "/reconectar" or "/reconnect" => new Comando.Reconectar(),
             "/sesion" => CrearSesion(argumento),
             "/limpiar" or "/clear" => new Comando.Limpiar(),
@@ -176,6 +178,26 @@ public static class ParserComandos
         var partes = argumento.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
         return new Comando.Reaccion(partes[0]);
+    }
+
+    /// <summary>
+    /// Construye el comando de edición: todo lo que va tras /editar es el
+    /// NUEVO texto del mensaje, con todos sus espacios internos — solo se
+    /// recortan los sobrantes de los extremos, igual que en un envío normal.
+    /// El parser decide la forma; que el mensaje sea tuyo lo comprueba el
+    /// servidor, que es quien tiene la verdad.
+    /// </summary>
+    /// <param name="argumento">Texto escrito tras /editar (puede ser null).</param>
+    /// <returns>Comando de edición o comando inválido con su uso.</returns>
+    private static Comando CrearEditar(string? argumento)
+    {
+        var texto = argumento?.Trim() ?? string.Empty;
+
+        return texto.Length == 0
+            ? new Comando.Invalido(
+                "Falta el nuevo texto del mensaje",
+                "Usa: /editar <texto> (p. ej. /editar Buenos días a todos)")
+            : new Comando.Editar(texto);
     }
 
     /// <summary>

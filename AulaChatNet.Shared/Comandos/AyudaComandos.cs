@@ -45,6 +45,8 @@ public static class AyudaComandos
         new("/usuarios [canal]", "Conectados de tu canal o de otro (p. ej. /usuarios daw)"),
         new("/privado <quien> <texto>", "Mensaje privado a alguien de tu canal (efímero, no se guarda)"),
         new("/reaccion <emoji>", "Pone un emoji en el último mensaje del canal; pulsarlo otra vez lo quita"),
+        new("/editar <texto>", "Cambia el texto de tu último mensaje en el canal (lo ve todo, marcado como editado)"),
+        new("/borrar", "Borra tu último mensaje en el canal (no se puede deshacer)"),
         new("/reconectar", "Vuelve a entrar si se perdió la conexión"),
         new("/sesion [borrar]", "Ver la sesión guardada o borrarla (útil en aulas compartidas)"),
         new("/limpiar", "Limpia la vista local de mensajes (el historial sigue en el servidor)"),
