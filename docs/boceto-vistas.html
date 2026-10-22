@@ -6,10 +6,10 @@
     <title>Boceto de vistas — AulaChatNet</title>
 
     <!-- Estilos de la app: NO es una copia — este documento enlaza el MISMO
-         wwwroot/css/app.css de la librería compartida (Client.Web), el que
-         usan la web y el escritorio. Si cambia la app, cambia también este
-         boceto. (Antes vivía en Client.Blazor: la Fase 5.1 lo mudó a la RCL.) -->
-    <link rel="stylesheet" href="../AulaChatNet.Client.Web/wwwroot/css/app.css">
+         wwwroot/css/app.css de la librería compartida (AulaChatNet.Client.Blazor.Components),
+         el que usan la web y el escritorio. Si cambia la app, cambia
+         también este boceto. -->
+    <link rel="stylesheet" href="../AulaChatNet.Client.Blazor.Components/wwwroot/css/app.css">
 
     <style>
         /* ==========================================================================
@@ -139,10 +139,14 @@
             Maqueta <b>estática</b> de las dos vistas de la aplicación web: el <b>panel de entrada</b>
             (antes de conectar) y la <b>vista de canal</b> (ya dentro). No es una captura: los elementos
             replican el marcado real de los componentes (<code>PanelEntrada</code>, <code>BarraConexion</code>,
-            <code>ListaUsuarios</code>, <code>ListaCanales</code>, <code>ListaMensajes</code>,
-            <code>CajaMensaje</code>) y los estilos son los MISMOS de la app — este documento enlaza
-            <code>wwwroot/css/app.css</code> directamente. Las personas, los mensajes y las horas están
-            simulados: aquí no hay SignalR ni Rx.NET, solo la maqueta visual.
+            <code>AvisoMenciones</code>, <code>ListaUsuarios</code>, <code>ListaCanales</code>,
+            <code>ListaMensajes</code>, <code>MensajeItem</code>, <code>PrivadoItem</code>,
+            <code>ReaccionesMensaje</code> y <code>CajaMensaje</code>) y los estilos son los MISMOS de la
+            app — este documento enlaza <code>wwwroot/css/app.css</code> directamente. Las personas, los
+            mensajes y las horas están simulados: aquí no hay SignalR ni Rx.NET, solo la maqueta visual.
+            El <b>estado</b> que se ve en cada fila (selector de reacciones abierto, chip de privado
+            activo, badge de menciones) es el de una interacción cualquiera, para que se aprecie sin
+            tener que interaccionar.
         </p>
         <nav class="doc-nav">
             <a href="#vista-1">1 · Panel de entrada</a>
@@ -168,7 +172,7 @@
                     <div class="entrada-logo"># AulaChatNet</div>
                     <p class="entrada-sub">Chat del aula en tiempo real con SignalR y Rx.NET</p>
 
-                    <p class="entrada-stats">📌 Actualmente hay 3 personas conectadas: #general 2 · #daw 1 · #dam 0 · #asir 0 · #smr 0</p>
+                    <p class="entrada-stats">📌 Actualmente hay 6 personas conectadas: #general 5 · #daw 1 · #dam 0 · #asir 0 · #smr 0</p>
 
                     <p class="entrada-sesion">
                         Hola de nuevo, <b>Ana</b>.
@@ -210,8 +214,9 @@
     </section>
 
     <!-- ======================================================================
-         VISTA 2 — Vista de canal (Chat.razor + BarraConexion + ListaUsuarios
-                   + ListaCanales + ListaMensajes + CajaMensaje)
+         VISTA 2 — Vista de canal (Chat.razor: BarraConexion + AvisoMenciones
+                   + contenido(ListaUsuarios + zona-canal(ListaCanales +
+                   ListaMensajes + CajaMensaje)))
          ====================================================================== -->
     <section class="doc-seccion" id="vista-2">
         <h2 class="doc-titulo">Vista 2 — Vista de canal <span>ya dentro: dos columnas, sin burbujas</span></h2>
@@ -219,43 +224,46 @@
         <div class="doc-marco">
             <div class="aplicacion">
 
-                <!-- Barra superior: identidad + estado + gente + Salir -->
+                <!-- Barra superior: identidad + estado + gente + Salir.
+                     Como en BarraConexion.razor, la fila de datos va dentro
+                     de su div .barra-fila (el error, cuando lo hay, sería un
+                     .barra-error a todo el ancho debajo). -->
                 <header class="barra">
-                    <!-- Icono de la app, junto al título (misma ruta relativa
-                         a resources/ que en el panel de entrada) -->
-                    <img class="barra-icono"
-                         src="../resources/icon-app.png"
-                         alt="AulaChatNet"
-                         width="28" height="28">
-                    <span class="barra-logo"># AulaChatNet</span>
-                    <span class="barra-separador">·</span>
-                    <span class="barra-nick">Ana</span>
-                    <span class="barra-separador">·</span>
-                    <span class="barra-canal">#general</span>
-                    <span class="punto conectado" title="conectado"></span>
-                    <span class="barra-estado">conectado</span>
+                    <div class="barra-fila">
+                        <!-- Icono de la app, junto al título (misma ruta relativa
+                             a resources/ que en el panel de entrada) -->
+                        <img class="barra-icono"
+                             src="../resources/icon-app.png"
+                             alt="AulaChatNet"
+                             width="28" height="28">
+                        <span class="barra-logo"># AulaChatNet</span>
+                        <span class="barra-separador">·</span>
+                        <span class="barra-nick">Ana</span>
+                        <span class="barra-separador">·</span>
+                        <span class="barra-canal">#general</span>
+                        <span class="punto conectado" title="conectado"></span>
+                        <span class="barra-estado">conectado</span>
 
-                    <span class="barra-contador">3 en la sala · 4 en total</span>
+                        <span class="barra-contador">5 en la sala · 6 en total</span>
 
-                    <button type="button" class="boton-secundario">Salir</button>
+                        <button type="button" class="boton-secundario">Salir</button>
+                    </div>
                 </header>
 
+                <!-- Badge de menciones sin mirar (AvisoMenciones.razor): OJO,
+                     en la app es position: FIXED — se clava en la esquina
+                     superior derecha de la VENTANA, sobre la barra. -->
+                <button class="mencion-aviso"
+                        title="Menciones sin mirar. Pulsa para darlas por vistas">💬 1</button>
+
                 <div class="contenido">
-                    <!-- Columna izquierda: conectados del canal ACTUAL -->
+                    <!-- Columna izquierda: conectados del canal ACTUAL. Clic
+                         en otro = prepararle un privado (mismo markup que
+                         ListaUsuarios.razor: "clicable" menos en uno mismo). -->
                     <aside class="lista-usuarios">
-                        <div class="lista-titulo">Conectados — 3</div>
+                        <div class="lista-titulo">Conectados — 5</div>
 
-                        <div class="usuario">
-                            <img class="avatar"
-                                 src="https://api.dicebear.com/10.x/lorelei/svg?seed=Ana"
-                                 alt="Avatar de Ana"
-                                 width="24" height="24"
-                                 onerror="this.outerHTML='<span class=&quot;avatar-iniciales&quot; style=&quot;width:24px; height:24px; font-size:9.6px; background-color:rgb(84, 242, 139)&quot; title=&quot;Ana&quot;>[AN]</span>'">
-                            <span class="usuario-nombre">Ana</span>
-                            <span class="punto conectado" title="en línea"></span>
-                        </div>
-
-                        <div class="usuario">
+                        <div class="usuario clicable" title="clic para escribirle un mensaje privado">
                             <img class="avatar"
                                  src="https://api.dicebear.com/10.x/adventurer/svg?seed=Profesor"
                                  alt="Avatar de Profesor"
@@ -265,13 +273,45 @@
                             <span class="punto conectado" title="en línea"></span>
                         </div>
 
-                        <div class="usuario">
+                        <!-- Ana es QUIEN MIRA: no es "clicable" (un privado a ti
+                             mismo no tiene sentido y el servidor lo rechaza) -->
+                        <div class="usuario" title="ese eres tú">
+                            <img class="avatar"
+                                 src="https://api.dicebear.com/10.x/lorelei/svg?seed=Ana"
+                                 alt="Avatar de Ana"
+                                 width="24" height="24"
+                                 onerror="this.outerHTML='<span class=&quot;avatar-iniciales&quot; style=&quot;width:24px; height:24px; font-size:9.6px; background-color:rgb(84, 242, 139)&quot; title=&quot;Ana&quot;>[AN]</span>'">
+                            <span class="usuario-nombre">Ana</span>
+                            <span class="punto conectado" title="en línea"></span>
+                        </div>
+
+                        <div class="usuario clicable" title="clic para escribirle un mensaje privado">
                             <img class="avatar"
                                  src="https://api.dicebear.com/10.x/croodles/svg?seed=Luc%C3%ADa"
                                  alt="Avatar de Lucía"
                                  width="24" height="24"
-                                 onerror="this.outerHTML='<span class=&quot;avatar-iniciales&quot; style=&quot;width:24px; height:24px; font-size:9.6px; background-color:rgb(242, 84, 171)&quot; title=&quot;Lucía&quot;>[LU]</span>'">
+                                 onerror="this.outerHTML='<span class=&quot;avatar-iniciales&quot; style=&quot;width:24px; height:24px; font-size:9.6px; background-color:rgb(242, 84, 100)&quot; title=&quot;Lucía&quot;>[LU]</span>'">
                             <span class="usuario-nombre">Lucía</span>
+                            <span class="punto conectado" title="en línea"></span>
+                        </div>
+
+                        <div class="usuario clicable" title="clic para escribirle un mensaje privado">
+                            <img class="avatar"
+                                 src="https://api.dicebear.com/10.x/lorelei/svg?seed=Marcos"
+                                 alt="Avatar de Marcos"
+                                 width="24" height="24"
+                                 onerror="this.outerHTML='<span class=&quot;avatar-iniciales&quot; style=&quot;width:24px; height:24px; font-size:9.6px; background-color:rgb(242, 84, 163)&quot; title=&quot;Marcos&quot;>[MA]</span>'">
+                            <span class="usuario-nombre">Marcos</span>
+                            <span class="punto conectado" title="en línea"></span>
+                        </div>
+
+                        <div class="usuario clicable" title="clic para escribirle un mensaje privado">
+                            <img class="avatar"
+                                 src="https://api.dicebear.com/10.x/miniavs/svg?seed=Sara"
+                                 alt="Avatar de Sara"
+                                 width="24" height="24"
+                                 onerror="this.outerHTML='<span class=&quot;avatar-iniciales&quot; style=&quot;width:24px; height:24px; font-size:9.6px; background-color:rgb(242, 84, 231)&quot; title=&quot;Sara&quot;>[SA]</span>'">
+                            <span class="usuario-nombre">Sara</span>
                             <span class="punto conectado" title="en línea"></span>
                         </div>
                     </aside>
@@ -279,29 +319,33 @@
                     <!-- Zona del canal: píldoras + mensajes + caja -->
                     <section class="zona-canal">
                         <nav class="pildoras" aria-label="Canales">
-                            <button type="button" class="pildora activa">
+                            <button type="button" class="pildora activa" title="Entrar en #general">
                                 <span>#general</span>
-                                <span class="pildora-contador">3</span>
+                                <span class="pildora-contador">5</span>
                             </button>
-                            <button type="button" class="pildora">
+                            <button type="button" class="pildora" title="Entrar en #daw">
                                 <span>#daw</span>
                                 <span class="pildora-contador">1</span>
                             </button>
-                            <button type="button" class="pildora">
+                            <button type="button" class="pildora" title="Entrar en #dam">
                                 <span>#dam</span>
                                 <span class="pildora-contador">0</span>
                             </button>
-                            <button type="button" class="pildora">
+                            <button type="button" class="pildora" title="Entrar en #asir">
                                 <span>#asir</span>
                                 <span class="pildora-contador">0</span>
                             </button>
-                            <button type="button" class="pildora">
+                            <button type="button" class="pildora" title="Entrar en #smr">
                                 <span>#smr</span>
                                 <span class="pildora-contador">0</span>
                             </button>
                         </nav>
 
                         <div class="mensajes" id="lista-mensajes">
+                            <!-- Arriba del todo, el botón de paginación (si la store
+                                 cree que queda algo anterior) -->
+                            <button type="button" class="carga-anterior">⬆ Cargar mensajes antiguos</button>
+
                             <!-- Mensaje de sistema: gris cursiva, sin avatar, con espaciador -->
                             <div class="mensaje sistema">
                                 <span class="mensaje-hora">10:15</span>
@@ -311,7 +355,9 @@
                                 </div>
                             </div>
 
-                            <!-- Fila de mensaje: hora + avatar circular + nombre en SU color + texto -->
+                            <!-- Fila de mensaje: hora + avatar circular + nombre en SU color + texto.
+                                 TODA fila de persona lleva el "+" de reacciones (oculto hasta el
+                                 hover: pásale el ratón para verlo) -->
                             <div class="mensaje">
                                 <span class="mensaje-hora">10:16</span>
                                 <img class="avatar"
@@ -322,6 +368,9 @@
                                 <div class="mensaje-cuerpo">
                                     <span class="mensaje-nombre" style="color: rgb(187, 242, 84)">Profesor</span>
                                     <span class="mensaje-texto">Bienvenidos a clase. Hoy: SignalR y Rx.NET.</span>
+                                    <div class="acciones-fila">
+                                        <button class="boton-reaccion" title="Reaccionar a este mensaje">+</button>
+                                    </div>
                                 </div>
                             </div>
 
@@ -339,10 +388,13 @@
                                      src="https://api.dicebear.com/10.x/croodles/svg?seed=Luc%C3%ADa"
                                      alt="Avatar de Lucía"
                                      width="40" height="40"
-                                     onerror="this.outerHTML='<span class=&quot;avatar-iniciales&quot; style=&quot;width:40px; height:40px; font-size:16px; background-color:rgb(242, 84, 171)&quot; title=&quot;Lucía&quot;>[LU]</span>'">
+                                     onerror="this.outerHTML='<span class=&quot;avatar-iniciales&quot; style=&quot;width:40px; height:40px; font-size:16px; background-color:rgb(242, 84, 100)&quot; title=&quot;Lucía&quot;>[LU]</span>'">
                                 <div class="mensaje-cuerpo">
-                                    <span class="mensaje-nombre" style="color: rgb(242, 84, 171)">Lucía</span>
+                                    <span class="mensaje-nombre" style="color: rgb(242, 84, 100)">Lucía</span>
                                     <span class="mensaje-texto">¿Los mensajes llegan a todo el mundo al instante?</span>
+                                    <div class="acciones-fila">
+                                        <button class="boton-reaccion" title="Reaccionar a este mensaje">+</button>
+                                    </div>
                                 </div>
                             </div>
 
@@ -354,8 +406,10 @@
                                 </div>
                             </div>
 
+                            <!-- Mensaje PROPIO (Ana es quien mira): al pasar el ratón
+                                 asoman el "+" y, a su izquierda, ✏️ y 🗑️ -->
                             <div class="mensaje">
-                                <span class="mensaje-hora">10:18</span>
+                                <span class="mensaje-hora">10:17</span>
                                 <img class="avatar"
                                      src="https://api.dicebear.com/10.x/lorelei/svg?seed=Ana"
                                      alt="Avatar de Ana"
@@ -364,9 +418,19 @@
                                 <div class="mensaje-cuerpo">
                                     <span class="mensaje-nombre" style="color: rgb(84, 242, 139)">Ana</span>
                                     <span class="mensaje-texto">¡Hola a todos! 👋</span>
+                                    <div class="acciones-fila">
+                                        <button class="boton-reaccion" title="Reaccionar a este mensaje">+</button>
+                                    </div>
+                                    <div class="acciones-edicion">
+                                        <button type="button" class="boton-edicion" title="Editar este mensaje">✏️</button>
+                                        <button type="button" class="boton-edicion" title="Borrar este mensaje">🗑️</button>
+                                    </div>
                                 </div>
                             </div>
 
+                            <!-- Mensaje con REACCIONES: los chips van debajo del texto, en el
+                                 orden de la lista cerrada de Shared (👍 ❤️ 😂 😮 😢 😡).
+                                 El chip de Ana (la que mira) sale resaltado con .mia -->
                             <div class="mensaje">
                                 <span class="mensaje-hora">10:18</span>
                                 <img class="avatar"
@@ -377,23 +441,168 @@
                                 <div class="mensaje-cuerpo">
                                     <span class="mensaje-nombre" style="color: rgb(187, 242, 84)">Profesor</span>
                                     <span class="mensaje-texto">Sí — cada cliente se suscribe al mismo flujo de la store y repinta solo.</span>
+                                    <div class="reacciones">
+                                        <button class="chip-reaccion mia" title="Ana, Lucía">
+                                            <span class="chip-emoji">👍</span>
+                                            <span class="chip-contador">2</span>
+                                        </button>
+                                        <button class="chip-reaccion" title="Marcos">
+                                            <span class="chip-emoji">❤️</span>
+                                            <span class="chip-contador">1</span>
+                                        </button>
+                                    </div>
+                                    <div class="acciones-fila">
+                                        <button class="boton-reaccion" title="Reaccionar a este mensaje">+</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="mensaje sistema">
+                                <span class="mensaje-hora">10:18</span>
+                                <span class="mensaje-espaciador"></span>
+                                <div class="mensaje-cuerpo">
+                                    <span class="mensaje-texto">· Marcos se ha unido al canal</span>
+                                </div>
+                            </div>
+
+                            <!-- Mensaje PRIVADO recibido: MISMA fila que un normal, con el
+                                 🔒 "de X" (si lo hubieras escrito tú diría "para X") y la
+                                 nota de que no se guarda colgada del title del 🔒 -->
+                            <div class="mensaje privado">
+                                <span class="mensaje-hora">10:19</span>
+                                <img class="avatar"
+                                     src="https://api.dicebear.com/10.x/croodles/svg?seed=Luc%C3%ADa"
+                                     alt="Avatar de Lucía"
+                                     width="40" height="40"
+                                     onerror="this.outerHTML='<span class=&quot;avatar-iniciales&quot; style=&quot;width:40px; height:40px; font-size:16px; background-color:rgb(242, 84, 100)&quot; title=&quot;Lucía&quot;>[LU]</span>'">
+                                <div class="mensaje-cuerpo">
+                                    <span class="privado-marca" title="Los privados son efímeros: no se guardan en el servidor ni salen en el historial">🔒 de Lucía</span>
+                                    <span class="mensaje-nombre" style="color: rgb(242, 84, 100)">Lucía</span>
+                                    <span class="mensaje-texto">¿Mañana hay que entregar la práctica?</span>
+                                </div>
+                            </div>
+
+                            <!-- ECO del privado que tú enviaste: mismo aspecto, con "para X".
+                                 Los dos viven en la MISMA cronología que el canal -->
+                            <div class="mensaje privado">
+                                <span class="mensaje-hora">10:20</span>
+                                <img class="avatar"
+                                     src="https://api.dicebear.com/10.x/lorelei/svg?seed=Ana"
+                                     alt="Avatar de Ana"
+                                     width="40" height="40"
+                                     onerror="this.outerHTML='<span class=&quot;avatar-iniciales&quot; style=&quot;width:40px; height:40px; font-size:16px; background-color:rgb(84, 242, 139)&quot; title=&quot;Ana&quot;>[AN]</span>'">
+                                <div class="mensaje-cuerpo">
+                                    <span class="privado-marca" title="Los privados son efímeros: no se guardan en el servidor ni salen en el historial">🔒 para Lucía</span>
+                                    <span class="mensaje-nombre" style="color: rgb(84, 242, 139)">Ana</span>
+                                    <span class="mensaje-texto">Sí, hasta las 20:00. Te aviso por aquí.</span>
+                                </div>
+                            </div>
+
+                            <div class="mensaje sistema">
+                                <span class="mensaje-hora">10:21</span>
+                                <span class="mensaje-espaciador"></span>
+                                <div class="mensaje-cuerpo">
+                                    <span class="mensaje-texto">· Sara se ha unido al canal</span>
+                                </div>
+                            </div>
+
+                            <div class="mensaje">
+                                <span class="mensaje-hora">10:22</span>
+                                <img class="avatar"
+                                     src="https://api.dicebear.com/10.x/lorelei/svg?seed=Marcos"
+                                     alt="Avatar de Marcos"
+                                     width="40" height="40"
+                                     onerror="this.outerHTML='<span class=&quot;avatar-iniciales&quot; style=&quot;width:40px; height:40px; font-size:16px; background-color:rgb(242, 84, 163)&quot; title=&quot;Marcos&quot;>[MA]</span>'">
+                                <div class="mensaje-cuerpo">
+                                    <span class="mensaje-nombre" style="color: rgb(242, 84, 163)">Marcos</span>
+                                    <span class="mensaje-texto">Lo del muestreo con Sample ya me cuadra: una señal por segundo y nada más.</span>
+                                    <div class="acciones-fila">
+                                        <button class="boton-reaccion" title="Reaccionar a este mensaje">+</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Mensaje con MENCIÓN: el trozo @Ana sale en su propia
+                                 etiqueta (escapado por construcción, sin MarkupString) -->
+                            <div class="mensaje">
+                                <span class="mensaje-hora">10:23</span>
+                                <img class="avatar"
+                                     src="https://api.dicebear.com/10.x/miniavs/svg?seed=Sara"
+                                     alt="Avatar de Sara"
+                                     width="40" height="40"
+                                     onerror="this.outerHTML='<span class=&quot;avatar-iniciales&quot; style=&quot;width:40px; height:40px; font-size:16px; background-color:rgb(242, 84, 231)&quot; title=&quot;Sara&quot;>[SA]</span>'">
+                                <div class="mensaje-cuerpo">
+                                    <span class="mensaje-nombre" style="color: rgb(242, 84, 231)">Sara</span>
+                                    <span class="mensaje-texto">¿En qué quedó el ejercicio de ayer? <span class="mencion">@Ana</span> ¿lo terminaste?</span>
+                                    <!-- Selector de reacciones ABIERTO: en la app se abre al
+                                         pulsar el "+" y se cierra al elegir; aquí queda a la
+                                         vista con los seis emoji de la lista cerrada.
+                                         OJO: un SOLO .acciones-fila, con la clase "abierta"
+                                         (es la que lo mantiene visible sin hover) -->
+                                    <div class="acciones-fila abierta">
+                                        <button class="boton-reaccion" title="Reaccionar a este mensaje">+</button>
+                                    </div>
+                                    <div class="selector-reacciones">
+                                        <button class="opcion-reaccion" title="Reaccionar con 👍">👍</button>
+                                        <button class="opcion-reaccion" title="Reaccionar con ❤️">❤️</button>
+                                        <button class="opcion-reaccion" title="Reaccionar con 😂">😂</button>
+                                        <button class="opcion-reaccion" title="Reaccionar con 😮">😮</button>
+                                        <button class="opcion-reaccion" title="Reaccionar con 😢">😢</button>
+                                        <button class="opcion-reaccion" title="Reaccionar con 😡">😡</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Mensaje propio EDITADO: la marca gris va tras el texto,
+                                 con el mismo "(editado)" que pinta la terminal -->
+                            <div class="mensaje">
+                                <span class="mensaje-hora">10:24</span>
+                                <img class="avatar"
+                                     src="https://api.dicebear.com/10.x/lorelei/svg?seed=Ana"
+                                     alt="Avatar de Ana"
+                                     width="40" height="40"
+                                     onerror="this.outerHTML='<span class=&quot;avatar-iniciales&quot; style=&quot;width:40px; height:40px; font-size:16px; background-color:rgb(84, 242, 139)&quot; title=&quot;Ana&quot;>[AN]</span>'">
+                                <div class="mensaje-cuerpo">
+                                    <span class="mensaje-nombre" style="color: rgb(84, 242, 139)">Ana</span>
+                                    <span class="mensaje-texto">Sí, ya está en la rama de la práctica.</span><span class="mensaje-editado">(editado)</span>
+                                    <div class="acciones-fila">
+                                        <button class="boton-reaccion" title="Reaccionar a este mensaje">+</button>
+                                    </div>
+                                    <div class="acciones-edicion">
+                                        <button type="button" class="boton-edicion" title="Editar este mensaje">✏️</button>
+                                        <button type="button" class="boton-edicion" title="Borrar este mensaje">🗑️</button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- Caja fija abajo, con texto escrito (botón ➤ activo) -->
+                        <!-- Caja fija abajo. Aquí se ve el ESTADO de privado abierto:
+                             el chip "Privado a X" (se derive del PARSE de la línea,
+                             no de una bandera), la nota gris de efimeridad y, arriba
+                             del todo, la línea de quien está escribiendo -->
                         <div class="caja-envoltura">
+                            <p class="caja-escribiendo">Marcos está escribiendo...</p>
+
+                            <div class="chip-privado">
+                                <span>🔒 Privado a <b>Lucía</b></span>
+                                <button type="button"
+                                        class="chip-cerrar"
+                                        title="Dejar de escribir el privado">✕</button>
+                            </div>
+
                             <form class="caja" onsubmit="return false">
                                 <input id="caja-texto"
                                        class="caja-entrada"
                                        placeholder="Escribe un mensaje..."
                                        maxlength="500"
                                        autocomplete="off"
-                                       value="¡Sí, lo veo en mi pantalla!">
+                                       value="/privado Lucía ¿Nos vemos al recreo?">
                                 <button type="button"
                                         class="caja-boton"
                                         title="Enviar mensaje">➤</button>
                             </form>
+
+                            <p class="caja-nota">Los privados son efímeros: no se guardan en el servidor ni salen en el historial</p>
                         </div>
                     </section>
                 </div>
@@ -401,22 +610,29 @@
         </div>
 
         <p class="doc-nota">
-            <b>Reglas de la casa</b> visibles en esta vista: la lista de la izquierda es <b>solo tu canal</b>
+            <b>Convenciones de la aplicación</b> visibles en esta vista: la lista de la izquierda es <b>solo tu canal</b>
             (evento de grupo); los <b>conteos globales</b> viven en la barra y en las píldoras
-            (3 en la sala · 4 en total = #general 3 + #daw 1). Los nombres salen en un color derivado del
+            (5 en la sala · 6 en total = #general 5 + #daw 1). Los nombres salen en un color derivado del
             nombre (mismo hash que la terminal) y los mensajes de sistema van en gris cursiva.
+            <b>Pásale el ratón</b> a cualquier fila: asoman el <b>+</b> de reacciones y —si el mensaje es
+            tuyo— <b>✏️</b> y <b>🗑️</b> (el 🗑️ los sustituye por <b>¿Borrar? ✔ ✕</b> en la propia fila).
+            Los <b>chips son interruptores</b> y el tuyo sale resaltado en blurple; los privados van en la
+            <b>misma cronología</b> que el canal, con su 🔒 “para/de” y la nota de no-guardado colgada del
+            title. El badge <b>💬 1</b> es <code>position: fixed</code>: en la app se clava en la esquina de
+            la ventana (aquí flota sobre el documento, que es lo mismo).
             <b>Estados no mostrados:</b> si la conexión cae, el punto pasa a rojo y aparece
             <b>“Reconectar”</b> en la barra; los fallos de conexión entran al flujo de mensajes como aviso
-            (nunca junto al campo). Con ventana estrecha (≤720px) la lista de usuarios se oculta.
+            (nunca junto al campo). Con ventana estrecha (≤720px) se ocultan la lista de usuarios y el
+            contador de la barra.
         </p>
     </section>
 
     <footer class="doc-pie">
         Boceto estático sin SignalR ni Rx.NET — solo maqueta visual.<br>
-        Fuente de estilos: <code>AulaChatNet.Client.Web/wwwroot/css/app.css</code> ·
-        Colores de nombre y avatares: mismo algoritmo determinista que la app (FNV-1a → HSV → RGB;
-        estilos DiceBear <code>lorelei</code> (Ana), <code>adventurer</code> (Profesor) y
-        <code>croodles</code> (Lucía)).
+        Fuente de estilos: <code>AulaChatNet.Client.Blazor.Components/wwwroot/css/app.css</code> ·
+        Colores de nombre y avatares: mismo algoritmo determinista que la app (FNV-1a → matiz → HSV → RGB;
+        estilos DiceBear <code>adventurer</code> (Profesor), <code>lorelei</code> (Ana y Marcos),
+        <code>croodles</code> (Lucía) y <code>miniavs</code> (Sara)).
     </footer>
 </div>
 </body>
