@@ -39,10 +39,19 @@ namespace AulaChatNet.Server.Services;
 /// </para>
 /// </remarks>
 /// </summary>
-public class ChatStore(IOptions<ChatConfig> opciones, IMensajesRepository? repository = null) : IChatStore
+public class ChatStore(
+    IOptions<ChatConfig> opciones,
+    IMensajesRepository? repository = null,
+    ILogger<ChatStore>? logger = null) : IChatStore
 {
     private const string ErrorConexionYaRegistrada = "Esta conexión ya está registrada en el canal";
     private const string ErrorSinRegistro = "No estás registrado en el canal, vuelve a conectarte";
+
+    // Errores de edición y borrado (Fase 4.4), en el MISMO estilo que el resto:
+    // texto en español que el cliente muestra tal cual
+    private const string ErrorMensajeNoEncontrado = "Ese mensaje ya no está en el canal";
+    private const string ErrorMensajeNoModificable = "Ese mensaje no se puede modificar";
+    private const string ErrorMensajeAjeno = "Solo puedes modificar tus propios mensajes";
 
     private readonly ConcurrentDictionary<string, EstadoCanal> _canales = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, Conexion> _conexiones = new();
@@ -179,15 +188,23 @@ public class ChatStore(IOptions<ChatConfig> opciones, IMensajesRepository? repos
     public void AddMensaje(string canal, MensajeDto mensaje)
     {
         var estado = _canales.GetOrAdd(canal, _ => new EstadoCanal());
-        estado.Historial.Enqueue(mensaje);
 
-        // Cola circular: al superar el límite configurado, el más antiguo
-        // sale del historial (el bucle contempla que el límite sea pequeño).
-        // Lo que se va del historial se lleva SUS reacciones: una reacción
-        // sobre un mensaje que ya no se puede ver es basura con dueño perdido.
-        while (estado.Historial.Count > Config.HistorialMaximo && estado.Historial.TryDequeue(out var fuera))
+        // La cola se toca protegida (Fase 4.4): editar y borrar la
+        // reconstruyen entera, y un Enqueue cruzado a mitad de esa
+        // reconstrucción dejaría un mensaje nuevo ANTES que los antiguos.
+        // El candado es POR CANAL: dos salas distintas nunca se esperan.
+        lock (estado.BloqueoHistorial)
         {
-            estado.Reacciones.TryRemove(fuera.Id, out _);
+            estado.Historial.Enqueue(mensaje);
+
+            // Cola circular: al superar el límite configurado, el más antiguo
+            // sale del historial (el bucle contempla que el límite sea pequeño).
+            // Lo que se va del historial se lleva SUS reacciones: una reacción
+            // sobre un mensaje que ya no se puede ver es basura con dueño perdido.
+            while (estado.Historial.Count > Config.HistorialMaximo && estado.Historial.TryDequeue(out var fuera))
+            {
+                estado.Reacciones.TryRemove(fuera.Id, out _);
+            }
         }
 
         // Persistencia (Fase 2): si hay repositorio, se encola para guardarla
@@ -277,6 +294,137 @@ public class ChatStore(IOptions<ChatConfig> opciones, IMensajesRepository? repos
             .Select(par => CrearDto(par.Key, par.Value))
             .Where(dto => dto.Reacciones.Count > 0)
             .ToArray();
+    }
+
+    /// <inheritdoc />
+    public async Task<(MensajeDto? Mensaje, string? Error)> EditarMensajeAsync(
+        string canal, Guid idMensaje, string texto, string usuario, CancellationToken cancelacion = default)
+    {
+        if (!_canales.TryGetValue(canal, out var estado))
+            return (null, ErrorMensajeNoEncontrado);
+
+        MensajeDto editado;
+
+        // Toda la comprobación y la sustitución van DENTRO del candado: entre
+        // leer el mensaje y reconstruir la cola no debe colarse nadie. Si
+        // devolvemos dentro del lock, la cola queda como estaba — no hay nada
+        // que deshacer.
+        lock (estado.BloqueoHistorial)
+        {
+            var original = estado.Historial.FirstOrDefault(m => m.Id == idMensaje);
+
+            if (original is null)
+                return (null, ErrorMensajeNoEncontrado);
+
+            // Los avisos de sistema no son mensajes de personas: no se editan
+            if (original.Tipo == TipoMensaje.Sistema)
+                return (null, ErrorMensajeNoModificable);
+
+            // Identidad = nick (normalizado, como en todo el proyecto).
+            // Sin autenticación, este es el Único control posible: si cambias
+            // de nick, tus mensajes antiguos quedan con el nick viejo.
+            if (!string.Equals(Normalizar(original.Usuario), Normalizar(usuario), StringComparison.Ordinal))
+                return (null, ErrorMensajeAjeno);
+
+            // El DTO es un record inmutable: editar es hacer una COPIA con el
+            // texto nuevo. Mismo Id (los clientes la sustituyen en su sitio)
+            // y mismo Timestamp (es el cursor de paginación, no puede moverse)
+            editado = original with { Texto = texto, Editado = true };
+
+            ReemplazarEnCola(estado, editado);
+        }
+
+        // Persistencia DIRECTA: esta escritura no pasa por la cola de
+        // insertados (write-behind). false = la fila no estaba en disco
+        // (el INSERT aún en cola, un fallo de disco previo...): la caché ya
+        // está bien, pero se deja constancia para poder diagnosticarla.
+        if (_repository is not null && !await _repository.ActualizarAsync(editado, cancelacion))
+        {
+            logger?.LogWarning(
+                "Edición de {IdMensaje} en {Canal}: sin fila en la base de datos (¿INSERT aún en la cola?)",
+                idMensaje, canal);
+        }
+
+        return (editado, null);
+    }
+
+    /// <inheritdoc />
+    public async Task<(bool Borrado, string? Error)> BorrarMensajeAsync(
+        string canal, Guid idMensaje, string usuario, CancellationToken cancelacion = default)
+    {
+        if (!_canales.TryGetValue(canal, out var estado))
+            return (false, ErrorMensajeNoEncontrado);
+
+        lock (estado.BloqueoHistorial)
+        {
+            var original = estado.Historial.FirstOrDefault(m => m.Id == idMensaje);
+
+            if (original is null)
+                return (false, ErrorMensajeNoEncontrado);
+
+            if (original.Tipo == TipoMensaje.Sistema)
+                return (false, ErrorMensajeNoModificable);
+
+            if (!string.Equals(Normalizar(original.Usuario), Normalizar(usuario), StringComparison.Ordinal))
+                return (false, ErrorMensajeAjeno);
+
+            QuitarDeCola(estado, idMensaje);
+
+            // Sin mensaje que los muestre, sus reacciones son basura con
+            // dueño perdido: misma razón que la poda circular de AddMensaje
+            estado.Reacciones.TryRemove(idMensaje, out _);
+        }
+
+        // Borrado directo de SQLite (fuera de la cola): una vez fuera del
+        // disco ya no puede volver a salir en ninguna página de historial
+        if (_repository is not null && !await _repository.BorrarAsync(idMensaje, cancelacion))
+        {
+            logger?.LogWarning(
+                "Borrado de {IdMensaje} en {Canal}: sin fila en la base de datos (¿INSERT aún en la cola?)",
+                idMensaje, canal);
+        }
+
+        return (true, null);
+    }
+
+    /// <summary>
+    /// Sustituye un mensaje de la cola por su versión editada, conservando
+    /// el orden cronológico. La <c>ConcurrentQueue</c> no admite sustitución
+    /// in-place, así que se vacía entera y se vuelve a llenar — con el
+    /// candado del canal puesto, que es lo que impide que un mensaje nuevo
+    /// se cuele cuando la cola está a medias y altere el orden.
+    /// </summary>
+    /// <param name="estado">Estado del canal dueño de la cola.</param>
+    /// <param name="editado">Versión nueva que sustituye a la original (mismo Id).</param>
+    private static void ReemplazarEnCola(EstadoCanal estado, MensajeDto editado)
+    {
+        var mensajes = new List<MensajeDto>(estado.Historial.Count);
+
+        while (estado.Historial.TryDequeue(out var actual))
+            mensajes.Add(actual.Id == editado.Id ? editado : actual);
+
+        foreach (var mensaje in mensajes)
+            estado.Historial.Enqueue(mensaje);
+    }
+
+    /// <summary>
+    /// Quita un mensaje de la cola entera, con las mismas garantías de orden
+    /// que <see cref="ReemplazarEnCola"/> y el mismo candado obligatorio.
+    /// </summary>
+    /// <param name="estado">Estado del canal dueño de la cola.</param>
+    /// <param name="idMensaje">Mensaje a eliminar.</param>
+    private static void QuitarDeCola(EstadoCanal estado, Guid idMensaje)
+    {
+        var mensajes = new List<MensajeDto>(estado.Historial.Count);
+
+        while (estado.Historial.TryDequeue(out var actual))
+        {
+            if (actual.Id != idMensaje)
+                mensajes.Add(actual);
+        }
+
+        foreach (var mensaje in mensajes)
+            estado.Historial.Enqueue(mensaje);
     }
 
     /// <summary>
@@ -369,21 +517,44 @@ public class ChatStore(IOptions<ChatConfig> opciones, IMensajesRepository? repos
 
             var estado = _canales.GetOrAdd(canal, _ => new EstadoCanal());
 
-            foreach (var mensaje in mensajes)
-                estado.Historial.Enqueue(mensaje);
-
-            // Misma poda que AddMensaje, por si acaso (debería ser innecesario
-            // porque tope ya limita lo pedido). Las reacciones vacían con él,
-            // aunque al precargar nunca puede haber ninguna todavía.
-            while (estado.Historial.Count > Config.HistorialMaximo && estado.Historial.TryDequeue(out var fuera))
+            // Mismo candado que AddMensaje, por consistencia: aunque la
+            // precarga arranca ANTES de que Kestrel escuche (no hay clientes
+            // aún), toda mutación de la cola pasa por el mismo sitio
+            lock (estado.BloqueoHistorial)
             {
-                estado.Reacciones.TryRemove(fuera.Id, out _);
+                foreach (var mensaje in mensajes)
+                    estado.Historial.Enqueue(mensaje);
+
+                // Misma poda que AddMensaje, por si acaso (debería ser innecesario
+                // porque tope ya limita lo pedido). Las reacciones vacían con él,
+                // aunque al precargar nunca puede haber ninguna todavía.
+                while (estado.Historial.Count > Config.HistorialMaximo && estado.Historial.TryDequeue(out var fuera))
+                {
+                    estado.Reacciones.TryRemove(fuera.Id, out _);
+                }
             }
 
             total += mensajes.Count;
         }
 
         return total;
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<MensajeDto>> GetAnterioresAsync(
+        string canal, DateTime antesDe, int cantidad, CancellationToken cancelacion = default)
+    {
+        // Sin repositorio no hay dónde mirar: la caché solo retiene lo que el
+        // cliente YA ve (los últimos HistorialMaximo), nunca nada anterior
+        if (_repository is null || antesDe == default)
+            return [];
+
+        // Misma regla que la precarga: una página no supera la ventana del
+        // sistema. El Math.Max protege el Clamp por si alguien configurara
+        // HistorialMaximo a 0 (mínimo mayor que máximo revienta)
+        var tope = Math.Clamp(cantidad, 1, Math.Max(1, Config.HistorialMaximo));
+
+        return await _repository.GetAnterioresAsync(canal, antesDe, tope, cancelacion);
     }
 
     /// <inheritdoc />

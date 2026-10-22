@@ -31,6 +31,13 @@ public class ChatHubTests
     private Mock<ILogger<ChatHub>> _logger = null!;
 
     /// <summary>
+    /// Control de ráfagas simulado: por defecto la cuota PASA, porque los
+    /// tests existentes mandan tandas largas sin esperar la ventana. Los de
+    /// ráfagas la agotan reconfigurando el mock.
+    /// </summary>
+    private Mock<IControlRafagas> _rafagas = null!;
+
+    /// <summary>
     /// Miembros de cada grupo simulado (grupo → conexiones), como hace
     /// SignalR: los envíos a Clients.Group solo llega a quien se dio de alta
     /// con Groups.AddToGroupAsync. Compartido por todos los hubs de un test.
@@ -63,6 +70,9 @@ public class ChatHubTests
 
         _store = new ChatStore(Options.Create(_config));
         _logger = new Mock<ILogger<ChatHub>>();
+        _rafagas = new Mock<IControlRafagas>();
+        _rafagas.Setup(r => r.Intentar(It.IsAny<string>(), It.IsAny<DateTime>()))
+            .Returns(true);
         _grupos = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
         _aTodos = [];
         _porConexion = new Dictionary<string, List<Envio>>(StringComparer.OrdinalIgnoreCase);
@@ -108,7 +118,7 @@ public class ChatHubTests
         clientes.Setup(c => c.OthersInGroup(It.IsAny<string>()))
             .Returns<string>(canal => CrearProxyVarios(ListasDeMiembros(canal, connectionId)).Object);
 
-        var hub = new ChatHub(_store, Options.Create(_config), _logger.Object)
+        var hub = new ChatHub(_store, _rafagas.Object, Options.Create(_config), _logger.Object)
         {
             Context = Mock.Of<HubCallerContext>(c => c.ConnectionId == connectionId),
             Clients = clientes.Object,
@@ -1471,6 +1481,484 @@ public class ChatHubTests
         var reacciones = (IReadOnlyList<ReaccionesMensajeDto>)snapshots[^1].Argumentos[0];
         reacciones.Should().ContainSingle()
             .Which.IdMensaje.Should().Be(mensaje.Id);
+    }
+
+    #endregion
+
+    #region Control de ráfagas (Fase 4.1) Tests
+
+    [Test]
+    public async Task SendAsync_CuotaDeRafagasAgotada_DevuelveElAvisoSinEmitir()
+    {
+        // Arrange: la ventana de la conexión está llena
+        _rafagas.Setup(r => r.Intentar(It.IsAny<string>(), It.IsAny<DateTime>()))
+            .Returns(false);
+
+        var ana = CrearHub("conn-1");
+        await ana.Hub.ConnectAsync("Ana", General);
+
+        // El alta ha emitido su mensaje de sistema: apuntamos CUÁNTOS hay
+        // ANTES del intento rechazado, no asumimos que la lista está vacía
+        var emitidos = ObtenerListaEventos(ana.PorCanal, General, ChatHubEventos.MensajeNuevo).Count;
+
+        // Act
+        var aviso = await ana.Hub.SendAsync("este mensaje no debe pasar");
+
+        // Assert: el cliente ve el aviso y el canal queda intacto
+        aviso.Should().Be(_config.AvisoRafaga);
+        ObtenerListaEventos(ana.PorCanal, General, ChatHubEventos.MensajeNuevo)
+            .Count.Should().Be(emitidos, "con la cuota agotada no se difunde nada");
+        _store.GetHistorial(General)
+            .Should().NotContain(m => m.Texto == "este mensaje no debe pasar");
+    }
+
+    [Test]
+    public async Task SendAsync_MensajeVacio_NoConsultaLaCuota()
+    {
+        // Arrange
+        var ana = CrearHub("conn-1");
+        await ana.Hub.ConnectAsync("Ana", General);
+
+        // Act: un mensaje inválido devuelve SU error de validación
+        var error = await ana.Hub.SendAsync("   ");
+
+        // Assert: la cuota se consulta DESPUÉS de validar, así que un
+        // mensaje malformado ni siquiera la toca (no gasta cuota ajena)
+        error.Should().NotBeNull();
+        _rafagas.Verify(r => r.Intentar(It.IsAny<string>(), It.IsAny<DateTime>()),
+            Times.Never);
+    }
+
+    [Test]
+    public async Task EnviarPrivado_CuotaDeRafagasAgotada_DevuelveElAvisoSinEmitir()
+    {
+        // Arrange
+        _rafagas.Setup(r => r.Intentar(It.IsAny<string>(), It.IsAny<DateTime>()))
+            .Returns(false);
+
+        var ana = CrearHub("conn-1");
+        await ana.Hub.ConnectAsync("Ana", General);
+
+        // Act: los privados son escritura del aula y comparten la cuota
+        var aviso = await ana.Hub.EnviarPrivadoAsync("Luis", "hola");
+
+        // Assert
+        aviso.Should().Be(_config.AvisoRafaga);
+        ana.AlCaller.Should()
+            .NotContain(e => e.Metodo == ChatHubEventos.PrivadoRecibido);
+    }
+
+    [Test]
+    public async Task OnDisconnectedAsync_LaConexionSeVa_BorraSuCuotaDeRafagas()
+    {
+        // Arrange
+        var ana = CrearHub("conn-1");
+
+        // Act: al morir la conexión, su ventana se olvida — si no, el
+        // diccionario del singleton crecería mientras el servidor vive
+        await ana.Hub.OnDisconnectedAsync(null);
+
+        // Assert
+        _rafagas.Verify(r => r.Limpiar("conn-1"), Times.Once);
+    }
+
+    #endregion
+
+    #region Menciones Tests
+
+    [Test]
+    public async Task SendAsync_ConMencion_AvisaSoloAQuienNombran()
+    {
+        // Arrange: Ana y Luis en #general; Marta en #smr
+        var ana = CrearHub("conn-ana");
+        await ana.Hub.ConnectAsync("Ana", General);
+
+        var luis = CrearHub("conn-luis");
+        await luis.Hub.ConnectAsync("Luis", General);
+
+        var marta = CrearHub("conn-marta");
+        await marta.Hub.ConnectAsync("Marta", Smr);
+
+        // Act: Luis menciona a Ana
+        await luis.Hub.SendAsync("@Ana, ¿me pasas el ejercicio 3?");
+
+        // Assert: el mensaje SÍ va al canal de Luis (el filtro por Tipo deja
+        // fuera el mensaje de sistema de su alta en la sala)...
+        ObtenerListaEventos(luis.PorCanal, General, ChatHubEventos.MensajeNuevo)
+            .Where(e => ((MensajeDto)e.Argumentos[0]).Tipo == TipoMensaje.Normal)
+            .Should().ContainSingle("la mención no cambia el destino del mensaje");
+
+        // ...y el aviso dirigido llega SOLO a la conexión de Ana (el destino
+        // Clients.Client(id) se registra en el mapa POR CONEXIÓN, el mismo
+        // camino que usan los privados, no en el del caller)
+        var avisosAna = ObtenerLista(_porConexion, "conn-ana")
+            .Where(e => e.Metodo == ChatHubEventos.MencionRecibida).ToList();
+        avisosAna.Should().ContainSingle();
+
+        var mencion = (MencionDto)avisosAna[0].Argumentos[0];
+        mencion.Emisor.Should().Be("Luis");
+        mencion.Canal.Should().Be(General);
+        mencion.Texto.Should().Contain("@Ana");
+
+        ObtenerLista(_porConexion, "conn-luis").Should()
+            .NotContain(e => e.Metodo == ChatHubEventos.MencionRecibida);
+        ObtenerLista(_porConexion, "conn-marta").Should()
+            .NotContain(e => e.Metodo == ChatHubEventos.MencionRecibida);
+    }
+
+    [Test]
+    public async Task SendAsync_MencionandoseASiMismo_NoSeAvisa()
+    {
+        // Arrange
+        var luis = CrearHub("conn-luis");
+        await luis.Hub.ConnectAsync("Luis", General);
+
+        // Act
+        await luis.Hub.SendAsync("@Luis toma nota");
+
+        // Assert: mencionarte a ti no es noticia (pero el mensaje sale, y
+        // el filtro por Tipo deja fuera el mensaje de sistema de su alta)
+        ObtenerLista(_porConexion, "conn-luis").Should()
+            .NotContain(e => e.Metodo == ChatHubEventos.MencionRecibida);
+        ObtenerListaEventos(luis.PorCanal, General, ChatHubEventos.MensajeNuevo)
+            .Where(e => ((MensajeDto)e.Argumentos[0]).Tipo == TipoMensaje.Normal)
+            .Should().ContainSingle();
+    }
+
+    [Test]
+    public async Task SendAsync_MencionAAlguienNoConectado_ElMensajeSaleIgual()
+    {
+        // Arrange: Luis escribe mencionando a Diego, que no está
+        var luis = CrearHub("conn-luis");
+        await luis.Hub.ConnectAsync("Luis", General);
+
+        // Act
+        await luis.Hub.SendAsync("@Diego, ¿vuelves mañana?");
+
+        // Assert: una mención no es una entrega garantizada — el mensaje es
+        // un mensaje normal y no se avisa a nadie (el filtro por Tipo deja
+        // fuera el mensaje de sistema de su alta)
+        ObtenerListaEventos(luis.PorCanal, General, ChatHubEventos.MensajeNuevo)
+            .Where(e => ((MensajeDto)e.Argumentos[0]).Tipo == TipoMensaje.Normal)
+            .Should().ContainSingle();
+        ObtenerLista(_porConexion, "conn-luis").Should()
+            .NotContain(e => e.Metodo == ChatHubEventos.MencionRecibida);
+    }
+
+    [Test]
+    public async Task SendAsync_SinArrobas_NoSeEmiteNingunAviso()
+    {
+        // Arrange
+        var ana = CrearHub("conn-ana");
+        await ana.Hub.ConnectAsync("Ana", General);
+
+        var luis = CrearHub("conn-luis");
+        await luis.Hub.ConnectAsync("Luis", General);
+
+        // Act
+        await luis.Hub.SendAsync("Buenas a todos");
+
+        // Assert
+        ObtenerLista(_porConexion, "conn-ana").Should()
+            .NotContain(e => e.Metodo == ChatHubEventos.MencionRecibida);
+    }
+
+    #endregion
+
+    #region ObtenerHistorialAsync Tests
+
+    [Test]
+    public async Task ObtenerHistorialAsync_SinRegistro_DevuelveNull()
+    {
+        // Arrange: la conexión existe, pero nunca se dio de alta en nada
+        var (hub, _, _) = CrearHub("conn-vaga");
+
+        // Act: sin registro no hay canal propio, y sin canal no hay nada
+        // que paginar — null es el "no estás registrado" de este método
+        var pagina = await hub.ObtenerHistorialAsync(DateTime.UtcNow, 10);
+
+        // Assert
+        pagina.Should().BeNull();
+    }
+
+    [Test]
+    public async Task ObtenerHistorialAsync_PideElHistorialDelSuPropioCanal()
+    {
+        // Arrange: un store CON repositorio mockeado, que es el único
+        // camino hasta la paginación (la caché no guarda nada anterior a lo
+        // que el cliente ya ve)
+        var muyViejo = new MensajeDto(
+            Guid.NewGuid(), "Ana", "de la noche de los tiempos",
+            new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc), TipoMensaje.Normal);
+
+        var repo = new Mock<IMensajesRepository>();
+        repo.Setup(r => r.GetAnterioresAsync(
+                General, It.IsAny<DateTime>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([muyViejo]);
+
+        _store = new ChatStore(Options.Create(_config), repo.Object);
+
+        var (hub, _, _) = CrearHub("conn-ana");
+        await hub.ConnectAsync("Ana"); // entra en #general por defecto
+
+        // Act
+        var pagina = await hub.ObtenerHistorialAsync(muyViejo.Timestamp, 10);
+
+        // Assert: el pedido sale al DE ÉL. El canal NO es parámetro del
+        // método, sino que sale del registro, así que no hay ni forma de
+        // mirar la sala de al lado
+        pagina.Should().Equal(muyViejo);
+        repo.Verify(r => r.GetAnterioresAsync(
+            General, It.IsAny<DateTime>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task ObtenerHistorialAsync_PideMasDeLoPermitido_LimitaElTamanioDePagina()
+    {
+        // Arrange: esta suite trabaja con HistorialMaximo = 25 (el valor
+        // por defecto de ChatConfig); alguien podría pedir mil de golpe
+        var repo = new Mock<IMensajesRepository>();
+        repo.Setup(r => r.GetAnterioresAsync(
+                It.IsAny<string>(), It.IsAny<DateTime>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<MensajeDto>());
+
+        _store = new ChatStore(Options.Create(_config), repo.Object);
+
+        var (hub, _, _) = CrearHub("conn-ana");
+        await hub.ConnectAsync("Ana");
+
+        // Act
+        await hub.ObtenerHistorialAsync(DateTime.UtcNow, 1_000);
+
+        // Assert: la petición que llega al repositorio va LIMITADA al tope
+        repo.Verify(r => r.GetAnterioresAsync(
+            General, It.IsAny<DateTime>(), 25, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task ObtenerHistorialAsync_NoEmiteNadaANadie()
+    {
+        // Arrange
+        var (ana, alAna, porCanalAna) = CrearHub("conn-ana");
+        var (luis, _, _) = CrearHub("conn-luis");
+        await ana.ConnectAsync("Ana");
+        await luis.ConnectAsync("Luis");
+
+        var emitidosAntes = alAna.Count + _aTodos.Count
+            + porCanalAna.Sum(p => p.Value.Count) + _porConexion.Sum(p => p.Value.Count);
+
+        // Act: una consulta es una consulta
+        await ana.ObtenerHistorialAsync(DateTime.UtcNow, 10);
+
+        // Assert: ni evento al canal, ni a la otra conexión, ni al propio
+        // preguntón — la respuesta vuelve por el RETORNO de la invocación,
+        // que este doble ni siquiera registra
+        var emitidosDespues = alAna.Count + _aTodos.Count
+            + porCanalAna.Sum(p => p.Value.Count) + _porConexion.Sum(p => p.Value.Count);
+
+        emitidosDespues.Should().Be(emitidosAntes);
+    }
+
+    #endregion
+
+    #region Editar y borrar mensajes (Fase 4.4) Tests
+
+    [Test]
+    public async Task EditarMensajeAsync_SinRegistro_DevuelveErrorSinEmitirNada()
+    {
+        // Arrange: el hub es API pública y se invoca a pelo, así que se
+        // defiende igual que los demás métodos
+        var simulado = CrearHub("conn-9");
+
+        // Act
+        var error = await simulado.Hub.EditarMensajeAsync(Guid.NewGuid(), "Texto nuevo");
+
+        // Assert
+        error.Should().Be("No estás registrado en el canal, vuelve a conectarte");
+        simulado.PorCanal.Should().BeEmpty();
+    }
+
+    [Test]
+    public async Task EditarMensajeAsync_ConTextoVacio_DevuelveErrorDeValidacion()
+    {
+        // Arrange: una edición no es una puerta trasera para saltarse la
+        // validación de un envío normal
+        var ana = CrearHub("conn-ana");
+        await ana.Hub.ConnectAsync("Ana");
+        await ana.Hub.SendAsync("Buenas a todos");
+        var mensaje = _store.GetHistorial(General).Last(m => m.Tipo == TipoMensaje.Normal);
+
+        // Act
+        var error = await ana.Hub.EditarMensajeAsync(mensaje.Id, "   ");
+
+        // Assert: el MISMO validador que un envío, y sin emitir nada
+        error.Should().NotBeNullOrEmpty();
+        ObtenerListaEventos(ana.PorCanal, General, ChatHubEventos.MensajeEditado).Should().BeEmpty();
+    }
+
+    [Test]
+    public async Task EditarMensajeAsync_MensajePropio_DifundeElMensajeEditadoAlCanal()
+    {
+        // Arrange: Ana y Luis en #general; Ana escribe y luego edita
+        var ana = CrearHub("conn-ana");
+        var luis = CrearHub("conn-luis");
+        await ana.Hub.ConnectAsync("Ana");
+        await luis.Hub.ConnectAsync("Luis");
+        await ana.Hub.SendAsync("Buenas a todos");
+        var mensaje = _store.GetHistorial(General).Last(m => m.Tipo == TipoMensaje.Normal);
+
+        // Act
+        var error = await ana.Hub.EditarMensajeAsync(mensaje.Id, "Buenas tardes a todos");
+
+        // Assert: sin error y con la emisión al GRUPO del canal (el emisor
+        // incluido: él también debe ver el texto nuevo en su fila)
+        error.Should().BeNull();
+
+        var emitidos = ObtenerListaEventos(ana.PorCanal, General, ChatHubEventos.MensajeEditado);
+        emitidos.Should().ContainSingle();
+
+        // El payload es el mensaje COMPLETO con el MISMO Id — los clientes
+        // buscan por Id y sustituyen su fila en el sitio donde estaba
+        var dto = emitidos[0].Argumentos[0].Should().BeOfType<MensajeDto>().Subject;
+        dto.Id.Should().Be(mensaje.Id);
+        dto.Texto.Should().Be("Buenas tardes a todos");
+        dto.Editado.Should().BeTrue();
+        dto.Timestamp.Should().Be(mensaje.Timestamp, "la hora es el cursor de paginación");
+    }
+
+    [Test]
+    public async Task EditarMensajeAsync_MensajeDeOtro_DevuelveErrorSinEmitir()
+    {
+        // Arrange: el mensaje es de Ana y Luis intenta editarlo
+        var ana = CrearHub("conn-ana");
+        var luis = CrearHub("conn-luis");
+        await ana.Hub.ConnectAsync("Ana");
+        await luis.Hub.ConnectAsync("Luis");
+        await ana.Hub.SendAsync("Buenas a todos");
+        var mensaje = _store.GetHistorial(General).Last(m => m.Tipo == TipoMensaje.Normal);
+
+        // Act
+        var error = await luis.Hub.EditarMensajeAsync(mensaje.Id, "Texto ajeno");
+
+        // Assert
+        error.Should().Be("Solo puedes modificar tus propios mensajes");
+        ObtenerListaEventos(luis.PorCanal, General, ChatHubEventos.MensajeEditado).Should().BeEmpty();
+    }
+
+    [Test]
+    public async Task EditarMensajeAsync_DeOtraSala_DevuelveError()
+    {
+        // Arrange: Marta escribe en #smr...
+        var ana = CrearHub("conn-ana");
+        var marta = CrearHub("conn-marta");
+        await ana.Hub.ConnectAsync("Ana");
+        await marta.Hub.ConnectAsync("Marta", Smr);
+        await marta.Hub.SendAsync("Hola desde smr");
+        var mensajeSmr = _store.GetHistorial(Smr).Last(m => m.Tipo == TipoMensaje.Normal);
+
+        // Act: ...y Ana, desde #general, intenta editarlo. El canal sale del
+        // REGISTRO de la conexión (patrón de la Fase 4.3): no hay ni forma
+        // de pasarle la sala de al lado
+        var error = await ana.Hub.EditarMensajeAsync(mensajeSmr.Id, "Texto trucado");
+
+        // Assert
+        error.Should().Be("Ese mensaje ya no está en el canal");
+    }
+
+    [Test]
+    public async Task BorrarMensajeAsync_SinRegistro_DevuelveErrorSinEmitirNada()
+    {
+        // Arrange
+        var simulado = CrearHub("conn-9");
+
+        // Act
+        var error = await simulado.Hub.BorrarMensajeAsync(Guid.NewGuid());
+
+        // Assert
+        error.Should().Be("No estás registrado en el canal, vuelve a conectarte");
+        simulado.PorCanal.Should().BeEmpty();
+    }
+
+    [Test]
+    public async Task BorrarMensajeAsync_MensajePropio_DifundeElIdAlCanal()
+    {
+        // Arrange
+        var ana = CrearHub("conn-ana");
+        var luis = CrearHub("conn-luis");
+        await ana.Hub.ConnectAsync("Ana");
+        await luis.Hub.ConnectAsync("Luis");
+        await ana.Hub.SendAsync("Buenas a todos");
+        var mensaje = _store.GetHistorial(General).Last(m => m.Tipo == TipoMensaje.Normal);
+
+        // Act
+        var error = await ana.Hub.BorrarMensajeAsync(mensaje.Id);
+
+        // Assert: con el Id basta — cada cliente quita la fila si la tiene
+        error.Should().BeNull();
+
+        var emitidos = ObtenerListaEventos(ana.PorCanal, General, ChatHubEventos.MensajeBorrado);
+        emitidos.Should().ContainSingle();
+        emitidos[0].Argumentos[0].Should().Be(mensaje.Id);
+
+        // ...y el mensaje ya no está en la caché del canal
+        _store.GetHistorial(General).Should().NotContain(m => m.Id == mensaje.Id);
+    }
+
+    [Test]
+    public async Task BorrarMensajeAsync_MensajeDeOtro_DevuelveErrorSinEmitir()
+    {
+        // Arrange: el mensaje es de Ana y Luis intenta borrarlo
+        var ana = CrearHub("conn-ana");
+        var luis = CrearHub("conn-luis");
+        await ana.Hub.ConnectAsync("Ana");
+        await luis.Hub.ConnectAsync("Luis");
+        await ana.Hub.SendAsync("Buenas a todos");
+        var mensaje = _store.GetHistorial(General).Last(m => m.Tipo == TipoMensaje.Normal);
+
+        // Act
+        var error = await luis.Hub.BorrarMensajeAsync(mensaje.Id);
+
+        // Assert: el borrado es definitivo, así que el rechazo tiene que
+        // ser EXACTO — y el mensaje sigue en la caché
+        error.Should().Be("Solo puedes modificar tus propios mensajes");
+        ObtenerListaEventos(luis.PorCanal, General, ChatHubEventos.MensajeBorrado).Should().BeEmpty();
+        _store.GetHistorial(General).Should().Contain(m => m.Id == mensaje.Id);
+    }
+
+    [Test]
+    public async Task EditarYBorrar_EscribenDirectamenteEnElRepositorio()
+    {
+        // Arrange: store CON repositorio mockeado — editar y borrar NO
+        // pasan por la cola de insertados (write-behind), van DIRECTOS a
+        // disco: una fila que aún no existe no se puede actualizar en esa
+        // cola
+        var repo = new Mock<IMensajesRepository>();
+        repo.Setup(r => r.ActualizarAsync(It.IsAny<MensajeDto>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        repo.Setup(r => r.BorrarAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        _store = new ChatStore(Options.Create(_config), repo.Object, null);
+
+        var (ana, _, _) = CrearHub("conn-ana");
+        await ana.ConnectAsync("Ana");
+        await ana.SendAsync("Buenas a todos");
+        var mensaje = _store.GetHistorial(General).Last(m => m.Tipo == TipoMensaje.Normal);
+
+        // Act 1: editar
+        await ana.EditarMensajeAsync(mensaje.Id, "Buenas tardes a todos");
+
+        // Assert 1: el UPDATE fue directo y con el mensaje editado
+        repo.Verify(r => r.ActualizarAsync(
+                It.Is<MensajeDto>(m => m.Id == mensaje.Id && m.Editado),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        // Act 2: borrar
+        await ana.BorrarMensajeAsync(mensaje.Id);
+
+        // Assert 2: el DELETE también
+        repo.Verify(r => r.BorrarAsync(mensaje.Id, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     #endregion

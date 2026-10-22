@@ -22,7 +22,8 @@ namespace AulaChatNet.Shared.Dtos;
 ///   "usuario": "Ana",
 ///   "texto": "Buenas, ¿arrancamos?",
 ///   "timestamp": "2026-10-15T10:30:00Z",
-///   "tipo": 0
+///   "tipo": 0,
+///   "editado": false
 /// }
 /// </code>
 /// </example>
@@ -62,5 +63,14 @@ public record MensajeDto(
     // <summary>
     // Tipo del mensaje: Normal (de usuario) o Sistema (unión/salida).
     // </summary>
-    TipoMensaje Tipo
+    TipoMensaje Tipo,
+
+    // <summary>
+    // true si el texto se ha modificado DESPUÉS de enviarlo (Fase 4.4).
+    // Los clientes lo pintan como "(editado)".
+    // El Timestamp NO cambia al editar: sigue siendo el instante original
+    // de envío, que es el cursor con el que se pagina el historial.
+    // </summary>
+    // <example>false</example>
+    bool Editado = false
 );

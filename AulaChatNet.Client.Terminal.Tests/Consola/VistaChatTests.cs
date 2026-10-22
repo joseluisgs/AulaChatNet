@@ -239,6 +239,58 @@ public class VistaChatTests
         linea.Should().Contain("Confidencia");
     }
 
+    [Test]
+    public void LineaMarkup_FilaPrivada_EsPintable_NoRevientaElLienzo()
+    {
+        // Arrange: la fila tal como la pide CrearZonaMensajes (Program.cs)
+        // al lienzo en vivo, con el privado recibido de otro usuario
+        var fila = new FilaChat(true, null, Privado("Ana", "Luis", "Confidencia"));
+
+        // Act: LA cadena que recibe new Markup(...) en cada repintado
+        var linea = VistaChat.LineaMarkup(fila, "Luis");
+
+        // Assert: aquí reventaba la terminal de verdad — el LiveDisplay murió
+        // con "malformed markup tag at position 25" porque la etiqueta de
+        // color del candado se quedaba sin cerrar. Contener "🔒" NO basta:
+        // hay que poder PINTAR la línea, que es donde duele.
+        Action pintar = () => new Markup(linea);
+        pintar.Should().NotThrow();
+    }
+
+    [Test]
+    public void TodasLasLineasDeLaVista_SonPintables_NoLanzanMarkupMalformado()
+    {
+        // Arrange: todas las fórmulas que la zona de mensajes puede construir,
+        // con el contenido "difícil" de la vida real (corchetes, menciones,
+        // chips, editado...)
+        var conChips = Mensaje("Ana", "Buenas");
+        var chips = new Dictionary<Guid, ReaccionesMensajeDto>
+        {
+            [conChips.Id] = new(conChips.Id, [new ReaccionDto("👍", ["Luis"])])
+        };
+
+        var casos = new Dictionary<string, string>
+        {
+            ["mensaje de canal"] = VistaChat.LineaMensajeMarkup(Mensaje("Ana", "Buenas")),
+            ["mensaje con chips"] = VistaChat.LineaMensajeMarkup(conChips, chips),
+            ["mensaje con corchetes"] = VistaChat.LineaMensajeMarkup(Mensaje("Ana", "hola [rojo]")),
+            ["mensaje de sistema"] =
+                VistaChat.LineaMensajeMarkup(Mensaje("Ana", "Ana se ha unido", TipoMensaje.Sistema)),
+            ["mensaje editado"] = VistaChat.LineaMensajeMarkup(Mensaje("Ana", "texto") with { Editado = true }),
+            ["privado recibido"] = VistaChat.LineaPrivadoMarkup(Privado("Ana", "Luis", "Confidencia"), "Luis"),
+            ["privado enviado"] = VistaChat.LineaPrivadoMarkup(Privado("Luis", "Ana", "Confidencia"), "Luis"),
+            ["escribiendo"] = VistaChat.LineaEscribiendoMarkup(["Ana", "Luis"]),
+        };
+
+        // Assert: el constructor de Markup es donde reventaba la terminal;
+        // una fórmula que suena bien pero no parsea no sirve de nada
+        foreach (var (descripcion, linea) in casos)
+        {
+            Action pintar = () => new Markup(linea);
+            pintar.Should().NotThrow($"la fila de {descripcion} debe poder pintarse");
+        }
+    }
+
     #endregion
 
     #region LineaEscribiendoMarkup Tests
@@ -287,6 +339,81 @@ public class VistaChatTests
 
         // Assert: escapada, igual que el resto de filas de la vista
         linea.Should().Contain(Markup.Escape(frase));
+    }
+
+    #endregion
+
+    #region Menciones Tests
+
+    [Test]
+    public void LineaMensajeMarkup_ConMencion_LaResaltaEnAmarillo()
+    {
+        // Arrange
+        var mensaje = new MensajeDto(
+            Guid.NewGuid(), "Luis", "@Ana, ¿vienes?", DateTime.Now, TipoMensaje.Normal);
+
+        // Act
+        var linea = VistaChat.LineaMensajeMarkup(mensaje);
+
+        // Assert: la mención va envuelta en SU color, con la @ incluida
+        linea.Should().Contain("[#FAA61A]@Ana[/]");
+    }
+
+    [Test]
+    public void LineaMensajeMarkup_SinMenciones_SePintaSinColorDeMas()
+    {
+        // Arrange
+        var mensaje = new MensajeDto(
+            Guid.NewGuid(), "Luis", "Buenas a todos", DateTime.Now, TipoMensaje.Normal);
+
+        // Act
+        var linea = VistaChat.LineaMensajeMarkup(mensaje);
+
+        // Assert: el amarillo es EXCLUSIVO de las menciones
+        linea.Should().Contain("Buenas a todos").And.NotContain("[#FAA61A]");
+    }
+
+    [Test]
+    public void LineaMensajeMarkup_Mencion_YElRestoDelTextoSigueEscapado()
+    {
+        // Arrange: un corchete suelto en el resto del mensaje es texto, no formato
+        var mensaje = new MensajeDto(
+            Guid.NewGuid(), "Luis", "@Ana mira [esto]", DateTime.Now, TipoMensaje.Normal);
+
+        // Act
+        var linea = VistaChat.LineaMensajeMarkup(mensaje);
+
+        // Assert: mención teñida Y corchete escapado (duplicado por Spectre)
+        linea.Should().Contain("[#FAA61A]@Ana[/]").And.Contain("[[esto]]");
+    }
+
+    #endregion
+
+    #region Editado Tests
+
+    [Test]
+    public void LineaMensajeMarkup_MensajeEditado_LaMarcaVaGrisTrasElTexto()
+    {
+        // Arrange: el DTO es inmutable; editar es una COPIA con la marca
+        var mensaje = Mensaje("Ana", "Buenas tardes a todos") with { Editado = true };
+
+        // Act
+        var linea = VistaChat.LineaMensajeMarkup(mensaje);
+
+        // Assert: el MISMO "(editado)" que pinta la web — la frase vive en
+        // Shared, y aquí solo se teñe de gris
+        linea.Should().Contain($"[grey]{Markup.Escape(EditadoTexto.Marca)}[/]");
+    }
+
+    [Test]
+    public void LineaMensajeMarkup_MensajeSinEditar_NoLlevaMarca()
+    {
+        // Act
+        var linea = VistaChat.LineaMensajeMarkup(Mensaje("Ana", "Buenas a todos"));
+
+        // Assert: el gris no es exclusivo de la marca (hora y chips también
+        // lo usan), así que la comprobación es sobre el TEXTO de la marca
+        linea.Should().NotContain("editado");
     }
 
     #endregion

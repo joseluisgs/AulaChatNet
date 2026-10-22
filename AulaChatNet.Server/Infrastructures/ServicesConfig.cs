@@ -31,6 +31,10 @@ public static class ServicesConfig
         services.AddSingleton<ChatStore>();
         services.AddSingleton<IChatStore>(sp => sp.GetRequiredService<ChatStore>());
 
+        // Singleton: la ventana de ráfagas es estado que SOBREVIVE a las
+        // invocaciones, y los hubs son transitorios (uno nuevo por llamada)
+        services.AddSingleton<IControlRafagas, ControlRafagas>();
+
         return services;
     }
 }

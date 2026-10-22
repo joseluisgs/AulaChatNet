@@ -58,6 +58,11 @@ public class AulaChatContexto(DbContextOptions<AulaChatContexto> opciones) : DbC
         // del formato del dato en disco y evita sorpresas al leerlo a mano.
         mensaje.Property(m => m.Tipo).HasConversion<int>();
 
+        // Editado es booleano: SQLite lo guarda como 0/1 y EF lo mapea solo.
+        // No necesita índice — nunca se busca "los editados", solo se lee
+        // junto a su fila al recuperar el mensaje.
+        mensaje.Property(m => m.Editado);
+
         // Índice 1: la consulta del chat. "Dame los últimos N de #general"
         // ordenados por tiempo. (Canal, Timestamp) hace que esa lectura sea
         // un barrido por un rango ordenado, no un ordenamiento de toda la tabla.

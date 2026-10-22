@@ -207,6 +207,8 @@ static void PrintStartupInfo(IConfiguration configuration)
         chat.UsuarioLongitudMinima, chat.UsuarioLongitudMaxima);
     Log.Information("  Mensaje:       hasta {Maxima} caracteres", chat.MensajeLongitudMaxima);
     Log.Information("  Historial:     últimos {Historial} mensajes", chat.HistorialMaximo);
+    Log.Information("  Ráfaga:        máximo {Rafaga} mensajes cada {Ventana} s (0 = sin límite)",
+        chat.RafagaMensajes, chat.RafagaVentanaSegundos);
     Log.Information("LOGGING (appsettings.json → sección Serilog):");
     Log.Information("  Consola:       casi todo (Information)");
     Log.Information("  Fichero:       errores en logs/aulachat-YYYY-MM-DD.log (retención 7 días)");

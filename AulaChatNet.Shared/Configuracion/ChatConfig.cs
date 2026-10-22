@@ -73,6 +73,21 @@ public class ChatConfig
     public int HistorialMaximo { get; set; } = 25;
 
     /// <summary>
+    /// Máximo de mensajes (del canal o privados) que UNA conexión puede
+    /// enviar dentro de la ventana de ráfaga. 0 o menos = sin límite
+    /// (mismo criterio que RetencionDias en la persistencia).
+    /// Solo lo aplica el servidor: el cliente nunca decide la cuota.
+    /// </summary>
+    public int RafagaMensajes { get; set; } = 5;
+
+    /// <summary>
+    /// Longitud, en segundos, de la ventana DESLIZANTE del control de
+    /// ráfagas: los intentos más antiguos que esto dejan de contar, así
+    /// que la cuota se recarga poco a poco y no cada ventana fija.
+    /// </summary>
+    public int RafagaVentanaSegundos { get; set; } = 5;
+
+    /// <summary>
     /// URL base de DiceBear para los avatares. Configurable para poder
     /// apuntar a un proxy o cache local en producción sin tocar código.
     /// </summary>
@@ -98,6 +113,14 @@ public class ChatConfig
     /// <summary>Error cuando el mensaje supera la longitud máxima.</summary>
     public string ErrorMensajeLongitud =>
         $"El mensaje no puede superar los {MensajeLongitudMaxima} caracteres";
+
+    /// <summary>
+    /// Aviso cuando una conexión se pasa de la ráfaga máxima. Computado
+    /// desde la config: si el centro cambia el límite en appsettings, el
+    /// aviso que ve el alumno sigue citando los valores reales.
+    /// </summary>
+    public string AvisoRafaga =>
+        $"Demasiados mensajes seguidos: máximo {RafagaMensajes} cada {RafagaVentanaSegundos} segundos";
 
     /// <summary>Error cuando un privado no lleva destinatario (invocación directa al hub).</summary>
     public string ErrorPrivadoDestinoVacio => "Falta el destinatario del mensaje privado";

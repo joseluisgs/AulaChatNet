@@ -147,6 +147,109 @@ public class MensajeRepositoryTests
 
     #endregion
 
+    #region GetAnterioresAsync
+
+    [Test]
+    public async Task GetAnteriores_DevuelveLaPaginaHaciaAtrasEnOrdenCronologico()
+    {
+        // Arrange: cinco mensajes con marcas de tiempo AÑADIDAS a mano, para
+        // que el orden sea determinista (mismo truco que en GetUltimos)
+        var base_ = new DateTime(2026, 10, 15, 10, 0, 0, DateTimeKind.Utc);
+
+        for (var i = 1; i <= 5; i++)
+            await _repo.GuardarAsync(General, Mensaje($"m{i}", cuando: base_.AddMinutes(i)));
+
+        // Act: el cliente ve m4 y m5, y pide lo anterior a m4
+        var pagina = await _repo.GetAnterioresAsync(General, base_.AddMinutes(4), 3);
+
+        // Assert: el cursor es INCLUSIVO, así que la página toca m4 (el
+        // cliente lo descarta por Id); lo nuevo para él es m2 y m3
+        pagina.Select(m => m.Texto).Should().Equal("m2", "m3", "m4");
+    }
+
+    [Test]
+    public async Task GetAnteriores_PaginaTrasPagina_LlegaAlPrimerMensaje()
+    {
+        // Arrange
+        var base_ = new DateTime(2026, 10, 15, 10, 0, 0, DateTimeKind.Utc);
+
+        for (var i = 1; i <= 5; i++)
+            await _repo.GuardarAsync(General, Mensaje($"m{i}", cuando: base_.AddMinutes(i)));
+
+        // Act: la segunda página sigue el cursor que dejó la primera
+        var primera = await _repo.GetAnterioresAsync(General, base_.AddMinutes(5), 3);
+        var segunda = await _repo.GetAnterioresAsync(General, primera[0].Timestamp, 3);
+
+        // Assert: m5,m4,m3 y luego m3,m2,m1 — el solape es el cursor, que
+        // el cliente descarta por Id
+        primera.Select(m => m.Texto).Should().Equal("m3", "m4", "m5");
+        segunda.Select(m => m.Texto).Should().Equal("m1", "m2", "m3");
+    }
+
+    [Test]
+    public async Task GetAnteriores_DosMensajesElMismoInstante_LosDevuelveJuntos()
+    {
+        // Arrange: dos "gemelos" con la MISMA marca de tiempo (puede pasar
+        // cuando dos mensajes caen en el mismo milisegundo)
+        var instante = new DateTime(2026, 10, 15, 10, 0, 0, DateTimeKind.Utc);
+        await _repo.GuardarAsync(General, Mensaje("gemelo A", cuando: instante));
+        await _repo.GuardarAsync(General, Mensaje("gemelo B", cuando: instante));
+        await _repo.GuardarAsync(General, Mensaje("después", cuando: instante.AddMinutes(1)));
+
+        // Act: el cursor cae justo en el instante de los gemelos
+        var pagina = await _repo.GetAnterioresAsync(General, instante, 5);
+
+        // Assert: con una sola fecha no se pueden separar, así que la
+        // página los trae a LOS DOS — y ninguno queda huérfano
+        pagina.Select(m => m.Texto).Should().BeEquivalentTo("gemelo A", "gemelo B");
+    }
+
+    [Test]
+    public async Task GetAnteriores_AntesDeTodoLoQueHay_DevuelveVacio()
+    {
+        // Arrange
+        var base_ = new DateTime(2026, 10, 15, 10, 0, 0, DateTimeKind.Utc);
+        await _repo.GuardarAsync(General, Mensaje("m1", cuando: base_));
+
+        // Act: un cursor ANTERIOR a todo (vivir en 2020, p. ej.)
+        var pagina = await _repo.GetAnterioresAsync(General, base_.AddYears(-6), 10);
+
+        // Assert: página vacía = "no queda más historial" para el cliente
+        pagina.Should().BeEmpty();
+    }
+
+    [Test]
+    public async Task GetAnteriores_LosCanalesNoSeMezclan()
+    {
+        // Arrange
+        await _repo.GuardarAsync(General, Mensaje("de general"));
+        await _repo.GuardarAsync(Smr, Mensaje("de smr"));
+
+        // Act: cursor en el futuro, para pedirlo TODO de #smr
+        var pagina = await _repo.GetAnterioresAsync(Smr, DateTime.UtcNow.AddMinutes(1), 10);
+
+        // Assert
+        pagina.Should().ContainSingle().Which.Texto.Should().Be("de smr");
+    }
+
+    [Test]
+    public async Task GetAnteriores_LaFechaVuelveEnUtcYNadaMas()
+    {
+        // Arrange
+        var utc = new DateTime(2026, 10, 15, 12, 30, 0, DateTimeKind.Utc);
+        await _repo.GuardarAsync(General, Mensaje("hola", cuando: utc));
+
+        // Act
+        var pagina = await _repo.GetAnterioresAsync(General, utc, 1);
+
+        // Assert: mismo gotcha del Kind que en GetUltimos (SQLite guarda texto)
+        pagina.Should().ContainSingle();
+        pagina[0].Timestamp.Should().Be(utc);
+        pagina[0].Timestamp.Kind.Should().Be(DateTimeKind.Utc);
+    }
+
+    #endregion
+
     #region LimpiarAsync
 
     [Test]

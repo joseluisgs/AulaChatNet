@@ -247,6 +247,140 @@ public class ChatStoreTests
         error.Should().Be("Sin conexión con el servidor");
     }
 
+    #region Menciones Tests
+
+    [Test]
+    public void MencionesNoVistas_AlCrearLaStore_EmpiezaEnCero()
+    {
+        // Arrange
+        using var store = new ChatStore(UrlMuerta, Config());
+
+        // Act
+        var contador = Capturar<int>(store.MencionesNoVistas);
+
+        // Assert: sin sesión no puede haber nadie que te nombre
+        contador.Should().Be(0);
+    }
+
+    [Test]
+    public void UltimaMencion_AlCrearLaStore_EsNula()
+    {
+        // Arrange
+        using var store = new ChatStore(UrlMuerta, Config());
+
+        // Act
+        var mencion = Capturar<MencionDto?>(store.UltimaMencion);
+
+        // Assert: null = "ninguna esta sesión" — el componente del badge lo
+        // ignora y no pide parpadeo al navegador
+        mencion.Should().BeNull();
+    }
+
+    [Test]
+    public void MarcarMencionesVistas_Llamarlo_ElContadorQuedaEnCero()
+    {
+        // Arrange: el contador crece con el evento del servidor (MencionRecibida);
+        // aquí se prueba el APAGADO, que es lo que hace el clic del badge
+        using var store = new ChatStore(UrlMuerta, Config());
+
+        // Act
+        store.MarcarMencionesVistas();
+
+        // Assert
+        Capturar<int>(store.MencionesNoVistas).Should().Be(0);
+    }
+
+    #endregion
+
+    #region Paginación Tests
+
+    [Test]
+    public void HayAnteriores_AlCrearLaStore_EmpiezaEnTrue()
+    {
+        // Arrange
+        using var store = new ChatStore(UrlMuerta, Config());
+
+        // Act
+        var hay = Capturar<bool>(store.HayAnteriores);
+
+        // Assert: optimismo inicial: el botón se muestra, y el servidor
+        // dirá con su página vacía si en realidad no quedaba nada más
+        hay.Should().BeTrue();
+    }
+
+    [Test]
+    public async Task CargarAnteriores_SinVistaNoHaceNada()
+    {
+        // Arrange: la vista empieza vacía y sin cursor no hay dónde mirar
+        using var store = new ChatStore(UrlMuerta, Config());
+
+        // Act: no debe lanzar ni tocar el estado
+        await store.CargarAnterioresAsync();
+
+        // Assert
+        Capturar<bool>(store.HayAnteriores).Should().BeTrue();
+    }
+
+    [Test]
+    public async Task CargarAnteriores_ConElServidorCaido_NoLanzaYNodejaElEstadoUtil()
+    {
+        // Arrange: un aviso local llena la vista, para que el método
+        // llegue hasta la invocación (y ahí la conexión muerta revienta)
+        using var store = new ChatStore(UrlMuerta, Config());
+        store.Aviso("algo pasó");
+
+        // Act: un clic de botón o un scroll NUNCA deben lanzar al navegador
+        await store.CargarAnterioresAsync();
+
+        // Assert: la llamada se tragó el fallo y NO apagó el botón: la
+        // siguiente tentativa reintentará en cuanto vuelva la conexión
+        Capturar<bool>(store.HayAnteriores).Should().BeTrue();
+    }
+
+    #endregion
+
+    #region Editar y borrar Tests
+
+    [Test]
+    public async Task EditarMensajeAsync_SinConexion_DevuelveErrorDeUsuario()
+    {
+        // Arrange
+        using var store = new ChatStore(UrlMuerta, Config());
+
+        // Act: InvokeAsync LANZA con la conexión caída; la store lo
+        // convierte al patrón string? con mensaje de usuario
+        var error = await store.EditarMensajeAsync(Guid.NewGuid(), "Texto nuevo");
+
+        // Assert
+        error.Should().Be("Sin conexión con el servidor");
+    }
+
+    [Test]
+    public async Task BorrarMensajeAsync_SinConexion_DevuelveErrorDeUsuario()
+    {
+        // Arrange
+        using var store = new ChatStore(UrlMuerta, Config());
+
+        // Act
+        var error = await store.BorrarMensajeAsync(Guid.NewGuid());
+
+        // Assert
+        error.Should().Be("Sin conexión con el servidor");
+    }
+
+    [Test]
+    public void VistaNick_AlCrearLaStore_EsNulo()
+    {
+        // Arrange: el nick llega con el alta; antes, el procesador de
+        // comandos no tiene a quién buscar mensajes propios
+        using var store = new ChatStore(UrlMuerta, Config());
+
+        // Act y assert
+        store.VistaNick.Should().BeNull();
+    }
+
+    #endregion
+
     // ── Ayudante ──
 
     /// <summary>Lee el valor ACTUAL de un observable (el BehaviorSubject lo guarda).</summary>

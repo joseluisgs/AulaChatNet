@@ -43,6 +43,18 @@ public class ChatStore : IChatStore
     private readonly BehaviorSubject<bool> _enSesion = new(false);
     private readonly BehaviorSubject<string?> _destinatarioPrivado = new(null);
 
+    // Menciones dirigidas (@ana): la ÚLTIMA recibida (para el parpadeo de
+    // la pestaña) y el contador de las que aún no se han mirado (para el
+    // badge). El "no visto" es estado DEL CLIENTE: el servidor solo avisa
+    private readonly BehaviorSubject<MencionDto?> _ultimaMencion = new(null);
+    private readonly BehaviorSubject<int> _mencionesNoVistas = new(0);
+
+    // Paginación del historial (Fase 4.3): si puede quedar algo anterior a
+    // lo que ya se ve, y si ahora mismo hay una petición en vuelo (para que
+    // el scroll no dispare una segunda mientras la primera no vuelve)
+    private readonly BehaviorSubject<bool> _hayAnteriores = new(true);
+    private bool _cargandoAnteriores;
+
     // Reacciones por mensaje: el servidor manda el estado COMPLETO de cada
     // mensaje, así que aquí solo se REEMPLAZA la entrada que cambia. La
     // clave es el Id del mensaje (GUID), el mismo que identifica la fila
@@ -71,6 +83,13 @@ public class ChatStore : IChatStore
 
     /// <summary>Error devuelto al invocar el hub con la conexión caída.</summary>
     private const string ErrorSinConexion = "Sin conexión con el servidor";
+
+    /// <summary>
+    /// Tamaño de página que pide el cliente al cargar mensajes antiguos. El
+    /// servidor lo limita además a su tope configurado, así que este número
+    /// es solo una petición, no un contrato.
+    /// </summary>
+    private const int TamanoPagina = 25;
 
     /// <summary>
     /// Crea la store y prepara la conexión (aún NO conectada: eso es
@@ -122,6 +141,16 @@ public class ChatStore : IChatStore
         // evento jamás lleva texto) y solo si no eres tú (OthersInGroup)
         _conexion.On<string>(ChatHubEventos.Escribiendo, usuario => _seguimiento.Senalar(usuario));
 
+        // Menciones dirigidas (@ana): un aviso SEPARADO del mensaje — el
+        // mensaje ya llega por MensajeNuevo y aquí se pinta resaltado; esto
+        // es solo el empujoncito para que el cliente parpadee y ponga su
+        // badge. Llega después del mensaje, nunca antes
+        _conexion.On<MencionDto>(ChatHubEventos.MencionRecibida, mencion =>
+        {
+            _ultimaMencion.OnNext(mencion);
+            _mencionesNoVistas.OnNext(_mencionesNoVistas.Value + 1);
+        });
+
         _conexion.On<IReadOnlyList<UsuarioConectadoDto>>(
             ChatHubEventos.ListaUsuariosActualizada, lista => _usuarios.OnNext(lista));
 
@@ -135,6 +164,10 @@ public class ChatStore : IChatStore
         {
             // El historial REEMPLAZA la vista: así no se mezclan canales
             _mensajes.OnNext(historial);
+
+            // La paginación vuelve a empezar: la vista nueva acaba de
+            // llegar y puede tener detrás (el servidor dirá si no queda nada)
+            _hayAnteriores.OnNext(true);
 
             // Con él se vacía también el seguimiento: nadie de la sala
             // anterior debe asomar en la nueva ni un instante
@@ -172,6 +205,37 @@ public class ChatStore : IChatStore
 
                 _reacciones.OnNext(nuevas);
             });
+
+        // Un mensaje del canal ha cambiado de texto (Fase 4.4): llega el
+        // mensaje COMPLETO con su Id, así que la vista solo SUSTITUYE la
+        // fila que coincide — misma posición, mismo orden, texto nuevo y
+        // marca de editado. Si el Id no está en la vista (una página que
+        // aún no se pidió), no hay nada que tocar: la próxima carga traerá
+        // el texto ya editado, porque el servidor solo guarda uno.
+        _conexion.On<MensajeDto>(ChatHubEventos.MensajeEditado, editado =>
+        {
+            var vista = _mensajes.Value;
+
+            if (!vista.Any(m => m.Id == editado.Id))
+                return;
+
+            _mensajes.OnNext([.. vista.Select(m => m.Id == editado.Id ? editado : m)]);
+        });
+
+        // Un mensaje del canal se ha borrado: solo hace falta el Id.
+        // Quitarlo de la vista, y también SUS chips del mapa de
+        // reacciones: sin mensaje que los muestre, el mapa los retendría
+        // en contra de su dueño (mismo criterio con el que el servidor
+        // los libera al borrar la fila)
+        _conexion.On<Guid>(ChatHubEventos.MensajeBorrado, idBorrado =>
+        {
+            _mensajes.OnNext([.. _mensajes.Value.Where(m => m.Id != idBorrado)]);
+
+            var chips = new Dictionary<Guid, ReaccionesMensajeDto>(_reacciones.Value);
+
+            if (chips.Remove(idBorrado))
+                _reacciones.OnNext(chips);
+        });
 
         // ── Ciclo de vida de la conexión → punto de la barra ──
         _conexion.Reconnecting += _ =>
@@ -235,11 +299,29 @@ public class ChatStore : IChatStore
     /// <inheritdoc />
     public IObservable<string?> DestinatarioPrivado => _destinatarioPrivado;
 
+    /// <summary>Última mención dirigida recibida (null = ninguna esta sesión).</summary>
+    public IObservable<MencionDto?> UltimaMencion => _ultimaMencion;
+
+    /// <summary>Menciones recibidas que aún no se han mirado (el badge de la barra).</summary>
+    public IObservable<int> MencionesNoVistas => _mencionesNoVistas;
+
+    /// <inheritdoc />
+    public IObservable<bool> HayAnteriores => _hayAnteriores;
+
+    /// <summary>
+    /// Marca las menciones como vistas: el badge vuelve a cero. El clic
+    /// viene del badge, que no puede tocar la store por su cuenta.
+    /// </summary>
+    public void MarcarMencionesVistas() => _mencionesNoVistas.OnNext(0);
+
     /// <inheritdoc />
     public IReadOnlyList<string> Canales => _config.Canales;
 
     /// <inheritdoc />
     public string? Canal => _canalActual.Value;
+
+    /// <inheritdoc />
+    public string? VistaNick => _nick.Value;
 
     /// <inheritdoc />
     public IReadOnlyList<MensajeDto> VistaMensajes => _mensajes.Value;
@@ -375,6 +457,39 @@ public class ChatStore : IChatStore
     }
 
     /// <inheritdoc />
+    public async Task<string?> EditarMensajeAsync(Guid idMensaje, string texto)
+    {
+        try
+        {
+            // El eco vuelve por MENSAJE EDITADO con el mensaje completo: la
+            // store solo sustituye la fila que cambia — mismo camino de
+            // reemplazo que los mensajes y las reacciones
+            return await _conexion.InvokeAsync<string?>(
+                ChatHubMetodos.Editar, idMensaje, texto);
+        }
+        catch (Exception)
+        {
+            return ErrorSinConexion;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<string?> BorrarMensajeAsync(Guid idMensaje)
+    {
+        try
+        {
+            // El eco vuelve por MENSAJE BORRADO con solo el Id: la store
+            // quita la fila y sus chips de la vista
+            return await _conexion.InvokeAsync<string?>(
+                ChatHubMetodos.Borrar, idMensaje);
+        }
+        catch (Exception)
+        {
+            return ErrorSinConexion;
+        }
+    }
+
+    /// <inheritdoc />
     public async Task<string?> CambiarCanalAsync(string canal)
     {
         try
@@ -427,6 +542,61 @@ public class ChatStore : IChatStore
             // null también significa "no pude consultar": el que lo pinta
             // usa un mensaje que vale para ambos casos
             return null;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task CargarAnterioresAsync()
+    {
+        // Sin vista no hay cursor, y con una petición en vuelo no se pide otra
+        if (_cargandoAnteriores || _mensajes.Value.Count == 0)
+            return;
+
+        _cargandoAnteriores = true;
+
+        try
+        {
+            // Cursor = el mensaje más antiguo de la vista. El servidor
+            // devuelve lo anterior (inclusive) a ese instante, nada más
+            var cursor = _mensajes.Value[0].Timestamp;
+
+            var pagina = await _conexion.InvokeAsync<IReadOnlyList<MensajeDto>?>(
+                ChatHubMetodos.Historial, cursor, TamanoPagina);
+
+            if (pagina is null || pagina.Count == 0)
+            {
+                // Página vacía = no quedaba más historial. null no debería
+                // pasar (este botón solo existe en sesión), pero corta el
+                // bucle igual: sin datos no hay nada que pintar
+                _hayAnteriores.OnNext(false);
+                return;
+            }
+
+            var actuales = _mensajes.Value;
+            var yaVistas = actuales.Select(m => m.Id).ToHashSet();
+
+            // El servidor devuelve también el del cursor (el rango es
+            // inclusivo) y una página podría solaparse; el descarte por Id
+            // lo deja inocuo
+            var nuevas = pagina.Where(m => !yaVistas.Contains(m.Id)).ToArray();
+
+            if (nuevas.Length == 0)
+            {
+                _hayAnteriores.OnNext(false);
+                return;
+            }
+
+            // Por delante: la página vieja va ARRIBA de todo lo que ya se ve
+            _mensajes.OnNext([.. nuevas, .. actuales]);
+        }
+        catch (Exception)
+        {
+            // Sin conexión: la vista no crece; el aviso de cierre llega por
+            // su propio camino (jamás lanzar desde un clic o un scroll)
+        }
+        finally
+        {
+            _cargandoAnteriores = false;
         }
     }
 
@@ -492,6 +662,11 @@ public class ChatStore : IChatStore
         _usuarios.OnNext([]);
         _privados.OnNext([]); // y los privados menos: no hay servidor que los vuelva a traer
         _reacciones.OnNext(new Dictionary<Guid, ReaccionesMensajeDto>()); // ni chips de nadie
+
+        // Ni las menciones sin mirar de la sesión anterior: el badge de la
+        // siguiente persona que entre en este navegador empieza en cero
+        _mencionesNoVistas.OnNext(0);
+        _ultimaMencion.OnNext(null);
 
         // Y nadie de la sesión anterior debe seguir "escribiendo"
         _seguimiento.Limpiar();
@@ -601,6 +776,7 @@ public class ChatStore : IChatStore
         _estado.Dispose();
         _enSesion.Dispose();
         _destinatarioPrivado.Dispose();
+        _hayAnteriores.Dispose();
         _reacciones.Dispose();
 
         // El seguimiento de escritura también: su latido de caducidad vive en

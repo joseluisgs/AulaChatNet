@@ -1,0 +1,22 @@
+@* Texto de un mensaje troceado con Menciones.Trocear (Shared): los
+   @nombrados salen resaltados y el resto se pinta tal cual. Blazor escapa
+   cada tramo POR CONSTRUCCIÓN — aquí no hay MarkupString— así que un texto
+   con "<b>" se ve como <b> y no como negrita, y no hay XSS que valga. La
+   regla de QUÉ es mención vive en Shared; de este componente solo se
+   exige el color. *@
+@foreach (var (trozo, esMencion) in Menciones.Trocear(Texto))
+{
+    if (esMencion)
+    {
+        <span class="mencion">@trozo</span>
+    }
+    else
+    {
+        @trozo
+    }
+}
+
+@code {
+    /// <summary>Texto del mensaje a pintar.</summary>
+    [Parameter] public string Texto { get; set; } = string.Empty;
+}

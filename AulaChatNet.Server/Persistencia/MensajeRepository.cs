@@ -80,7 +80,41 @@ public class MensajeRepository(IDbContextFactory<AulaChatContexto> fabrica, ILog
             .Select(m => new MensajeDto(
                 m.Id, m.Usuario, m.Texto,
                 DateTime.SpecifyKind(m.Timestamp, DateTimeKind.Utc),
-                m.Tipo))
+                m.Tipo, m.Editado))
+            .ToArray();
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<MensajeDto>> GetAnterioresAsync(
+        string canal, DateTime antesDe, int limite, CancellationToken cancelacion = default)
+    {
+        await using var contexto = await fabrica.CreateDbContextAsync(cancelacion);
+
+        // Mismo barrido por índice que GetUltimos, pero hacia ATRÁS en el
+        // tiempo: el rango termina en el cursor que manda el cliente. El
+        // cursor es INCLUSIVO (<=) a propósito: dos mensajes con la misma
+        // marca de tiempo no se pueden separar con una sola fecha, y así
+        // ninguno queda huérfano — el cliente descarta los que ya tiene.
+        // El ThenBy por Id desempata a los gemelos para que dos páginas con
+        // el mismo cursor devuelvan siempre lo mismo.
+        var entidades = await contexto.Mensajes
+            .AsNoTracking()                            // solo lectura: sin tracking
+            .Where(m => m.Canal == canal && m.Timestamp <= antesDe)
+            .OrderByDescending(m => m.Timestamp)
+            .ThenByDescending(m => m.Id)
+            .Take(limite)
+            .ToListAsync(cancelacion);
+
+        // Se devuelven del más antiguo al más reciente, igual que GetUltimos
+        entidades.Reverse();
+
+        // Mismo trato del Kind que en GetUltimos: SQLite guarda fechas como
+        // texto y el contrato de la entidad es "siempre UTC"
+        return entidades
+            .Select(m => new MensajeDto(
+                m.Id, m.Usuario, m.Texto,
+                DateTime.SpecifyKind(m.Timestamp, DateTimeKind.Utc),
+                m.Tipo, m.Editado))
             .ToArray();
     }
 
@@ -100,6 +134,49 @@ public class MensajeRepository(IDbContextFactory<AulaChatContexto> fabrica, ILog
                 "Limpieza: {Borrados} mensajes anteriores a {Fecha} eliminados", borrados, anteriorA);
 
         return borrados;
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> ActualizarAsync(MensajeDto mensaje, CancellationToken cancelacion = default)
+    {
+        // Misma política que GuardarAsync: los mensajes de sistema no existen
+        // en disco, así que no hay nada que actualizar para ellos
+        if (mensaje.Tipo != TipoMensaje.Normal)
+            return false;
+
+        await using var contexto = await fabrica.CreateDbContextAsync(cancelacion);
+
+        // ExecuteUpdateAsync genera UN SOLO UPDATE en SQL sin traer la fila
+        // a memoria (ni ponerla en tracking): misma filosofía que el
+        // ExecuteDeleteAsync de LimpiarAsync. Dos SET en la misma instrucción:
+        // el texto nuevo y la marca de editado viajan juntos, así que la fila
+        // nunca queda a medias.
+        var filas = await contexto.Mensajes
+            .Where(m => m.Id == mensaje.Id)
+            .ExecuteUpdateAsync(
+                campos => campos
+                    .SetProperty(m => m.Texto, mensaje.Texto)
+                    .SetProperty(m => m.Editado, true),
+                cancelacion);
+
+        // false = la fila no estaba (INSERT aún en la cola, fallo de disco
+        // anterior o limpieza). Quien lo decide —el store— lo deja en el log.
+        return filas > 0;
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> BorrarAsync(Guid idMensaje, CancellationToken cancelacion = default)
+    {
+        await using var contexto = await fabrica.CreateDbContextAsync(cancelacion);
+
+        // DELETE por Id: una instrucción, sin cargar nada a memoria. Una vez
+        // fuera de la base de datos, el mensaje ya no puede aparecer en
+        // ninguna página de historial: el borrado es definitivo.
+        var filas = await contexto.Mensajes
+            .Where(m => m.Id == idMensaje)
+            .ExecuteDeleteAsync(cancelacion);
+
+        return filas > 0;
     }
 
     /// <inheritdoc />

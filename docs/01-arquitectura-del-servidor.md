@@ -318,10 +318,10 @@ Si la excepción no es `null`, es que la conexión cayó por un error (se regist
 
 ### 2.8. Cómo se prueba todo esto sin abrir una terminal
 
-La clave está en que **el hub depende de interfaces**: `IChatStore` (el estado) e `IHubCallerClients` (a quién emitir). Con Moq simulamos ambas, y con los *setters* públicos inyectamos el doble de contexto:
+La clave está en que **el hub depende de interfaces**: `IChatStore` (el estado), `IControlRafagas` (la cuota de ráfagas de la Fase 4.1) e `IHubCallerClients` (a quién emitir). Con Moq simulamos las tres, y con los *setters* públicos inyectamos el doble de contexto:
 
 ```csharp
-var hub = new ChatHub(store, Options.Create(config), logger.Object)
+var hub = new ChatHub(store, rafagas, Options.Create(config), logger.Object)
 {
     Context = Mock.Of<HubCallerContext>(c => c.ConnectionId == "conn-1"),
     Clients = clientes.Object   // proxies que GRABAN lo que se emite

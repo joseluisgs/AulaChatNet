@@ -26,6 +26,14 @@ public static class ChatHubMetodos
     public const string ObtenerUsuarios = "ObtenerUsuariosAsync";
 
     /// <summary>
+    /// Método de CONSULTA (no difunde): el historial ANTIGUO de tu canal por
+    /// páginas, solo para quien lo pregunta: ObtenerHistorialAsync(antesDe, cantidad).
+    /// Es una invocación CON RETORNO —como ObtenerUsuariosAsync— y no un
+    /// evento: aquí no interesa avisar a nadie, sino contestar UNA pregunta.
+    /// </summary>
+    public const string Historial = "ObtenerHistorialAsync";
+
+    /// <summary>
     /// Método para enviar un mensaje a UNA persona concreta de tu canal:
     /// EnviarPrivadoAsync(destinatario, texto). NO se difunde al grupo.
     /// </summary>
@@ -45,4 +53,21 @@ public static class ChatHubMetodos
     /// mensaje a todo el canal — también a ti, para que veas tu propio chip.
     /// </summary>
     public const string Reaccionar = "ReaccionarAsync";
+
+    /// <summary>
+    /// Método para editar un mensaje propio: EditarMensajeAsync(idMensaje, texto).
+    /// El servidor comprueba que el mensaje exista, sea tuyo y sea normal;
+    /// si todo cuadra, actualiza la caché y la base de datos y difunde el
+    /// mensaje COMPLETO al canal, para que cada cliente sustituya su fila
+    /// buscándola por Id — mismo camino de reemplazo que las reacciones.
+    /// </summary>
+    public const string Editar = "EditarMensajeAsync";
+
+    /// <summary>
+    /// Método para borrar un mensaje propio: BorrarMensajeAsync(idMensaje).
+    /// Misma comprobación de propiedad que editar; si cuadra, quita el
+    /// mensaje de la caché y de SQLite, y avisa al canal con su Id para
+    /// que cada cliente lo quite de su vista.
+    /// </summary>
+    public const string Borrar = "BorrarMensajeAsync";
 }
