@@ -158,5 +158,25 @@ public class ServicesConfigTests
             Is.TypeOf<FileStorageService>());
     }
 
+    [Test]
+    public void AddClienteWpf_RegistraLosServiciosDeLaBandeja()
+    {
+        // Arrange
+        var config = CrearConfiguracion("""{ "Chat": { "Canales": [ "#general" ] } }""");
+        var servicios = new ServiceCollection();
+
+        // Act
+        servicios.AddClienteWpf(config);
+        using var proveedor = servicios.BuildServiceProvider();
+
+        // Assert: el icono de bandeja y sus preferencias quedan disponibles
+        // (la ventana los coge de DI para ocultarse sin matar la app)
+        Assert.Multiple(() =>
+        {
+            Assert.That(proveedor.GetService<IBandejaService>(), Is.TypeOf<BandejaService>());
+            Assert.That(proveedor.GetService<PreferenciasBandeja>(), Is.Not.Null);
+        });
+    }
+
     #endregion
 }

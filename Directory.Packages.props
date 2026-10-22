@@ -33,10 +33,15 @@
          (un FrameworkReference rompe la compilación WASM con NETSDK1082) -->
     <PackageVersion Include="Microsoft.AspNetCore.Components.Web" Version="10.0.13" />
 
-    <!-- Blazor Hybrid en la app de escritorio (Fase 5.2): trae el BlazorWebView
+    <!-- Blazor Hybrid en la app de escritorio: trae el BlazorWebView
          de WPF y el runtime embebido; versión 10.0.120 de la línea 10.0.12
          (este paquete versiona por minor, no por patch como el resto) -->
     <PackageVersion Include="Microsoft.AspNetCore.Components.WebView.Wpf" Version="10.0.120" />
+
+    <!-- Icono de bandeja del sistema (la esquina inferior derecha de Windows):
+         el clásico Hardcodet lleva sin publicar desde 2013, y este es su
+         relevo mantenido — trae el TaskbarIcon con menú contextual -->
+    <PackageVersion Include="H.NotifyIcon.Wpf" Version="2.4.1" />
   </ItemGroup>
 
   <ItemGroup>

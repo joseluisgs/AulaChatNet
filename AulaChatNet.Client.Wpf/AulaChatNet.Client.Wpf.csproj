@@ -28,15 +28,19 @@
   </PropertyGroup>
 
   <!--
-    Cliente de escritorio con Blazor Hybrid (Fase 5.2): la UI NO se escribe
-    otra vez — es la MISMA librería AulaChatNet.Client.Web que usa la web,
-    montada dentro de un BlazorWebView (WebView2 embebido en la ventana).
+    Cliente de escritorio con Blazor Hybrid: la UI NO se escribe otra vez —
+    es la MISMA librería AulaChatNet.Client.Web que usa la web, montada
+    dentro de un BlazorWebView (WebView2 embebido en la ventana).
   -->
 
   <ItemGroup>
     <!-- BlazorWebView: el control WPF que aloja componentes Razor; trae el
          runtime embebido (blazor.webview.js) y el puente JSInterop -->
     <PackageReference Include="Microsoft.AspNetCore.Components.WebView.Wpf" />
+
+    <!-- Bandeja del sistema: TaskbarIcon con menú contextual para minimizar
+         la ventana sin matar la app (y salir SOLO desde ahí, con confirmación) -->
+    <PackageReference Include="H.NotifyIcon.Wpf" />
 
     <!-- Configuración: lee appsettings.json del DISCO junto al .exe -->
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" />

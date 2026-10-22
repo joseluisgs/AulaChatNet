@@ -72,6 +72,15 @@ public static class ServicesConfig
         services.Replace(ServiceDescriptor
             .Singleton<ILocalStorageService, FileStorageService>());
 
+        // 📥 Bandeja del sistema: la ventana se puede ocultar, pero la app
+        // sigue viva y conectada — el icono es el único camino de vuelta y
+        // el único camino de salida (con confirmación)
+        services.AddSingleton<IBandejaService, BandejaService>();
+
+        // Aviso de "sigue en segundo plano": solo se enseña la primera vez,
+        // y la marca queda en el MISMO fichero que la sesión del usuario
+        services.AddSingleton<PreferenciasBandeja>();
+
         return services;
     }
 

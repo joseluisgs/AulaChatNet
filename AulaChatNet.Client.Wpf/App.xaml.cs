@@ -50,6 +50,18 @@ public partial class App : Application
             Log.CloseAndFlush();
         };
 
+        // 🛡️ Red de seguridad de la INTERFAZ: un fallo al pintar o al abrir
+        // un menú (por ejemplo, el de la bandeja) se registra y se sigue —
+        // una app de escritorio no se tumba por un error de UI, igual que un
+        // fallo de la bandeja no tumba el chat
+        DispatcherUnhandledException += (_, args) =>
+        {
+            Log.Error(args.Exception,
+                "Excepción no controlada en la interfaz ({Tipo})",
+                args.Exception.GetType().Name);
+            args.Handled = true;
+        };
+
         // Configuración desde el DISCO: a diferencia del navegador (que la
         // descarga del servidor), aquí el appsettings.json viaja AL LADO del
         // .exe — AppContext.BaseDirectory es la carpeta del ejecutable
@@ -88,12 +100,18 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// Cierra Serilog al salir para no perder los últimos eventos del fichero.
+    /// Cierra Serilog y libera los servicios al salir para no perder los
+    /// últimos eventos del fichero ni dejar el icono de bandeja huérfano.
     /// </summary>
     /// <param name="e">Argumentos de salida.</param>
     protected override void OnExit(ExitEventArgs e)
     {
         Log.Information("AulaChatNet de escritorio cerrado");
+
+        // Dispose del contenedor: libera los IDisposable registrados
+        // (entre ellos BandejaService, que retira su icono de la bandeja)
+        Servicios?.Dispose();
+
         Log.CloseAndFlush();
         base.OnExit(e);
     }
