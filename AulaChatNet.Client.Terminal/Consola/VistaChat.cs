@@ -158,7 +158,7 @@ public static class VistaChat
         var iniciales = TemaDiscord.Iniciales(privado.Emisor);
         var rosa = TemaDiscord.Fucsia.ToMarkup();
 
-        return $"[grey]{hora}[/] [{rosa}🔒[/] [{rosa}]{Markup.Escape(contexto)}[/] " +
+        return $"[grey]{hora}[/] [{rosa}]🔒[/] [{rosa}]{Markup.Escape(contexto)}[/] " +
                $"[{hex}][[{iniciales}]][/] [{hex}]{Markup.Escape(privado.Emisor)}[/]: " +
                $"{Markup.Escape(privado.Texto)}";
     }

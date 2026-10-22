@@ -239,6 +239,58 @@ public class VistaChatTests
         linea.Should().Contain("Confidencia");
     }
 
+    [Test]
+    public void LineaMarkup_FilaPrivada_EsPintable_NoRevientaElLienzo()
+    {
+        // Arrange: la fila tal como la pide CrearZonaMensajes (Program.cs)
+        // al lienzo en vivo, con el privado recibido de otro usuario
+        var fila = new FilaChat(true, null, Privado("Ana", "Luis", "Confidencia"));
+
+        // Act: LA cadena que recibe new Markup(...) en cada repintado
+        var linea = VistaChat.LineaMarkup(fila, "Luis");
+
+        // Assert: aquí reventaba la terminal de verdad — el LiveDisplay murió
+        // con "malformed markup tag at position 25" porque la etiqueta de
+        // color del candado se quedaba sin cerrar. Contener "🔒" NO basta:
+        // hay que poder PINTAR la línea, que es donde duele.
+        Action pintar = () => new Markup(linea);
+        pintar.Should().NotThrow();
+    }
+
+    [Test]
+    public void TodasLasLineasDeLaVista_SonPintables_NoLanzanMarkupMalformado()
+    {
+        // Arrange: todas las fórmulas que la zona de mensajes puede construir,
+        // con el contenido "difícil" de la vida real (corchetes, menciones,
+        // chips, editado...)
+        var conChips = Mensaje("Ana", "Buenas");
+        var chips = new Dictionary<Guid, ReaccionesMensajeDto>
+        {
+            [conChips.Id] = new(conChips.Id, [new ReaccionDto("👍", ["Luis"])])
+        };
+
+        var casos = new Dictionary<string, string>
+        {
+            ["mensaje de canal"] = VistaChat.LineaMensajeMarkup(Mensaje("Ana", "Buenas")),
+            ["mensaje con chips"] = VistaChat.LineaMensajeMarkup(conChips, chips),
+            ["mensaje con corchetes"] = VistaChat.LineaMensajeMarkup(Mensaje("Ana", "hola [rojo]")),
+            ["mensaje de sistema"] =
+                VistaChat.LineaMensajeMarkup(Mensaje("Ana", "Ana se ha unido", TipoMensaje.Sistema)),
+            ["mensaje editado"] = VistaChat.LineaMensajeMarkup(Mensaje("Ana", "texto") with { Editado = true }),
+            ["privado recibido"] = VistaChat.LineaPrivadoMarkup(Privado("Ana", "Luis", "Confidencia"), "Luis"),
+            ["privado enviado"] = VistaChat.LineaPrivadoMarkup(Privado("Luis", "Ana", "Confidencia"), "Luis"),
+            ["escribiendo"] = VistaChat.LineaEscribiendoMarkup(["Ana", "Luis"]),
+        };
+
+        // Assert: el constructor de Markup es donde reventaba la terminal;
+        // una fórmula que suena bien pero no parsea no sirve de nada
+        foreach (var (descripcion, linea) in casos)
+        {
+            Action pintar = () => new Markup(linea);
+            pintar.Should().NotThrow($"la fila de {descripcion} debe poder pintarse");
+        }
+    }
+
     #endregion
 
     #region LineaEscribiendoMarkup Tests
