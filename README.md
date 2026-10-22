@@ -58,7 +58,7 @@ AulaChatNet es un proyecto educativo de ejemplo para el módulo **Desarrollo Web
 - **ASP.NET Core + SignalR** - Servidor en tiempo real
 - **SQLite + EF Core 10** - Base de datos embebida en un fichero, sin servidor ni contenedor; migraciones aplicadas al arrancar
 - **Rx.NET (System.Reactive)** - Programación reactiva en los clientes
-- **Blazor (Razor Class Library + WebAssembly)** - Cliente web: la UI vive en la librería compartida `AulaChatNet.Client.Web` y el host WebAssembly la sirve en el 5031
+- **Blazor (Razor Class Library + WebAssembly)** - Cliente web: la UI vive en la librería compartida `AulaChatNet.Client.Blazor.Components` y el host WebAssembly la sirve en el 5031
 - **WPF + Blazor Hybrid (`BlazorWebView`)** - Cliente de escritorio: la MISMA librería `Client.Web` dentro de una ventana WPF, con el navegador WebView2 embebido (sin servidor detrás: los estáticos salen del propio .exe)
 - **Spectre.Console** - Cliente de terminal
 - **Serilog** - Logging en los cuatro procesos de la solución: servidor (consola + fichero), terminal (fichero), escritorio (fichero en `%LOCALAPPDATA%`) y web (consola del navegador)
@@ -88,9 +88,9 @@ AulaChatNet/
 │   └── AulaChatNet.Server.Tests/
 ├── AulaChatNet.Client.Terminal/             # Consola con Spectre.Console (TUI estilo Discord)
 │   └── AulaChatNet.Client.Terminal.Tests/
-├── AulaChatNet.Client.Web/                   # Razor Class Library: UI Blazor compartida (componentes, stores, servicios, CSS y JS)
-│   └── AulaChatNet.Client.Web.Tests/         #   bUnit de la UI (componentes y stores)
-├── AulaChatNet.Client.Blazor/                # Host WebAssembly de esa UI (proceso propio en el 5031): arranque y configuración
+├── AulaChatNet.Client.Blazor.Components/                   # Razor Class Library: UI Blazor compartida (componentes, stores, servicios, CSS y JS)
+│   └── AulaChatNet.Client.Blazor.Components.Tests/         #   bUnit de la UI (componentes y stores)
+├── AulaChatNet.Client.Web/                # Host WebAssembly de esa UI (proceso propio en el 5031): arranque y configuración
 └── AulaChatNet.Client.Wpf/                   # Cliente de escritorio WPF + Blazor Hybrid: la MISMA UI de la RCL en una ventana (WebView2 embebido)
     └── AulaChatNet.Client.Wpf.Tests/         #   configuración DI y almacenamiento de la sesión en fichero
 ```
@@ -158,8 +158,8 @@ flowchart TD
 dotnet run --project AulaChatNet.Server
 
 # Web (Blazor WebAssembly, puerto 5031); si cambias su código, usa watch
-dotnet run --project AulaChatNet.Client.Blazor
-dotnet watch --project AulaChatNet.Client.Blazor
+dotnet run --project AulaChatNet.Client.Web
+dotnet watch --project AulaChatNet.Client.Web
 
 # Terminal
 dotnet run --project AulaChatNet.Client.Terminal

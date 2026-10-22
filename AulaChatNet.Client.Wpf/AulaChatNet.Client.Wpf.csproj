@@ -29,7 +29,7 @@
 
   <!--
     Cliente de escritorio con Blazor Hybrid: la UI NO se escribe otra vez —
-    es la MISMA librería AulaChatNet.Client.Web que usa la web, montada
+    es la MISMA librería AulaChatNet.Client.Blazor.Components que usa la web, montada
     dentro de un BlazorWebView (WebView2 embebido en la ventana).
   -->
 
@@ -55,7 +55,7 @@
 
   <ItemGroup>
     <!-- La UI compartida (componentes, stores, CSS y JS) y los contratos -->
-    <ProjectReference Include="..\AulaChatNet.Client.Web\AulaChatNet.Client.Web.csproj" />
+    <ProjectReference Include="..\AulaChatNet.Client.Blazor.Components\AulaChatNet.Client.Blazor.Components.csproj" />
     <ProjectReference Include="..\AulaChatNet.Shared\AulaChatNet.Shared.csproj" />
   </ItemGroup>
 

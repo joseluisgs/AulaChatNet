@@ -1,4 +1,4 @@
-using AulaChatNet.Client.Web.Services.Storage;   // ILocalStorageService
+using AulaChatNet.Client.Blazor.Components.Services.Storage;   // ILocalStorageService
 
 namespace AulaChatNet.Client.Wpf.Services;
 

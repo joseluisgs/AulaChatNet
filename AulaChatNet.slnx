@@ -4,11 +4,11 @@
     <Platform Name="x64" />
     <Platform Name="x86" />
   </Configurations>
-  <Project Path="AulaChatNet.Client.Blazor/AulaChatNet.Client.Blazor.csproj" />
+  <Project Path="AulaChatNet.Client.Web/AulaChatNet.Client.Web.csproj" />
   <Project Path="AulaChatNet.Client.Terminal.Tests/AulaChatNet.Client.Terminal.Tests.csproj" />
   <Project Path="AulaChatNet.Client.Terminal/AulaChatNet.Client.Terminal.csproj" />
-  <Project Path="AulaChatNet.Client.Web.Tests/AulaChatNet.Client.Web.Tests.csproj" />
-  <Project Path="AulaChatNet.Client.Web/AulaChatNet.Client.Web.csproj" />
+  <Project Path="AulaChatNet.Client.Blazor.Components.Tests/AulaChatNet.Client.Blazor.Components.Tests.csproj" />
+  <Project Path="AulaChatNet.Client.Blazor.Components/AulaChatNet.Client.Blazor.Components.csproj" />
   <Project Path="AulaChatNet.Client.Wpf.Tests/AulaChatNet.Client.Wpf.Tests.csproj" />
   <Project Path="AulaChatNet.Client.Wpf/AulaChatNet.Client.Wpf.csproj" />
   <Project Path="AulaChatNet.Server.Tests/AulaChatNet.Server.Tests.csproj" />

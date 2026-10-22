@@ -1,4 +1,4 @@
-using AulaChatNet.Client.Web.State;
+using AulaChatNet.Client.Blazor.Components.State;
 using AulaChatNet.Client.Wpf.Services;
 
 namespace AulaChatNet.Client.Wpf.Tests.Services;

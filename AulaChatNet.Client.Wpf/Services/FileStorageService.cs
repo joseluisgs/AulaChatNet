@@ -1,4 +1,4 @@
-using AulaChatNet.Client.Web.Services.Storage;
+using AulaChatNet.Client.Blazor.Components.Services.Storage;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Collections.Generic;

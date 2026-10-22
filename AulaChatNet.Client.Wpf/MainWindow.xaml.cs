@@ -1,4 +1,4 @@
-using AulaChatNet.Client.Web.Configuracion;
+using AulaChatNet.Client.Blazor.Components.Configuracion;
 using AulaChatNet.Client.Wpf.Services;         // IBandejaService, PreferenciasBandeja
 using Microsoft.Extensions.DependencyInjection; // GetRequiredService
 using Serilog;

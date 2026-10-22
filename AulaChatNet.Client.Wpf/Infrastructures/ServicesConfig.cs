@@ -1,6 +1,6 @@
-using AulaChatNet.Client.Web.Configuracion;
-using AulaChatNet.Client.Web.Infrastructures;
-using AulaChatNet.Client.Web.Services.Storage;   // ILocalStorageService
+using AulaChatNet.Client.Blazor.Components.Configuracion;
+using AulaChatNet.Client.Blazor.Components.Infrastructures;
+using AulaChatNet.Client.Blazor.Components.Services.Storage;   // ILocalStorageService
 using AulaChatNet.Client.Wpf.Services;           // FileStorageService
 using AulaChatNet.Shared.Configuracion;
 using Microsoft.Extensions.Configuration;

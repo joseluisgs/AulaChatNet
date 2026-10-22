@@ -1,4 +1,4 @@
-using AulaChatNet.Client.Web.Configuracion;   // WebConfig (sección "Web")
+using AulaChatNet.Client.Blazor.Components.Configuracion;   // WebConfig (sección "Web")
 using AulaChatNet.Client.Wpf.Configuracion;
 using AulaChatNet.Client.Wpf.Infrastructures;
 using Microsoft.Extensions.Configuration;
