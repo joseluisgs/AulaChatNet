@@ -74,7 +74,7 @@ public static class ServicesConfig
 
         // 📥 Bandeja del sistema: la ventana se puede ocultar, pero la app
         // sigue viva y conectada — el icono es el único camino de vuelta y
-        // el único camino de salida (con confirmación)
+        // el único camino de salida (menú: "Salir de AulaChatNet")
         services.AddSingleton<IBandejaService, BandejaService>();
 
         // Aviso de "sigue en segundo plano": solo se enseña la primera vez,

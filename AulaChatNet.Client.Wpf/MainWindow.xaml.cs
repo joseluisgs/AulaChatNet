@@ -25,8 +25,9 @@ public partial class MainWindow : Window
     private readonly PreferenciasBandeja _preferencias;
 
     /// <summary>
-    /// Se pone a <c>true</c> cuando el usuario CONFIRMA salir desde la
-    /// bandeja: es la señal para dejar pasar el cierre en vez de cancelarlo.
+    /// Se pone a <c>true</c> cuando el usuario elige "Salir" en el menú de
+    /// la bandeja: es la señal para dejar pasar el cierre en vez de
+    /// cancelarlo y mandar la ventana al fondo otra vez.
     /// </summary>
     private bool _salidaConfirmada;
 
@@ -53,7 +54,7 @@ public partial class MainWindow : Window
         _preferencias = App.Servicios.GetRequiredService<PreferenciasBandeja>();
 
         // Los eventos de la bandeja los resuelve la ventana: es quien sabe
-        // ocultarse, restaurarse y qué diálogo mostrar antes de salir
+        // ocultarse, restaurarse y salir de verdad cuando toca
         _bandeja.AbrirPulsado += (_, _) => RestaurarVentana();
         _bandeja.SalirPulsado += (_, _) => AlSalirDeLaBandeja();
 

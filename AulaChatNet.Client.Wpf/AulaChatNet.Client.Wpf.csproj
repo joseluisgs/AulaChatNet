@@ -39,7 +39,7 @@
     <PackageReference Include="Microsoft.AspNetCore.Components.WebView.Wpf" />
 
     <!-- Bandeja del sistema: TaskbarIcon con menú contextual para minimizar
-         la ventana sin matar la app (y salir SOLO desde ahí, con confirmación) -->
+         la ventana sin matar la app (y salir SOLO desde ahí) -->
     <PackageReference Include="H.NotifyIcon.Wpf" />
 
     <!-- Configuración: lee appsettings.json del DISCO junto al .exe -->
