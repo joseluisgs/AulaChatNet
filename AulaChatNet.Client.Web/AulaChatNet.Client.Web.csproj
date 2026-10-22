@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>AulaChatNet.Client.Web</RootNamespace>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- Sin NoWarn de CS1591: todo el API público va documentado, así que con
+         TreatWarningsAsErrors la compilación falla si algo queda sin XMLDoc. -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Marca la librería como compatible con el navegador: sin esto, una app
+         Blazor WebAssembly que la referencie FALLA con NETSDK1082. Es el mismo
+         comentario que trae la plantilla oficial de razorclasslib (.NET 10).
+
+         Los componentes, enrutamiento, formularios e JSInterop se referencian
+         como PAQUETE (no como FrameworkReference de Microsoft.AspNetCore.App):
+         la plantilla oficial de RCL hace exactamente lo mismo porque una
+         FrameworkReference no es compatible con el RID browser-wasm. Así la
+         MISMA librería sirve para la web (WebAssembly) y para la app de
+         escritorio (WPF con BlazorWebView), sin cambiar una línea. -->
+    <SupportedPlatform Include="browser" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.Web" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- La store habla SignalR y Rx (misma pareja que en el resto de
+         clientes); el resto (ILogger, DI, JSInterop) ya viene de arriba -->
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" />
+    <PackageReference Include="System.Reactive" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AulaChatNet.Shared\AulaChatNet.Shared.csproj" />
+  </ItemGroup>
+
+</Project>

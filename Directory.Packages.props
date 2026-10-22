@@ -26,6 +26,17 @@
     <!-- Blazor WebAssembly (10.0.13: misma línea parcheada que SignalR.Client) -->
     <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.13" />
     <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.13" />
+
+    <!-- Componentes Blazor para la Razor Class Library compartida (Client.Web):
+         la usan el host WebAssembly Y el de escritorio (WPF con BlazorWebView),
+         así que NO se referencia el shared framework Microsoft.AspNetCore.App
+         (un FrameworkReference rompe la compilación WASM con NETSDK1082) -->
+    <PackageVersion Include="Microsoft.AspNetCore.Components.Web" Version="10.0.13" />
+
+    <!-- Blazor Hybrid en la app de escritorio (Fase 5.2): trae el BlazorWebView
+         de WPF y el runtime embebido; versión 10.0.120 de la línea 10.0.12
+         (este paquete versiona por minor, no por patch como el resto) -->
+    <PackageVersion Include="Microsoft.AspNetCore.Components.WebView.Wpf" Version="10.0.120" />
   </ItemGroup>
 
   <ItemGroup>

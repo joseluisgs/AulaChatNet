@@ -9,14 +9,20 @@
          XML pendiente (la regla de la casa se autocumple, no se silencia). -->
   </PropertyGroup>
 
+  <!--
+    Este proyecto es solo el HOST de WebAssembly (Fase 5.1): la UI (componentes),
+    las stores y el procesador de comandos viven en la librería compartida
+    AulaChatNet.Client.Web, que la web consume aquí y la app de escritorio
+    (WPF con BlazorWebView) consumirá allí. Aquí solo quedan el arranque, la
+    configuración y los recursos del navegador.
+  -->
+
   <ItemGroup>
-    <!-- Blazor WASM + conexión al ChatHub + capa reactiva -->
+    <!-- Host WASM + su DevServer; SignalR y Rx llegan vía la librería web -->
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" PrivateAssets="all" />
-    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" />
-    <PackageReference Include="System.Reactive" />
 
-    <!-- Configuración: lee wwwroot/appsettings.json (sección Chat, AvatarBaseUrl) -->
+    <!-- Configuración: lee wwwroot/appsettings.json (sección Chat, Web) -->
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Binder" />
 
@@ -28,6 +34,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\AulaChatNet.Client.Web\AulaChatNet.Client.Web.csproj" />
     <ProjectReference Include="..\AulaChatNet.Shared\AulaChatNet.Shared.csproj" />
   </ItemGroup>
 

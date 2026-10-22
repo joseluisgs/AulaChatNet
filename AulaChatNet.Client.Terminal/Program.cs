@@ -16,6 +16,9 @@ using Spectre.Console.Rendering;
 
 Console.OutputEncoding = Encoding.UTF8;
 
+// Título de la consola, el MISMO que la ventana WPF y la pestaña de la web
+Console.Title = "AulaChatNet";
+
 // ============================================================================
 // 🔧 CONFIGURACIÓN (appsettings.json copiado al binario por el .csproj)
 // ============================================================================

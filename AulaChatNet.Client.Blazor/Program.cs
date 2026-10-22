@@ -1,6 +1,10 @@
-using AulaChatNet.Client.Blazor.Components;
-using AulaChatNet.Client.Blazor.Configuracion;
-using AulaChatNet.Client.Blazor.Infrastructures;
+// Los componentes, las stores y el procesador de comandos viven en la
+// librería AulaChatNet.Client.Web (compartida con la app de escritorio);
+// aquí solo se ARRANCA el host WebAssembly: configuración, logging del
+// navegador y registro de servicios.
+using AulaChatNet.Client.Web.Components;
+using AulaChatNet.Client.Web.Configuracion;
+using AulaChatNet.Client.Web.Infrastructures;
 using AulaChatNet.Shared.Configuracion;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
