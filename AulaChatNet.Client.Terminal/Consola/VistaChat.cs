@@ -1,3 +1,4 @@
+using System.Text;
 using AulaChatNet.Shared.Dtos;
 using AulaChatNet.Shared.Helpers;
 using Spectre.Console;
@@ -64,8 +65,49 @@ public static class VistaChat
 
         return $"[grey]{hora}[/] " +
                $"[{hex}][[{iniciales}]][/] " +
-               $"[{hex}]{Markup.Escape(mensaje.Usuario)}[/]: {Markup.Escape(mensaje.Texto)}" +
+               $"[{hex}]{Markup.Escape(mensaje.Usuario)}[/]: {TextoConMencionesMarkup(mensaje.Texto)}" +
+               EditadoMarkup(mensaje) +
                ChipsReaccionesMarkup(mensaje, reacciones);
+    }
+
+    /// <summary>
+    /// El texto con las menciones (@ana) resaltadas en amarillo: la misma
+    /// regla de troceado que <see cref="Menciones"/> (Shared) ofrece a los
+    /// dos clientes, aquí montada en markup de Spectre. Cada tramo se
+    /// ESCAPA ANTES de teñirlo, así que un nombre con corchetes no se come
+    /// el formato de la línea entera.
+    /// </summary>
+    /// <param name="texto">Texto del mensaje ya validado.</param>
+    /// <returns>Cadena de markup con las menciones resaltadas.</returns>
+    private static string TextoConMencionesMarkup(string texto)
+    {
+        var amarillo = TemaDiscord.Amarillo.ToMarkup();
+        var sb = new StringBuilder();
+
+        foreach (var (trozo, esMencion) in Menciones.Trocear(texto))
+            sb.Append(esMencion
+                ? $"[{amarillo}]{Markup.Escape(trozo)}[/]"
+                : Markup.Escape(trozo));
+
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// La marca gris "(editado)" al final del texto —el mismo "(editado)"
+    /// de Discord— con el texto PUESTO en Shared, para que la terminal y la
+    /// web digan exactamente lo mismo. Solo los mensajes de persona pueden
+    /// llevarla (los avisos de sistema no se editan), y la marca escapada
+    /// no come el formato de la línea entera.
+    /// </summary>
+    /// <param name="mensaje">Mensaje del canal.</param>
+    /// <returns>Cadena de markup (con el espacio que la precede) o vacía.</returns>
+    private static string EditadoMarkup(MensajeDto mensaje)
+    {
+        var marca = EditadoTexto.Descripcion(mensaje.Editado);
+
+        return marca.Length == 0
+            ? string.Empty
+            : $" [grey]{Markup.Escape(marca)}[/]";
     }
 
     /// <summary>
@@ -116,7 +158,7 @@ public static class VistaChat
         var iniciales = TemaDiscord.Iniciales(privado.Emisor);
         var rosa = TemaDiscord.Fucsia.ToMarkup();
 
-        return $"[grey]{hora}[/] [{rosa}🔒[/] [{rosa}]{Markup.Escape(contexto)}[/] " +
+        return $"[grey]{hora}[/] [{rosa}]🔒[/] [{rosa}]{Markup.Escape(contexto)}[/] " +
                $"[{hex}][[{iniciales}]][/] [{hex}]{Markup.Escape(privado.Emisor)}[/]: " +
                $"{Markup.Escape(privado.Texto)}";
     }

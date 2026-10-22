@@ -3,12 +3,28 @@
    historial al cambiar de canal.
    Los privados NO van en otra lista aparte: se mezclan en la MISMA
    cronología que el canal, con CombinadorChat (Shared), para que la web y la
-   terminal enseñen el mismo rato de charla en el mismo orden. *@
+   terminal enseñen el mismo rato de charla en el mismo orden.
+   Arriba vive también el botón de "cargar mensajes antiguos" (Fase 4.3):
+   pide una página a la store, la pone por delante y RECUPERA el scroll,
+   para que subir a lo viejo no cueste perder el sitio. Acercarse al borde
+   superior dispara la misma carga sin esperar al clic: el botón es el plan
+   B, no el único camino. *@
 @implements IDisposable
 @inject IChatStore Store
 @inject IJSRuntime JS
 
-<div class="mensajes" id="lista-mensajes">
+<div class="mensajes" id="lista-mensajes" @onscroll="AlDesplazar">
+    @if (_hayAnteriores && _filas.Count > 0)
+    {
+        @* Vive ARRIBA de todo, donde acaba la gente al hacer scroll. Si el
+           servidor devuelve una página vacía, la store apaga HayAnteriores
+           y el botón se va solo: no hace falta preguntarle al usuario. *@
+        <button type="button" class="carga-anterior"
+                @onclick="CargarAnterioresAsync" disabled="@_cargando">
+            @(_cargando ? "⏳ Cargando mensajes antiguos…" : "⬆ Cargar mensajes antiguos")
+        </button>
+    }
+
     @foreach (var fila in _filas)
     {
         @* El pattern matching no es por estética: al extraer el valor en la
@@ -36,6 +52,12 @@
 </div>
 
 @code {
+    /// <summary>
+    /// Distancia al borde superior que dispara la carga automática: no se
+    /// espera a que el lector llegue al pixel cero.
+    /// </summary>
+    private const double UmbralCarga = 80;
+
     private IReadOnlyList<MensajeDto> _mensajes = [];
     private IReadOnlyList<MensajePrivadoDto> _privados = [];
     private IReadOnlyDictionary<Guid, ReaccionesMensajeDto> _reacciones = new Dictionary<Guid, ReaccionesMensajeDto>();
@@ -46,12 +68,21 @@
     private IDisposable? _suscripcionPrivados;
     private IDisposable? _suscripcionReacciones;
     private IDisposable? _suscripcionNick;
+    private IDisposable? _suscripcionAnteriores;
 
-    // Marcador: "hay que bajar el scroll" — se consume en OnAfterRender
-    // (el DOM solo ya está listo a partir de AHÍ, antes no)
+    // Marcadores: "hay que bajar" (algo nuevo en vivo) y "hay que RECUPERAR"
+    // (acaba de entrar una página de arriba: en vez de bajar, se compensa la
+    // altura que acaba de crecer por encima del lector)
     private bool _pendienteBajar;
+    private bool _pendienteRecuperar;
+    private double _alturaAntes;
 
-    /// <summary>Cuatro suscripciones: canal, privados, reacciones y nick.</summary>
+    // Estado de la paginación: el botón solo se muestra si la store cree
+    // que puede quedar algo anterior, y con una carga en vuelo no se pide otra
+    private bool _hayAnteriores = true;
+    private bool _cargando;
+
+    /// <summary>Cinco suscripciones: canal, privados, reacciones, nick y paginación.</summary>
     protected override void OnInitialized()
     {
         _suscripcion = Store.Mensajes.Subscribe(mensajes =>
@@ -82,6 +113,14 @@
             _nick = nick;
             _ = InvokeAsync(StateHasChanged);
         });
+
+        // El botón de "cargar antiguos" vive y muere con este flujo: la
+        // store es quien sabe si puede quedar algo por detrás de la vista
+        _suscripcionAnteriores = Store.HayAnteriores.Subscribe(hay =>
+        {
+            _hayAnteriores = hay;
+            _ = InvokeAsync(StateHasChanged);
+        });
     }
 
     /// <summary>Chips de UN mensaje: los del mapa de reacciones, o vacío.</summary>
@@ -98,13 +137,72 @@
     private void Recalcular()
     {
         _filas = CombinadorChat.Combinar(_mensajes, _privados);
-        _pendienteBajar = true;
+
+        // Mientras se recupera una página vieja NO se baja: el scroll se
+        // ajusta en su sitio (OnAfterRenderAsync)
+        if (!_pendienteRecuperar)
+            _pendienteBajar = true;
+
         _ = InvokeAsync(StateHasChanged);
     }
 
-    /// <summary>Tras repintar, baja el scroll si había algo nuevo.</summary>
+    /// <summary>
+    /// Pide una página de mensajes antiguos a la store. La altura se mide
+    /// ANTES (con el DOM actual) y el ajuste se hace DESPUÉS del repintado:
+    /// la página nueva crece POR ARRIBA y, sin compensarla, el lector
+    /// saltaría al principio del canal.
+    /// </summary>
+    private async Task CargarAnterioresAsync()
+    {
+        if (_cargando)
+            return;
+
+        _cargando = true;
+
+        _alturaAntes = await JS.InvokeAsync<double>("aulachat.altura", "lista-mensajes");
+        _pendienteRecuperar = true;
+        _pendienteBajar = false;
+
+        await Store.CargarAnterioresAsync();
+
+        // Si la carga no produjo repintado (sin conexión), el marcador se
+        // consume en el siguiente repintado como no-op: la altura no cambió
+        // y el ajuste no mueve nada
+        _cargando = false;
+    }
+
+    /// <summary>
+    /// Carga automática al acercarse al borde superior. Un solo disparo por
+    /// evento: si tras la recuperación se sigue cerca del borde, el propio
+    /// movimiento del lector dispara la siguiente página.
+    /// </summary>
+    /// <param name="_">Argumento del evento de scroll (no se usa).</param>
+    private async Task AlDesplazar(EventArgs _)
+    {
+        if (_cargando || !_hayAnteriores || _filas.Count == 0 || _pendienteRecuperar)
+            return;
+
+        var y = await JS.InvokeAsync<double>("aulachat.yPosicion", "lista-mensajes");
+
+        if (y > UmbralCarga)
+            return;
+
+        await CargarAnterioresAsync();
+    }
+
+    /// <summary>
+    /// Tras repintar: si hay una página vieja pendiente, recupera la
+    /// posición del lector; si no, baja el scroll si había algo nuevo.
+    /// </summary>
     protected override async Task OnAfterRenderAsync(bool primero)
     {
+        if (_pendienteRecuperar)
+        {
+            _pendienteRecuperar = false;
+            await JS.InvokeVoidAsync("aulachat.recuperarScroll", "lista-mensajes", _alturaAntes);
+            return;
+        }
+
         if (!_pendienteBajar)
             return;
 
@@ -112,12 +210,13 @@
         await JS.InvokeVoidAsync("aulachat.abajo", "lista-mensajes");
     }
 
-    /// <summary>Libera las cuatro suscripciones cuando el componente se destruye.</summary>
+    /// <summary>Libera las cinco suscripciones cuando el componente se destruye.</summary>
     public void Dispose()
     {
         _suscripcion?.Dispose();
         _suscripcionPrivados?.Dispose();
         _suscripcionReacciones?.Dispose();
         _suscripcionNick?.Dispose();
+        _suscripcionAnteriores?.Dispose();
     }
 }

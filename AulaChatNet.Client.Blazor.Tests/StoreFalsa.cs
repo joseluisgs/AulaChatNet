@@ -61,6 +61,15 @@ public class StoreFalsa
     public BehaviorSubject<IReadOnlyDictionary<Guid, ReaccionesMensajeDto>> Reacciones { get; } =
         new(new Dictionary<Guid, ReaccionesMensajeDto>());
 
+    /// <summary>Flujo de la última mención dirigida recibida.</summary>
+    public BehaviorSubject<MencionDto?> UltimaMencion { get; } = new(null);
+
+    /// <summary>Flujo del contador de menciones sin mirar (el badge).</summary>
+    public BehaviorSubject<int> MencionesNoVistas { get; } = new(0);
+
+    /// <summary>Flujo de "puede quedar historial anterior" (botón de cargar más).</summary>
+    public BehaviorSubject<bool> HayAnteriores { get; } = new(true);
+
     /// <summary>El objeto que se registra en los servicios del componente.</summary>
     public IChatStore Objeto => _mock.Object;
 
@@ -80,7 +89,23 @@ public class StoreFalsa
         _mock.Setup(s => s.DestinatarioPrivado).Returns(DestinatarioPrivado);
         _mock.Setup(s => s.Escribiendo).Returns(Escribiendo);
         _mock.Setup(s => s.Reacciones).Returns(Reacciones);
+        _mock.Setup(s => s.UltimaMencion).Returns(UltimaMencion);
+        _mock.Setup(s => s.MencionesNoVistas).Returns(MencionesNoVistas);
+        _mock.Setup(s => s.HayAnteriores).Returns(HayAnteriores);
         _mock.Setup(s => s.Canales).Returns(canales);
+
+        // Moq devuelve un Task NULO por defecto en los métodos async, y un
+        // "await null" en el componente revienta: se da por hecho
+        _mock.Setup(s => s.CargarAnterioresAsync()).Returns(Task.CompletedTask);
+
+        // Mismo motivo que CargarAnterioresAsync: el editor inline (Enter
+        // guarda) y los botones ✏️/🗑️ hacen await de estos métodos. El
+        // resultado por defecto es "sin error"; un test que quiera simular
+        // un rechazo del servidor vuelve a montar el Setup con su mensaje
+        _mock.Setup(s => s.EditarMensajeAsync(It.IsAny<Guid>(), It.IsAny<string>()))
+            .ReturnsAsync((string?)null);
+        _mock.Setup(s => s.BorrarMensajeAsync(It.IsAny<Guid>()))
+            .ReturnsAsync((string?)null);
 
         // Valores actuales: leídos del SUJETO en cada llamada (lazy), así
         // que "menear" el flujo desde el test se refleja al instante
@@ -90,6 +115,7 @@ public class StoreFalsa
         _mock.Setup(s => s.VistaPrivados).Returns(() => Privados.Value);
         _mock.Setup(s => s.VistaMensajes).Returns(() => Mensajes.Value);
         _mock.Setup(s => s.VistaReacciones).Returns(() => Reacciones.Value);
+        _mock.Setup(s => s.VistaNick).Returns(() => Nick.Value);
         _mock.Setup(s => s.EstadisticasActuales).Returns(() => Estadisticas.Value);
     }
 

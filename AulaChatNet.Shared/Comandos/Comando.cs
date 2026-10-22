@@ -57,6 +57,21 @@ public abstract record Comando
     /// <param name="Emoji">Emoji escrito por el usuario; lo valida de la lista cerrada cada cliente y el servidor.</param>
     public sealed record Reaccion(string Emoji) : Comando;
 
+    /// <summary>
+    /// /editar texto: cambia el texto de TU último mensaje en el canal.
+    /// El servidor valida que el mensaje exista, sea tuyo y sea normal; si
+    /// cuadra, lo sustituye en la caché y en la base de datos, y difunde el
+    /// resultado a todo el canal (mismo Id y hora, marcado como editado).
+    /// </summary>
+    /// <param name="Texto">Nuevo texto del mensaje (mismo límite que un envío normal).</param>
+    public sealed record Editar(string Texto) : Comando;
+
+    /// <summary>
+    /// /borrar: elimina TU último mensaje del canal de la vista de todos y
+    /// de la base de datos. No se puede deshacer.
+    /// </summary>
+    public sealed record Borrar : Comando;
+
     /// <summary>/reconectar: volver a entrar si la conexión se perdió (la terminal asocia además la tecla R).</summary>
     public sealed record Reconectar : Comando;
 

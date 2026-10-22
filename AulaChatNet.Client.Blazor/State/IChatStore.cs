@@ -78,6 +78,14 @@ public interface IChatStore : IDisposable
     /// <summary>Último valor del canal canónico en el que estamos (null hasta conectar).</summary>
     string? Canal { get; }
 
+    /// <summary>
+    /// Último valor del nick con el que estamos dados de alta (null hasta
+    /// conectar). El procesador de comandos lo necesita para saber CUÁL de
+    /// los mensajes de la vista es tuyo — /editar y /borrar actúan sobre tu
+    /// último mensaje propio, igual que en la terminal.
+    /// </summary>
+    string? VistaNick { get; }
+
     /// <summary>Último valor de la lista de mensajes del canal actual (lo lee el comando /reaccion).</summary>
     IReadOnlyList<MensajeDto> VistaMensajes { get; }
 
@@ -103,6 +111,22 @@ public interface IChatStore : IDisposable
     /// <param name="canal">Canal a consultar (ya validado por el llamador).</param>
     /// <returns>La lista de esa sala, o null si el servidor no conoce el canal o no hay conexión.</returns>
     Task<IReadOnlyList<UsuarioConectadoDto>?> ObtenerUsuariosAsync(string canal);
+
+    /// <summary>
+    /// Indica si puede quedar historial ANTERIOR al que ya se ve (para
+    /// enseñar el botón de "cargar mensajes antiguos"). Empieza en true y
+    /// se pone en false cuando el servidor responde una página vacía; al
+    /// entrar o cambiar de canal vuelve a true.
+    /// </summary>
+    IObservable<bool> HayAnteriores { get; }
+
+    /// <summary>
+    /// Pide al servidor una página de mensajes ANTERIORES a los que ya se
+    /// ven y la pone por delante en la vista (la web no repinta: recupera el
+    /// scroll para que el lector no pierda su sitio). Es una invocación con
+    /// retorno, así que el orden de llegada está garantizado.
+    /// </summary>
+    Task CargarAnterioresAsync();
 
     /// <summary>
     /// Vacía la vista local de mensajes (comando /limpiar): solo es una
@@ -157,6 +181,28 @@ public interface IChatStore : IDisposable
     /// <returns>null si fue correcto; el error del servidor o de conexión si no.</returns>
     Task<string?> ReaccionarAsync(Guid idMensaje, string emoji);
 
+    /// <summary>
+    /// Edita el texto de UN mensaje propio del canal actual (Fase 4.4). El
+    /// servidor valida que el mensaje sea tuyo y normal; el eco vuelve por
+    /// el evento de mensaje editado (mensaje completo con la misma marca),
+    /// y la vista se pinta SOLO desde ahí — igual que con los mensajes y
+    /// las reacciones, la store no calcula nada.
+    /// </summary>
+    /// <param name="idMensaje">Mensaje a editar (el de la fila elegida).</param>
+    /// <param name="texto">Nuevo texto ya recortado y validado en local.</param>
+    /// <returns>null si fue correcto; el error del servidor o de conexión si no.</returns>
+    Task<string?> EditarMensajeAsync(Guid idMensaje, string texto);
+
+    /// <summary>
+    /// Borra UN mensaje propio del canal actual (Fase 4.4), con las mismas
+    /// reglas que editar. El eco vuelve por el evento de mensaje borrado
+    /// (solo el Id): la store quita la fila de la vista y sus chips del
+    /// mapa de reacciones. El borrado es definitivo.
+    /// </summary>
+    /// <param name="idMensaje">Mensaje a borrar (el de la fila elegida).</param>
+    /// <returns>null si fue correcto; el error del servidor o de conexión si no.</returns>
+    Task<string?> BorrarMensajeAsync(Guid idMensaje);
+
     /// <summary>Cambia al canal dado (el historial nuevo llega después por evento).</summary>
     /// <param name="canal">Canal de destino.</param>
     /// <returns>null si el cambio fue correcto; el error, si no.</returns>
@@ -199,4 +245,17 @@ public interface IChatStore : IDisposable
     /// una llamada al hub por pulsación.
     /// </summary>
     void SenalarEscritura();
+
+    /// <summary>Última mención dirigida que ha llegado (null = ninguna esta sesión).</summary>
+    IObservable<MencionDto?> UltimaMencion { get; }
+
+    /// <summary>
+    /// Menciones recibidas que aún no se han mirado. El contador es del
+    /// CLIENTE —el servidor solo emite el aviso—, y lo vacía
+    /// <see cref="MarcarMencionesVistas"/> al pulsar el badge.
+    /// </summary>
+    IObservable<int> MencionesNoVistas { get; }
+
+    /// <summary>Marca las menciones como vistas: el badge vuelve a cero.</summary>
+    void MarcarMencionesVistas();
 }

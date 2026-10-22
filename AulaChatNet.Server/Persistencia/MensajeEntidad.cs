@@ -90,4 +90,16 @@ public class MensajeEntidad
     /// contempla ambos valores por si algún día cambia la decisión.
     /// </remarks>
     public TipoMensaje Tipo { get; set; }
+
+    /// <summary>
+    /// true si el texto se modificó DESPUÉS de enviarse (Fase 4.4). Se pone
+    /// al editar y ya no se quita: aunque luego vuelvas a editar, el mensaje
+    /// sigue siendo "editado" para quien lo mira.
+    /// </summary>
+    /// <remarks>
+    /// Se guarda como 0/1 (booleano de SQLite). Sin esta columna, el marcador
+    /// "(editado)" se perdería en cada reinicio: el texto nuevo sí estaría,
+    /// pero ya no habría forma de saber que alguna vez fue distinto.
+    /// </remarks>
+    public bool Editado { get; set; }
 }

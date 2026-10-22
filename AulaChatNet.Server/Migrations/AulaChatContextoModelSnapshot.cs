@@ -27,6 +27,9 @@ namespace AulaChatNet.Server.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("Editado")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("Texto")
                         .IsRequired()
                         .HasMaxLength(4000)

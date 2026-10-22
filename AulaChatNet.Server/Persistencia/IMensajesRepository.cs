@@ -43,6 +43,26 @@ public interface IMensajesRepository
     Task<IReadOnlyList<MensajeDto>> GetUltimosAsync(string canal, int limite, CancellationToken cancelacion = default);
 
     /// <summary>
+    /// Devuelve una PÁGINA de mensajes del canal hacia ATRÁS en el tiempo: los
+    /// anteriores (o del mismo instante) a la marca de tiempo indicada, del más
+    /// antiguo al más reciente. Es el cimiento del "cargar más mensajes" de la
+    /// Fase 4.3.
+    /// </summary>
+    /// <remarks>
+    /// El cursor <paramref name="antesDe"/> es INCLUSIVO: además de lo
+    /// anterior devuelve también los del MISMO instante, que con una sola
+    /// fecha no se pueden separar. Quien recibe la página descarta por Id los
+    /// mensajes que ya tiene, y así no se pierde ninguno.
+    /// </remarks>
+    /// <param name="canal">Canal canónico.</param>
+    /// <param name="antesDe">Marca de tiempo (UTC) del mensaje más antiguo que ya ve el cliente.</param>
+    /// <param name="limite">Tamaño máximo de la página.</param>
+    /// <param name="cancelacion">Token para cancelar la operación.</param>
+    /// <returns>La página en orden cronológico; vacío = no queda más historial.</returns>
+    Task<IReadOnlyList<MensajeDto>> GetAnterioresAsync(
+        string canal, DateTime antesDe, int limite, CancellationToken cancelacion = default);
+
+    /// <summary>
     /// Borra los mensajes anteriores a una fecha dada y devuelve cuántos ha quitado.
     /// Es la base del mantenimiento del fichero: sin él, la base de datos crece
     /// sin límite.
@@ -51,6 +71,39 @@ public interface IMensajesRepository
     /// <param name="cancelacion">Token para cancelar la operación.</param>
     /// <returns>Número de mensajes eliminados.</returns>
     Task<int> LimpiarAsync(DateTime anteriorA, CancellationToken cancelacion = default);
+
+    /// <summary>
+    /// Actualiza el texto de un mensaje existente y lo marca como editado
+    /// (Fase 4.4).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A diferencia de <see cref="GuardarAsync"/>, esta ESCRITURA va DIRECTA
+    /// a la base de datos y no pasa por la cola en segundo plano: la cola es
+    /// de insertados (write-behind) y una fila que aún no existe no se puede
+    /// actualizar dentro de ella. Mismo criterio que <see cref="LimpiarAsync"/>,
+    /// que también sale fuera de la cola.
+    /// </para>
+    /// <para>
+    /// Carrera conocida y documentada: si alguien edita un mensaje en los
+    /// pocos milisegundos en los que su INSERT aún viaja por la cola, el
+    /// UPDATE no encuentra la fila y devuelve false. En el aula ese margen es
+    /// inalcanzable tecleando, y el store deja constancia en el log.
+    /// </para>
+    /// </remarks>
+    /// <param name="mensaje">Mensaje con el texto nuevo (y Editado = true); su Id es la clave del UPDATE.</param>
+    /// <param name="cancelacion">Token para cancelar la operación.</param>
+    /// <returns>true si se ha actualizado una fila; false si esa fila no existe.</returns>
+    Task<bool> ActualizarAsync(MensajeDto mensaje, CancellationToken cancelacion = default);
+
+    /// <summary>
+    /// Borra un mensaje de la base de datos por su Id (Fase 4.4). Es el
+    /// borrado definitivo: no queda copia en disco ni en la paginación.
+    /// </summary>
+    /// <param name="idMensaje">Identificador del mensaje a eliminar.</param>
+    /// <param name="cancelacion">Token para cancelar la operación.</param>
+    /// <returns>true si se ha borrado una fila; false si esa fila no existe.</returns>
+    Task<bool> BorrarAsync(Guid idMensaje, CancellationToken cancelacion = default);
 
     // ─────────────────────────────────────────────────────────────────────
     // Mantenimiento de SQLite. Estos dos métodos no hablan de "mensajes" sino

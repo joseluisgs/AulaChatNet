@@ -524,4 +524,120 @@ public class ProcesadorComandosTests
     }
 
     #endregion
+
+    #region Editar y borrar Tests
+
+    [Test]
+    public async Task EditarAccionTuyo_InvocaAlServerConSuId()
+    {
+        // Arrange: Ana escribe y ahora edita SU último mensaje — aunque
+        // haya mensajes de otros (y de sistema) DESPUÉS en la vista
+        _store.Nick.OnNext("Ana");
+        _store.Mensajes.OnNext(
+        [
+            new MensajeDto(Guid.NewGuid(), "Ana", "Hola", DateTime.UtcNow, TipoMensaje.Normal),
+            new MensajeDto(Guid.NewGuid(), "Luis", "¿Tal?", DateTime.UtcNow, TipoMensaje.Normal)
+        ]);
+
+        var mio = _store.Mensajes.Value[0];
+
+        // Act
+        await _procesador.EjecutarAsync(new Comando.Editar("Hola a todos"));
+
+        // Assert: el objetivo es lo ÚLTIMO TUYO, no lo último del canal
+        _store.Mock.Verify(s => s.EditarMensajeAsync(mio.Id, "Hola a todos"), Times.Once);
+        _store.Mock.Verify(s => s.Aviso(It.IsAny<string>()), Times.Never);
+    }
+
+    [Test]
+    public async Task EditarSinMensajesPropios_AvisaSinTocarLaRed()
+    {
+        // Arrange: en la vista solo hay mensajes de otros
+        _store.Nick.OnNext("Ana");
+        _store.Mensajes.OnNext(
+            [new MensajeDto(Guid.NewGuid(), "Luis", "Hola", DateTime.UtcNow, TipoMensaje.Normal)]);
+
+        // Act
+        await _procesador.EjecutarAsync(new Comando.Editar("Corrijo una cosa"));
+
+        // Assert
+        _store.Mock.Verify(
+            s => s.EditarMensajeAsync(It.IsAny<Guid>(), It.IsAny<string>()), Times.Never);
+        _store.Mock.Verify(s => s.Aviso(It.Is<string>(t =>
+            t.Contains("No hay ningún mensaje tuyo que editar"))), Times.Once);
+    }
+
+    [Test]
+    public async Task EditarConErrorDelServer_SeAvisaEnLaVista()
+    {
+        // Arrange: el servidor rechaza (mensaje ya no en el canal)
+        _store.Nick.OnNext("Ana");
+        _store.Mensajes.OnNext(
+            [new MensajeDto(Guid.NewGuid(), "Ana", "Hola", DateTime.UtcNow, TipoMensaje.Normal)]);
+        _store.Mock.Setup(s => s.EditarMensajeAsync(It.IsAny<Guid>(), It.IsAny<string>()))
+            .ReturnsAsync("Ese mensaje ya no está en el canal");
+
+        // Act
+        await _procesador.EjecutarAsync(new Comando.Editar("Corrijo una cosa"));
+
+        // Assert
+        _store.Mock.Verify(s => s.Aviso("Ese mensaje ya no está en el canal"), Times.Once);
+    }
+
+    [Test]
+    public async Task BorrarAccionTuyo_InvocaAlServerConSuId()
+    {
+        // Arrange: mismo criterio que editar — tu último mensaje, no el del
+        // canal
+        _store.Nick.OnNext("Ana");
+        _store.Mensajes.OnNext(
+        [
+            new MensajeDto(Guid.NewGuid(), "Ana", "Hola", DateTime.UtcNow, TipoMensaje.Normal),
+            new MensajeDto(Guid.NewGuid(), "Luis", "¿Tal?", DateTime.UtcNow, TipoMensaje.Normal)
+        ]);
+
+        var mio = _store.Mensajes.Value[0];
+
+        // Act
+        await _procesador.EjecutarAsync(new Comando.Borrar());
+
+        // Assert
+        _store.Mock.Verify(s => s.BorrarMensajeAsync(mio.Id), Times.Once);
+        _store.Mock.Verify(s => s.Aviso(It.IsAny<string>()), Times.Never);
+    }
+
+    [Test]
+    public async Task BorrarSinMensajesPropios_AvisaSinTocarLaRed()
+    {
+        // Arrange: vista vacía (nunca se escribió nada)
+        _store.Nick.OnNext("Ana");
+        _store.Mensajes.OnNext([]);
+
+        // Act
+        await _procesador.EjecutarAsync(new Comando.Borrar());
+
+        // Assert
+        _store.Mock.Verify(s => s.BorrarMensajeAsync(It.IsAny<Guid>()), Times.Never);
+        _store.Mock.Verify(s => s.Aviso(It.Is<string>(t =>
+            t.Contains("No hay ningún mensaje tuyo que borrar"))), Times.Once);
+    }
+
+    [Test]
+    public async Task BorrarConErrorDelServer_SeAvisaEnLaVista()
+    {
+        // Arrange: el servidor rechaza (mensaje ajeno, se cambió el nick...)
+        _store.Nick.OnNext("Ana");
+        _store.Mensajes.OnNext(
+            [new MensajeDto(Guid.NewGuid(), "Ana", "Hola", DateTime.UtcNow, TipoMensaje.Normal)]);
+        _store.Mock.Setup(s => s.BorrarMensajeAsync(It.IsAny<Guid>()))
+            .ReturnsAsync("Solo puedes modificar tus propios mensajes");
+
+        // Act
+        await _procesador.EjecutarAsync(new Comando.Borrar());
+
+        // Assert
+        _store.Mock.Verify(s => s.Aviso("Solo puedes modificar tus propios mensajes"), Times.Once);
+    }
+
+    #endregion
 }

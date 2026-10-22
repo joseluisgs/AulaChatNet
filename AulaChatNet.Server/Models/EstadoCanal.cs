@@ -22,6 +22,18 @@ internal sealed class EstadoCanal
     public ConcurrentQueue<MensajeDto> Historial { get; } = new();
 
     /// <summary>
+    /// Candado que protege la ESTRUCTURA de la cola de historial (Fase 4.4).
+    /// Añadir es solo un <c>Enqueue</c> y la cola ya es concurrente, pero
+    /// editar o borrar RECONSTRUYE la cola entera (sacar todo, montar la
+    /// lista sin el mensaje afectado, devolverla), y si alguien encajara
+    /// un mensaje mientras la cola está vacía a medias, ese mensaje se
+    /// quedaría DELANTE de los antiguos y el orden cronológico se rompería.
+    /// Un candado por canal (nunca global) lo impide con un coste de
+    /// nanosegundos en el camino caliente.
+    /// </summary>
+    public object BloqueoHistorial { get; } = new();
+
+    /// <summary>
     /// Reacciones de los mensajes de ESTE canal: idMensaje → emoji →
     /// personas (clave normalizada → nombre visible tal cual se registró).
     /// Vive POR CANAL porque cada reacción se ancla a SU mensaje, y los

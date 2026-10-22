@@ -1,3 +1,4 @@
+using AulaChatNet.Server.Models;
 using AulaChatNet.Server.Services;
 using AulaChatNet.Shared.Configuracion;
 using AulaChatNet.Shared.Constantes;
@@ -35,6 +36,9 @@ namespace AulaChatNet.Server.Hubs;
 /// Matiz conocido: en el instante exacto de un cambio de canal puede
 /// colarse un mensaje de la sala anterior (carrera inherente a los grupos);
 /// el cliente, al recibir el historial del nuevo canal, repinta y lo corrige.
+///
+/// La Fase 4.1 pone además una ventana de ráfagas: los mensajes del canal
+/// y los privados pasan por <see cref="IControlRafagas"/> antes de difundirse.
 /// </remarks>
 /// </summary>
 /// <example>
@@ -45,7 +49,7 @@ namespace AulaChatNet.Server.Hubs;
 /// await conexion.InvokeAsync(ChatHubMetodos.Enviar, "Buenas");        // → null si OK
 /// </code>
 /// </example>
-public class ChatHub(IChatStore store, IOptions<ChatConfig> opciones, ILogger<ChatHub> logger) : Hub
+public class ChatHub(IChatStore store, IControlRafagas rafagas, IOptions<ChatConfig> opciones, ILogger<ChatHub> logger) : Hub
 {
     private ChatConfig Config => opciones.Value;
 
@@ -284,6 +288,39 @@ public class ChatHub(IChatStore store, IOptions<ChatConfig> opciones, ILogger<Ch
     }
 
     /// <summary>
+    /// Devuelve una PÁGINA del historial ANTIGUO del canal del que pregunta.
+    /// Es una invocación CON RETORNO (como ObtenerUsuariosAsync) y no un
+    /// evento: aquí no se avisa a nadie, se contesta UNA pregunta.
+    /// </summary>
+    /// <remarks>
+    /// El canal NO es un parámetro: sale del registro de la conexión, así que
+    /// solo se puede mirar la sala en la que estás y ninguna otra. Si no
+    /// estás registrado, no hay sala propia y devuelve null.
+    /// </remarks>
+    /// <param name="antesDe">Cursor: marca de tiempo (UTC) del mensaje más antiguo que ya ve el cliente.</param>
+    /// <param name="cantidad">Tamaño de página pedido (el servidor lo limita al tope configurado).</param>
+    /// <returns>La página, del más antiguo al más reciente; vacío si no queda más historial, null si no estás registrado.</returns>
+    public async Task<IReadOnlyList<MensajeDto>?> ObtenerHistorialAsync(DateTime antesDe, int cantidad)
+    {
+        var conexion = store.GetConexion(Context.ConnectionId);
+
+        if (conexion is null)
+        {
+            logger.LogWarning(
+                "Historial rechazado: la conexión {ConnectionId} no está registrada",
+                Context.ConnectionId);
+
+            return null;
+        }
+
+        logger.LogDebug(
+            "Historial de {Canal} pedido por {Usuario}: antes de {AntesDe}, página de {Cantidad}",
+            conexion.Canal, conexion.Usuario, antesDe, cantidad);
+
+        return await store.GetAnterioresAsync(conexion.Canal, antesDe, cantidad);
+    }
+
+    /// <summary>
     /// Difunde un mensaje del usuario registrado al grupo de SU canal.
     /// </summary>
     /// <param name="texto">Texto escrito (se valida con ChatConfig).</param>
@@ -312,6 +349,18 @@ public class ChatHub(IChatStore store, IOptions<ChatConfig> opciones, ILogger<Ch
             return error;
         }
 
+        // Control de ráfagas (Fase 4.1): DESPUÉS de validar — un mensaje
+        // malformado no consume cuota — y ANTES de tocar store o red. Si la
+        // ventana está llena, el intento se cae y el cliente recibe el aviso
+        if (!rafagas.Intentar(Context.ConnectionId, DateTime.UtcNow))
+        {
+            logger.LogWarning(
+                "Ráfaga: {Usuario} superó el límite de mensajes en {Canal}",
+                conexion.Usuario, conexion.Canal);
+
+            return Config.AvisoRafaga;
+        }
+
         var mensaje = new MensajeDto(
             Guid.NewGuid(), conexion.Usuario, texto, DateTime.UtcNow, TipoMensaje.Normal);
 
@@ -325,7 +374,64 @@ public class ChatHub(IChatStore store, IOptions<ChatConfig> opciones, ILogger<Ch
 
         await Clients.Group(conexion.Canal).SendAsync(ChatHubEventos.MensajeNuevo, mensaje);
 
+        // Menciones (@ana): el mensaje va igual al canal —la mención NO es
+        // un mensaje aparte—; esto es solo un empujoncito dirigido a quien
+        // sale nombrado, para que su cliente pite y parpadee
+        await NotificarMencionesAsync(conexion, mensaje);
+
         return null;
+    }
+
+    /// <summary>
+    /// Avisa por separado a cada persona nombrada con @ en el mensaje. El
+    /// mensaje ya salió al grupo; este aviso es SOLO un empujoncito
+    /// dirigido por el MISMO camino que los privados —<c>Clients.Client</c>
+    /// con la conexión de quien nombra—: no se abre ningún destino nuevo.
+    ///
+    /// <remarks>
+    /// Cuatro decisiones:
+    /// <list type="bullet">
+    /// <item><b>Se emite DESPUÉS del mensaje</b>: SignalR conserva el orden
+    /// en cada conexión, así que la mención nunca llega antes que el texto
+    /// que la provoca.</item>
+    /// <item><b>El mensaje no cambia</b>: si a quien nombras no está
+    /// conectado en el canal, su mensaje sigue siendo un mensaje normal —
+    /// una mención no es una entrega garantizada, es un aviso.</item>
+    /// <item><b>Nunca a uno mismo</b>: mencionarte a ti no es noticia.</item>
+    /// <item><b>Sin estado y sin persistencia</b>: el aviso viaja y se
+    /// olvida; el "no visto" lo lleva cada cliente.</item>
+    /// </list>
+    /// </remarks>
+    /// </summary>
+    /// <param name="conexion">Quien escribió el mensaje (emisor y canal).</param>
+    /// <param name="mensaje">Mensaje ya emitido al canal.</param>
+    private async Task NotificarMencionesAsync(ConexionChat conexion, MensajeDto mensaje)
+    {
+        // Guardia barata: sin arroba no hay mención que buscar (y casi
+        // ningún mensaje la trae, así que el bucle no se ni mira)
+        if (!mensaje.Texto.Contains('@'))
+            return;
+
+        foreach (var usuario in store.GetUsuarios(conexion.Canal))
+        {
+            // Ni a sí mismo ni a quien no esté nombrado en el texto
+            var esElMismo = string.Equals(
+                usuario.Usuario, conexion.Usuario, StringComparison.OrdinalIgnoreCase);
+
+            if (esElMismo || !Menciones.Contiene(mensaje.Texto, usuario.Usuario))
+                continue;
+
+            // El store resuelve la CONEXIÓN del canal: los nicks son
+            // únicos dentro de su sala, no en todo el servidor
+            var destino = store.GetConnectionId(conexion.Canal, usuario.Usuario);
+
+            if (destino is not null)
+            {
+                await Clients.Client(destino).SendAsync(
+                    ChatHubEventos.MencionRecibida,
+                    new MencionDto(conexion.Usuario, conexion.Canal, mensaje.Texto, mensaje.Timestamp));
+            }
+        }
     }
 
     /// <summary>
@@ -447,6 +553,131 @@ public class ChatHub(IChatStore store, IOptions<ChatConfig> opciones, ILogger<Ch
     }
 
     /// <summary>
+    /// Edita el texto de UN mensaje del canal: lo sustituye en la caché y en
+    /// SQLite, y difunde el resultado COMPLETO a todo el grupo — cada cliente
+    /// busca por Id y sustituye su fila en el sitio donde estaba, el mismo
+    /// mecanismo de reemplazo que ya usan las reacciones.
+    /// </summary>
+    /// <remarks>
+    /// Cinco reglas que sostienen este método y que conviene leer juntas:
+    /// <list type="number">
+    /// <item>El canal sale del REGISTRO de la conexión (como en la paginación
+    /// de la Fase 4.3): solo se puede editar en la sala en la que estás.</item>
+    /// <item>El nuevo texto pasa por la MISMA validación que un envío normal:
+    /// una edición no es una puerta trasera para saltarse los límites.</item>
+    /// <item>Solo mensajes NORMALES y PROPIOS: los avisos de sistema no los
+    /// edita nadie (el store lo comprueba con el nick normalizado), y lo
+    /// rechazado vuelve al cliente como error en español.</item>
+    /// <item>El <c>Timestamp</c> NO cambia: es el cursor con el que se pagina
+    /// el historial (Fase 4.3) y el orden de la vista; moverlo descolocaría a
+    /// todos los clientes.</item>
+    /// <item>Sin ráfaga ni reaviso de mención: no es un mensaje NUEVO. El
+    /// texto del canal cambia, pero nadie vuelve a pitar por una mención que
+    /// ya se notificó en su día.</item>
+    /// </list>
+    /// </remarks>
+    /// <param name="idMensaje">Identificador del mensaje a editar.</param>
+    /// <param name="texto">Nuevo texto (se valida con ChatConfig).</param>
+    /// <returns>null si todo fue correcto; el mensaje de error si no.</returns>
+    public async Task<string?> EditarMensajeAsync(Guid idMensaje, string? texto)
+    {
+        var conexion = store.GetConexion(Context.ConnectionId);
+
+        if (conexion is null)
+        {
+            logger.LogWarning(
+                "Edición rechazada: la conexión {ConnectionId} no está registrada",
+                Context.ConnectionId);
+
+            return "No estás registrado en el canal, vuelve a conectarte";
+        }
+
+        texto = texto?.Trim() ?? string.Empty;
+
+        var error = Config.ValidarMensaje(texto);
+
+        if (error is not null)
+        {
+            logger.LogWarning("Edición rechazada de {Usuario}: {Error}", conexion.Usuario, error);
+
+            return error;
+        }
+
+        var (mensaje, errorEdicion) = await store.EditarMensajeAsync(
+            conexion.Canal, idMensaje, texto, conexion.Usuario);
+
+        // El store nunca devuelve (null, null): o hay mensaje, o hay error.
+        // Esta guarda deja además a las dos variables estrechadas para
+        // compilar sin advertencias de nulabilidad
+        if (errorEdicion is not null || mensaje is null)
+        {
+            logger.LogWarning(
+                "Edición rechazada de {Usuario}: {Error} (mensaje {IdMensaje} en {Canal})",
+                conexion.Usuario, errorEdicion, idMensaje, conexion.Canal);
+
+            return errorEdicion;
+        }
+
+        // Se loguea la longitud, no el contenido (mismo criterio que SendAsync:
+        // los logs pueden verse personas no autorizadas)
+        logger.LogInformation(
+            "{Usuario} edita un mensaje de {Longitud} caracteres en {Canal}",
+            conexion.Usuario, texto.Length, conexion.Canal);
+
+        await Clients.Group(conexion.Canal).SendAsync(ChatHubEventos.MensajeEditado, mensaje);
+
+        return null;
+    }
+
+    /// <summary>
+    /// Borra UN mensaje del canal de la caché y de SQLite, y avisa a todo el
+    /// grupo con su Id: cada cliente quita la fila si la tiene. El borrado es
+    /// definitivo — no queda copia en disco ni en ninguna página de historial.
+    /// </summary>
+    /// <remarks>
+    /// Mismas reglas que <see cref="EditarMensajeAsync"/> (canal del registro,
+    /// propiedad normalizada, solo mensajes normales, sin ráfaga), y una más:
+    /// el servidor también libera las reacciones del mensaje borrado, que sin
+    /// fila que mostrar serían basura con dueño perdido. Los clientes, por su
+    /// parte, quitan además SU copia de esas reacciones al recibir el evento.
+    /// </remarks>
+    /// <param name="idMensaje">Identificador del mensaje a borrar.</param>
+    /// <returns>null si todo fue correcto; el mensaje de error si no.</returns>
+    public async Task<string?> BorrarMensajeAsync(Guid idMensaje)
+    {
+        var conexion = store.GetConexion(Context.ConnectionId);
+
+        if (conexion is null)
+        {
+            logger.LogWarning(
+                "Borrado rechazado: la conexión {ConnectionId} no está registrada",
+                Context.ConnectionId);
+
+            return "No estás registrado en el canal, vuelve a conectarte";
+        }
+
+        var (borrado, errorBorrado) = await store.BorrarMensajeAsync(
+            conexion.Canal, idMensaje, conexion.Usuario);
+
+        if (!borrado)
+        {
+            logger.LogWarning(
+                "Borrado rechazado de {Usuario}: {Error} (mensaje {IdMensaje} en {Canal})",
+                conexion.Usuario, errorBorrado, idMensaje, conexion.Canal);
+
+            return errorBorrado;
+        }
+
+        logger.LogInformation(
+            "{Usuario} borra un mensaje en {Canal} ({IdMensaje})",
+            conexion.Usuario, conexion.Canal, idMensaje);
+
+        await Clients.Group(conexion.Canal).SendAsync(ChatHubEventos.MensajeBorrado, idMensaje);
+
+        return null;
+    }
+
+    /// <summary>
     /// Envía un mensaje a UNA persona concreta del canal del emisor, sin que
     /// lo vea nadie más. Es el CUARTO destino de SignalR del proyecto:
     /// <c>Group</c> (todo el canal), <c>Caller</c> (solo el que pregunta) y
@@ -508,6 +739,17 @@ public class ChatHub(IChatStore store, IOptions<ChatConfig> opciones, ILogger<Ch
             return error;
         }
 
+        // Mismo control de ráfagas que en SendAsync: los privados son
+        // escritura del aula y comparten la CUOTA de la conexión
+        if (!rafagas.Intentar(Context.ConnectionId, DateTime.UtcNow))
+        {
+            logger.LogWarning(
+                "Ráfaga: {Usuario} superó el límite de privados hacia {Destinatario}",
+                conexion.Usuario, destinatario);
+
+            return Config.AvisoRafaga;
+        }
+
         // El canal del emisor decide a quién se puede hablar: nadie de otra
         // sala (y null significa "no hay nadie con ese nombre AQUÍ")
         var connectionIdDestino = store.GetConnectionId(conexion.Canal, destinatario);
@@ -545,6 +787,9 @@ public class ChatHub(IChatStore store, IOptions<ChatConfig> opciones, ILogger<Ch
     /// <param name="exception">Excepción que causó la caída, si la hubo.</param>
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
+        // La cuota de ráfagas era de ESTA conexión: al morir, se olvida
+        rafagas.Limpiar(Context.ConnectionId);
+
         // SignalR da de baja esta conexión de todos sus grupos al cerrarse,
         // así que no hace falta quitarla del canal a mano
         var conexion = store.RemoveUsuario(Context.ConnectionId);
