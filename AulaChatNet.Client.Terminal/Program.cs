@@ -175,7 +175,7 @@ do
         AnsiConsole.MarkupLine(
             "[yellow]⚠ El servidor no está accesible: el problema no es tu nick ni tu canal.[/]");
 
-        // El detalle técnico NO se muestra en pantalla (regla de la casa),
+        // El detalle técnico NO se muestra en pantalla (convención del proyecto),
         // pero SÍ va al fichero de log: ahí está para diagnosticar
         Log.Error("El servidor no responde en {UrlHub}: {Motivo}", urlHub, resultado.Error);
 

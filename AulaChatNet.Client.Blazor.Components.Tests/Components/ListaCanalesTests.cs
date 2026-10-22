@@ -107,7 +107,7 @@ public class ListaCanalesTests : BunitContext
         // Act
         cut.FindAll("button.pildora")[1].Click();
 
-        // Assert: regla de la casa — el error de conexión entra como aviso
+        // Assert: convención del proyecto — el error de conexión entra como aviso
         // de sistema en el flujo, no pegado en la píldora
         _store.Mock.Verify(s => s.Aviso("Sin conexión con el servidor"), Times.Once);
         cut.FindAll(".pildora .error").Should().BeEmpty();

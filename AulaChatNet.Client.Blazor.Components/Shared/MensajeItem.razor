@@ -106,7 +106,7 @@ else
     [Parameter] public string? Nick { get; set; }
 
     // Estado del editor inline: si está abierto, el texto de trabajo y el
-    // error de validación local (junto al campo, regla de la casa)
+    // error de validación local (junto al campo, convención del proyecto)
     private bool _editando;
     private string? _textoEdicion;
     private string? _errorEdicion;
@@ -226,7 +226,7 @@ else
 
     /// <summary>
     /// ✔: borra de verdad. Si el servidor rechaza, el aviso va al flujo de
-    /// mensajes (regla de la casa) y la fila se queda como estaba.
+    /// mensajes (convención del proyecto) y la fila se queda como estaba.
     /// </summary>
     private async Task BorrarAsync()
     {

@@ -61,7 +61,7 @@
 
         var error = await Store.CambiarCanalAsync(canal);
 
-        // Regla de la casa: los fallos de conexión NO se esconden ni se
+        // Convención del proyecto: los fallos de conexión NO se esconden ni se
         // pegan en la píldora — van al flujo de mensajes como aviso de sistema
         if (error is not null)
             Store.Aviso(error);

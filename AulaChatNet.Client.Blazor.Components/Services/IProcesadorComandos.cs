@@ -12,7 +12,7 @@ public interface IProcesadorComandos
 {
     /// <summary>
     /// Ejecuta el comando. El resultado se comunica al usuario con avisos
-    /// en el flujo de mensajes de la store (regla de la casa: en la caja
+    /// en el flujo de mensajes de la store (convención del proyecto: en la caja
     /// solo se pintan los errores de campo; los comandos hablan en el flujo,
     /// igual que la salida de la terminal).
     /// </summary>

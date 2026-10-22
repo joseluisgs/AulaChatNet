@@ -1,7 +1,7 @@
 /* ==========================================================================
    AulaChatNet — tema Discord (clásico) con CSS propio, sin librerías
    --------------------------------------------------------------------------
-   Regla de la casa: CSS propio y sin dependencias pesadas de estilos.
+   Convención del proyecto: CSS propio y sin dependencias pesadas de estilos.
    TODOS los colores viven en variables CSS (:root): si un día hay que
    cambiar la paleta, se toca un solo sitio. Paleta Discord clásica.
 
@@ -699,7 +699,7 @@ body {
     font-family: inherit;
 }
 
-/* Error de validación LOCAL: junto al campo, en rojo — regla de la casa */
+/* Error de validación LOCAL: junto al campo, en rojo — convención del proyecto */
 .editor-aviso {
     color: var(--dc-rojo);
     font-size: 12px;

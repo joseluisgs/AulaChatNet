@@ -12,7 +12,7 @@ namespace AulaChatNet.Client.Blazor.Components.Tests.Components;
 
 /// <summary>
 /// Pruebas de la caja de texto: validación local junto al campo, envío a la
-/// store y la regla de la casa — lo del CAMPO se pinta aquí (vacío, largo);
+/// store y la convención del proyecto — lo del CAMPO se pinta aquí (vacío, largo);
 /// lo de CONEXIÓN va al flujo de mensajes como aviso. Y lo que empieza por
 /// "/" se despacha al procesador de comandos (mismo parser que la terminal)
 /// en lugar de ir al canal.
@@ -121,7 +121,7 @@ public class CajaMensajeTests : BunitContext
         // Act
         cut.Find("form").TriggerEvent("onsubmit", EventArgs.Empty);
 
-        // Assert: regla de la casa — aviso en el flujo, campo sin error
+        // Assert: convención del proyecto — aviso en el flujo, campo sin error
         _store.Mock.Verify(s => s.Aviso("Sin conexión con el servidor"), Times.Once);
         cut.FindAll(".caja-aviso").Should().BeEmpty();
     }
