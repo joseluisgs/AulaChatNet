@@ -17,6 +17,7 @@
 - [✨ Características](#-características)
 - [🚀 Tecnologías](#-tecnologías)
 - [📂 Estructura del Proyecto](#-estructura-del-proyecto)
+- [🧩 Proyectos de la solución](#-proyectos-de-la-solución)
 - [🏗️ Arquitectura](#️-arquitectura)
 - [🏃‍♂️ Inicio rápido](#️-inicio-rápido)
 - [📡 Hub del chat](#-hub-del-chat)
@@ -94,6 +95,47 @@ AulaChatNet/
 └── AulaChatNet.Client.Wpf/                   # Cliente de escritorio WPF + Blazor Hybrid: la MISMA UI de la RCL en una ventana (WebView2 embebido)
     └── AulaChatNet.Client.Wpf.Tests/         #   configuración DI y almacenamiento de la sesión en fichero
 ```
+
+## 🧩 Proyectos de la solución
+
+La solución (`AulaChatNet.slnx`) reúne **11 proyectos**: seis de código y cinco de tests. El criterio de reparto es sencillo: **cada proceso es un proyecto** —el servidor no comparte ejecutable con ningún cliente— y **cada proyecto de código tiene sus tests al lado**, con una única excepción: `AulaChatNet.Client.Web`, un host tan fino que no tiene lógica propia que probar.
+
+- 📦 **`AulaChatNet.Shared`**: el contrato común de todo el sistema — DTOs (objetos de transferencia de datos), constantes del hub, `ChatConfig`, avatares, operadores Rx, parser de comandos `/` y helpers. **Sin dependencias de nadie**: si servidor y clientes deben decir exactamente lo mismo, ese código vive aquí y solo aquí.
+- 🖥️ **`AulaChatNet.Server`**: ASP.NET Core + SignalR + SQLite con EF Core. Expone `/hubs/chat` y `GET /estadisticas`, y **nada más**: no sirve ficheros estáticos ni referencia a ningún cliente, así que una UI nueva se conecta sin que el servidor se entere de quién es.
+- 💻 **`AulaChatNet.Client.Terminal`**: consola con Spectre.Console (TUI estilo Discord). El cliente más autónomo: pinta sus vistas él mismo con `Shared`; no consume la librería web.
+- 🧩 **`AulaChatNet.Client.Blazor.Components`** (RCL, librería de clases Razor): la **UI compartida** — componentes Razor, stores reactivas, servicios, CSS y JS de la estética Discord. Una sola librería con dos consumidores.
+- 🌐 **`AulaChatNet.Client.Web`**: host WebAssembly de esa UI: `Program.cs`, `index.html` y `wwwroot` (DevServer en el `5031`). Delgado a propósito: la lógica vive en la RCL, no aquí.
+- 🪟 **`AulaChatNet.Client.Wpf`**: cliente de escritorio con **Blazor Hybrid** — la MISMA RCL dentro de una ventana WPF, pinta con el WebView2 del sistema, guarda la sesión en fichero y se minimiza a la bandeja.
+- 🧪 **`*.Tests`**: cinco proyectos de pruebas (NUnit + FluentAssertions + Moq + bUnit), cada uno al lado del suyo: `Shared`, `Server`, `Terminal`, `Blazor.Components` y `Wpf`.
+
+Las referencias entre proyectos son las que ves abajo — y **ningún cliente referencia al servidor**: el contrato entre ellos no es código compilado, es el hub de SignalR (más `Shared`, que comparten los dos lados):
+
+```mermaid
+flowchart BT
+    SH["AulaChatNet.Shared<br/>contrato común: DTOs · config · comandos"]
+    SR["AulaChatNet.Server<br/>SignalR + SQLite · :5030"]
+    TM["AulaChatNet.Client.Terminal<br/>Spectre.Console + Rx"]
+    RC["AulaChatNet.Client.Blazor.Components<br/>RCL: la UI compartida"]
+    WB["AulaChatNet.Client.Web<br/>host WebAssembly · :5031"]
+    WP["AulaChatNet.Client.Wpf<br/>WPF + BlazorWebView"]
+
+    TM --> SH
+    RC --> SH
+    SR --> SH
+    WB --> RC
+    WB --> SH
+    WP --> RC
+    WP --> SH
+
+    style SH fill:#607D8B,color:#fff
+    style SR fill:#2196F3,color:#fff
+    style TM fill:#FF9800,color:#fff
+    style RC fill:#9C27B0,color:#fff
+    style WB fill:#FF9800,color:#fff
+    style WP fill:#FF9800,color:#fff
+```
+
+> 💡 **Consejo:** para entender la solución entera, lee `Shared` primero (el vocabulario), después `Server` (quién manda) y después el cliente que te interese: ya solo consumirá ese contrato.
 
 ## 🏗️ Arquitectura
 
