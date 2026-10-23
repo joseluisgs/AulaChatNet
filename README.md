@@ -14,6 +14,7 @@
 ## 📑 Tabla de Contenidos
 
 - [🎯 Descripción](#-descripción)
+- [🖼️ Capturas](#️-capturas)
 - [✨ Características](#-características)
 - [🚀 Tecnologías](#-tecnologías)
 - [📂 Estructura del Proyecto](#-estructura-del-proyecto)
@@ -23,7 +24,7 @@
 - [📡 Hub del chat](#-hub-del-chat)
 - [🌐 Endpoints REST](#-endpoints-rest)
 - [⚙️ Configuración](#️-configuración)
-- [✅ Estado por fases](#-estado-por-fases)
+- [✅ Fases de Desarrollo](#-fases-de-desarrollo)
 - [📚 Documentación](#-documentación)
 - [📝 Licencia](#-licencia)
 - [👨‍💻 Autor](#-autor)
@@ -34,17 +35,29 @@ AulaChatNet es un proyecto educativo de ejemplo para el módulo **Desarrollo Web
 
 - 📡 **SignalR**: un único `ChatHub` en el servidor; mensajes, presencia y canales en tiempo real
 - 🗂️ **Canales por aula**: `#general`, `#daw`, `#dam`, `#asir` y `#smr`, configurables en `appsettings.json`
-- 🔄 **Rx.NET**: los mensajes entrantes se exponen como `IObservable<MensajeDto>` y la UI aplica operadores reactivos
+- 🔄 **Rx.NET**: los mensajes entrantes se exponen como `IObservable<MensajeDto>` y la interfaz aplica operadores reactivos
 - 💻 **Tres clientes sobre el mismo hub**: terminal (Spectre.Console), web (Blazor WebAssembly) y escritorio (WPF + Blazor Hybrid)
-- 🎨 **Estética Discord**: layout de dos columnas, avatares (DiceBear) y paleta oscura
+- 🎨 **Estética Discord**: distribución de dos columnas, avatares (DiceBear) y paleta oscura
 - 🗄️ **Persistencia**: el historial en SQLite con EF Core, escrito en segundo plano sin frenar el chat
+
+## 🖼️ Capturas
+
+Las dos vistas de la aplicación web, tomadas de la maqueta de referencia [`docs/boceto-vistas.html`](docs/boceto-vistas.html) (con los mismos estilos y colores que el código real):
+
+**Panel de entrada** — antes de conectar: nombre, canal y sesión recordada:
+
+![Panel de entrada de AulaChatNet](docs/capturas/login.png)
+
+**Vista de canal** — ya dentro: conectados a la izquierda, `#general` a la derecha, sin burbujas:
+
+![Vista de canal de AulaChatNet](docs/capturas/chat.png)
 
 ## ✨ Características
 
 - 💬 **Comandos /**: `/canal`, `/usuarios`, `/ayuda`, `/sesion`... con el parser compartido en `Shared`
 - 🔒 **Mensajes privados**: `/privado` (alias `/mp`, `/dm`) entre personas conectadas del canal; efímeros, no se guardan
 - ✍️ **Escritura en vivo**: "está escribiendo..." muestreada con Rx.NET y caducada a los 5 s en cada cliente
-- 👍 **Reacciones**: lista cerrada de seis emoji bajo cada mensaje, con el estado completo emitido al canal
+- 👍 **Reacciones**: lista cerrada de seis emojis bajo cada mensaje, con el estado completo emitido al canal
 - 🚦 **Control de ráfagas**: cuota por conexión aplicada en el servidor, con aviso sin tocar a los clientes
 - 💬 **Menciones**: `@ana` con detección única compartida y aviso privado a quien nombra
 - 📜 **Historial paginado**: páginas del historial antiguo bajo demanda, con recuperación del scroll
@@ -59,7 +72,7 @@ AulaChatNet es un proyecto educativo de ejemplo para el módulo **Desarrollo Web
 - **ASP.NET Core + SignalR** - Servidor en tiempo real
 - **SQLite + EF Core 10** - Base de datos embebida en un fichero, sin servidor ni contenedor; migraciones aplicadas al arrancar
 - **Rx.NET (System.Reactive)** - Programación reactiva en los clientes
-- **Blazor (Razor Class Library + WebAssembly)** - Cliente web: la UI vive en la librería compartida `AulaChatNet.Client.Blazor.Components` y el host WebAssembly la sirve en el 5031
+- **Blazor (Razor Class Library + WebAssembly)** - Cliente web: la interfaz de usuario vive en la librería compartida `AulaChatNet.Client.Blazor.Components` y el host WebAssembly la sirve en el 5031
 - **WPF + Blazor Hybrid (`BlazorWebView`)** - Cliente de escritorio: la MISMA librería `Client.Web` dentro de una ventana WPF, con el navegador WebView2 embebido (sin servidor detrás: los estáticos salen del propio .exe)
 - **Spectre.Console** - Cliente de terminal
 - **Serilog** - Logging en los cuatro procesos de la solución: servidor (consola + fichero), terminal (fichero), escritorio (fichero en `%LOCALAPPDATA%`) y web (consola del navegador)
@@ -87,24 +100,24 @@ AulaChatNet/
 │   ├── Migrations/                          # Migraciones de EF Core (esquema de la tabla Mensajes)
 │   ├── Infrastructures/                     # Extensiones de arranque (servicios, CORS, hub, persistencia)
 │   └── AulaChatNet.Server.Tests/
-├── AulaChatNet.Client.Terminal/             # Consola con Spectre.Console (TUI estilo Discord)
+├── AulaChatNet.Client.Terminal/             # Consola con Spectre.Console (TUI: interfaz de terminal, estilo Discord)
 │   └── AulaChatNet.Client.Terminal.Tests/
-├── AulaChatNet.Client.Blazor.Components/                   # Razor Class Library: UI Blazor compartida (componentes, stores, servicios, CSS y JS)
-│   └── AulaChatNet.Client.Blazor.Components.Tests/         #   bUnit de la UI (componentes y stores)
-├── AulaChatNet.Client.Web/                # Host WebAssembly de esa UI (proceso propio en el 5031): arranque y configuración
-└── AulaChatNet.Client.Wpf/                   # Cliente de escritorio WPF + Blazor Hybrid: la MISMA UI de la RCL en una ventana (WebView2 embebido)
+├── AulaChatNet.Client.Blazor.Components/                   # Razor Class Library: interfaz Blazor compartida (componentes, stores, servicios, CSS y JS)
+│   └── AulaChatNet.Client.Blazor.Components.Tests/         #   bUnit de la interfaz (componentes y stores)
+├── AulaChatNet.Client.Web/                # Host WebAssembly de esa interfaz (proceso propio en el 5031): arranque y configuración
+└── AulaChatNet.Client.Wpf/                   # Cliente de escritorio WPF + Blazor Hybrid: la MISMA interfaz de la RCL en una ventana (WebView2 embebido)
     └── AulaChatNet.Client.Wpf.Tests/         #   configuración DI y almacenamiento de la sesión en fichero
 ```
 
 ## 🧩 Proyectos de la solución
 
-La solución (`AulaChatNet.slnx`) reúne **11 proyectos**: seis de código y cinco de tests. El criterio de reparto es sencillo: **cada proceso es un proyecto** —el servidor no comparte ejecutable con ningún cliente— y **cada proyecto de código tiene sus tests al lado**, con una única excepción: `AulaChatNet.Client.Web`, un host tan fino que no tiene lógica propia que probar.
+La solución (`AulaChatNet.slnx`) reúne **11 proyectos**: seis de código y cinco de tests. El criterio de reparto es sencillo: **cada proceso es un proyecto** —el servidor no comparte ejecutable con ningún cliente— y **cada proyecto de código tiene sus tests al lado**, con una única excepción: `AulaChatNet.Client.Web`, un host mínimo que solo arranca la interfaz, sin lógica propia que probar.
 
 - 📦 **`AulaChatNet.Shared`**: el contrato común de todo el sistema — DTOs (objetos de transferencia de datos), constantes del hub, `ChatConfig`, avatares, operadores Rx, parser de comandos `/` y helpers. **Sin dependencias de nadie**: si servidor y clientes deben decir exactamente lo mismo, ese código vive aquí y solo aquí.
-- 🖥️ **`AulaChatNet.Server`**: ASP.NET Core + SignalR + SQLite con EF Core. Expone `/hubs/chat` y `GET /estadisticas`, y **nada más**: no sirve ficheros estáticos ni referencia a ningún cliente, así que una UI nueva se conecta sin que el servidor se entere de quién es.
+- 🖥️ **`AulaChatNet.Server`**: ASP.NET Core + SignalR + SQLite con EF Core. Expone `/hubs/chat` y `GET /estadisticas`, y **nada más**: no sirve ficheros estáticos ni referencia a ningún cliente, así que una interfaz nueva se conecta sin que el servidor se entere de quién es.
 - 💻 **`AulaChatNet.Client.Terminal`**: consola con Spectre.Console (TUI estilo Discord). El cliente más autónomo: pinta sus vistas él mismo con `Shared`; no consume la librería web.
-- 🧩 **`AulaChatNet.Client.Blazor.Components`** (RCL, librería de clases Razor): la **UI compartida** — componentes Razor, stores reactivas, servicios, CSS y JS de la estética Discord. Una sola librería con dos consumidores.
-- 🌐 **`AulaChatNet.Client.Web`**: host WebAssembly de esa UI: `Program.cs`, `index.html` y `wwwroot` (DevServer en el `5031`). Delgado a propósito: la lógica vive en la RCL, no aquí.
+- 🧩 **`AulaChatNet.Client.Blazor.Components`** (RCL, librería de clases Razor): la **interfaz de usuario compartida** — componentes Razor, stores reactivas, servicios, CSS y JS de la estética Discord. Una sola librería con dos consumidores.
+- 🌐 **`AulaChatNet.Client.Web`**: host WebAssembly de esa interfaz: `Program.cs`, `index.html` y `wwwroot` (DevServer en el `5031`). Delgado a propósito: la lógica vive en la RCL, no aquí.
 - 🪟 **`AulaChatNet.Client.Wpf`**: cliente de escritorio con **Blazor Hybrid** — la MISMA RCL dentro de una ventana WPF, pinta con el WebView2 del sistema, guarda la sesión en fichero y se minimiza a la bandeja.
 - 🧪 **`*.Tests`**: cinco proyectos de pruebas (NUnit + FluentAssertions + Moq + bUnit), cada uno al lado del suyo: `Shared`, `Server`, `Terminal`, `Blazor.Components` y `Wpf`.
 
@@ -115,7 +128,7 @@ flowchart BT
     SH["AulaChatNet.Shared<br/>contrato común: DTOs · config · comandos"]
     SR["AulaChatNet.Server<br/>SignalR + SQLite · :5030"]
     TM["AulaChatNet.Client.Terminal<br/>Spectre.Console + Rx"]
-    RC["AulaChatNet.Client.Blazor.Components<br/>RCL: la UI compartida"]
+    RC["AulaChatNet.Client.Blazor.Components<br/>RCL: la interfaz compartida"]
     WB["AulaChatNet.Client.Web<br/>host WebAssembly · :5031"]
     WP["AulaChatNet.Client.Wpf<br/>WPF + BlazorWebView"]
 
@@ -145,8 +158,8 @@ Capa compartida (`Shared`) como contrato entre servidor y clientes, un hub de Si
 flowchart TD
     subgraph Clientes["Clientes (cada uno en su proceso)"]
         T["Terminal<br/>Spectre.Console + Rx<br/>consola propia"]
-        B["Web Blazor<br/>UI compartida (RCL Client.Web) + WASM<br/>DevServer :5031"]
-        W["Escritorio WPF<br/>la MISMA UI de la RCL<br/>BlazorWebView (WebView2) en la ventana"]
+        B["Web Blazor<br/>interfaz compartida (RCL Client.Web) + WASM<br/>DevServer :5031"]
+        W["Escritorio WPF<br/>la MISMA interfaz de la RCL<br/>BlazorWebView (WebView2) en la ventana"]
     end
 
     subgraph Servidor["AulaChatNet.Server :5030 (agnóstico, no sirve ficheros)"]
@@ -246,7 +259,7 @@ La ruta vive en `Shared` (`ChatRutas.Estadisticas`). Es una consulta bajo demand
 
 ## ⚙️ Configuración
 
-Todo vive en `appsettings.json` (con `appsettings.Development.json` por entorno), sin hardcodeos:
+Todo vive en `appsettings.json` (con `appsettings.Development.json` por entorno), sin valores fijos en el código:
 
 | Sección | Qué controla |
 |---------|--------------|
@@ -257,7 +270,7 @@ Todo vive en `appsettings.json` (con `appsettings.Development.json` por entorno)
 
 El logging se fija según el medio: consola + fichero en el servidor, fichero en terminal y escritorio, consola del navegador en la web.
 
-## ✅ Estado por fases
+## ✅ Fases de Desarrollo
 
 | Fase | En una línea |
 |------|--------------|
@@ -265,7 +278,7 @@ El logging se fija según el medio: consola + fichero en el servidor, fichero en
 | **2** | Persistencia: historial en SQLite con EF Core, escritura en segundo plano y limpieza programada |
 | **3** | Conversación: mensajes privados, "está escribiendo..." y reacciones |
 | **4** | Calidad de uso: control de ráfagas, menciones, historial paginado y edición/borrado de mensajes propios |
-| **5** | Múltiples clientes: la UI en una librería compartida (RCL) y cliente de escritorio WPF con Blazor Hybrid |
+| **5** | Múltiples clientes: los componentes Blazor de la interfaz de usuario en una librería compartida (RCL) y cliente de escritorio WPF con Blazor Hybrid |
 
 ## 📚 Documentación
 
