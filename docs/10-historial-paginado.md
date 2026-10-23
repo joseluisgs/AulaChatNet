@@ -199,7 +199,7 @@ El E2E es el único que enciende la persistencia en el arnés, y no es capricho:
 
 ## 10.10. Decisiones, patrones y técnicas del punto
 
-Paginar parece un `SELECT` con desplazamiento, y es en realidad un conjunto de decisiones de contrato. Éstas son:
+Paginar parece un `SELECT` con desplazamiento, y es en realidad un conjunto de decisiones del contrato del hub. Estas son:
 
 | Patrón o técnica | Dónde vive en AulaChatNet | La lección transferible |
 |------------------|---------------------------|-------------------------|

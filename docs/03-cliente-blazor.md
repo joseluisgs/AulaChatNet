@@ -131,7 +131,7 @@ flowchart TD
 
 ## 3.4. La estética de Discord con CSS propio
 
-La convención del proyecto: **CSS propio, sin librerías pesadas**, con TODOS los colores en variables de `:root` — si un día hay que cambiar la paleta, se toca un solo sitio. La paleta es la de Discord clásica: fondo `#36393f`, sidebar `#2f3136`, cabeceras `#202225`, input `#40444b`, acento *blurple* `#5865f2` y verde en línea `#43b581`.
+La convención del proyecto: **CSS propio, sin librerías pesadas**, con TODOS los colores en variables de `:root` — si un día hay que cambiar la paleta, se toca un solo sitio. La paleta es la de Discord clásica: fondo `#36393f`, barra lateral `#2f3136`, cabeceras `#202225`, campo de escritura `#40444b`, acento *blurple* `#5865f2` y verde en línea `#43b581`.
 
 El mapa de la interfaz (dos columnas, la regla del proyecto):
 
@@ -141,7 +141,7 @@ flowchart TD
     U["ListaUsuarios<br/>conectados de tu sala + punto verde"]
     P["ListaCanales<br/>píldoras #general 2 · #daw 3 …"]
     M["ListaMensajes<br/>scroll, sin burbujas"]
-    C["CajaMensaje<br/>input fijo abajo"]
+    C["CajaMensaje<br/>campo de texto fijo abajo"]
 
     B --- U
     B --- P
@@ -596,7 +596,7 @@ Y más allá de los tests unitarios, la verificación de esta versión se hizo e
 
 ## 3.12. Decisiones, patrones y técnicas del punto
 
-La web es el cliente con más piezas móviles, y cada una es una decisión que volverás a tomar en cualquier SPA. El resumen, para la cabeza:
+La web es el cliente con más piezas móviles, y cada una es una decisión que volverás a tomar en cualquier SPA. El resumen, en una tabla:
 
 | Patrón o técnica | Dónde vive en AulaChatNet | La lección transferible |
 |------------------|---------------------------|-------------------------|

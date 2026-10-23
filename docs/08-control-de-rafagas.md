@@ -235,7 +235,7 @@ Tres niveles, como en los puntos anteriores:
 
 ## 8.9. Decisiones, patrones y técnicas del punto
 
-Limitar no es solo contar: hay que decidir dónde se cuenta, con qué clave, en qué orden y con qué apagador. Éstas son las decisiones del punto:
+Limitar no es solo contar: hay que decidir dónde se cuenta, con qué clave, en qué orden y con qué apagador. Estas son las decisiones del punto:
 
 | Patrón o técnica | Dónde vive en AulaChatNet | La lección transferible |
 |------------------|---------------------------|-------------------------|

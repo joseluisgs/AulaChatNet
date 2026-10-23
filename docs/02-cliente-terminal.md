@@ -23,7 +23,7 @@ Este punto tiene dos mitades: primero un **manual de uso** —recorrido pantalla
 
 - Usar el cliente como si fuera Discord: arranque guiado, vista en vivo, comandos y sesión recordada
 - Entender la vista en vivo (`AnsiConsole.Live` + `Layout`) y por qué la línea de estado ya no se reimprime
-- Ver la capa reactiva: stores con `BehaviorSubject` y una UI que solo **pinta el estado actual**
+- Ver la capa reactiva: stores con `BehaviorSubject` y una interfaz que solo **pinta el estado actual**
 - Conocer el parser de comandos como lógica pura y por qué eso se testea sin consola
 - Distinguir los dos modos de entrada (consola real y tubería)
 
@@ -396,7 +396,7 @@ Ese pintado incremental es reactivo a su vez: Rx entrega la **vista completa** d
 
 ## 2.8. La capa reactiva con Rx
 
-Rx.NET (del inglés *Reactive Extensions*, extensiones reactivas) es la librería .NET de flujos de datos: lo que produce un `IObservable<T>` se puede suscribir, filtrar y combinar como una lista, pero en asíncrono. Sobre esa base, `ClienteChat` no tiene eventos de UI ni delegados: mantiene el estado en **stores con `BehaviorSubject`** y lo expone como `IObservable<T>`. Cualquier parte que quiera "saber algo" se suscribe y pinta; nadie más entera:
+Rx.NET (del inglés *Reactive Extensions*, extensiones reactivas) es la librería .NET de flujos de datos: lo que produce un `IObservable<T>` se puede suscribir, filtrar y combinar como una lista, pero en asíncrono. Sobre esa base, `ClienteChat` no tiene eventos de interfaz ni delegados: mantiene el estado en **stores con `BehaviorSubject`** y lo expone como `IObservable<T>`. Cualquier parte que quiera "saber algo" se suscribe y pinta; nadie más se entera:
 
 | Store | Tipo | De dónde viene |
 |-------|------|----------------|
@@ -441,7 +441,7 @@ La configuración del terminal cabe en dos claves, y ninguna escribe una URL ni 
 ```
 
 - **`UrlServidor`** es la base: la URL completa del hub es `UrlServidor` + `Chat:HubRuta`, y el `GET /estadisticas` se pide sobre la misma base. Nada de URLs escritas en el código.
-- La sección **`Chat`** del terminal es la MISMA que la del servidor (canales, límites de usuario y mensaje): una regla, dos orígenes. Los canales se usan para pintar el selector y la línea de estado; los límites, para el `maxlength` del input y los avisos. **La validación real la hace el servidor.**
+- La sección **`Chat`** del terminal es la MISMA que la del servidor (canales, límites de usuario y mensaje): una regla, dos orígenes. Los canales se usan para pintar el selector y la línea de estado; los límites, para el `maxlength` del campo de texto y los avisos. **La validación real la hace el servidor.**
 
 ## 2.10. Cómo se prueba sin abrir una terminal
 
@@ -466,12 +466,12 @@ Además, el **smoke E2E** (prueba de humo de extremo a extremo, del inglés *end
 
 ## 2.11. Decisiones, patrones y técnicas del punto
 
-El cliente que parece más sencillo es, paradójicamente, el que más decisiones de interfaz obliga a tomar. Éstas son las que se lleva este punto:
+El cliente que parece más sencillo es, paradójicamente, el que más decisiones de interfaz obliga a tomar. Estas son las que aporta este punto:
 
 | Patrón o técnica | Dónde vive en AulaChatNet | La lección transferible |
 |------------------|---------------------------|-------------------------|
 | Vista en vivo con repintado controlado | `AnsiConsole.Live` + `Layout` con cabecera, lista y estado fijos | En terminal el repintado es caro: redibuja lo que cambia y no reimprimas la pantalla entera |
-| Estado inmutable + pintado | El bucle pinta el estado actual cada 50 ms, sin procesar eventos | "La UI solo pinta estado": la misma regla de Redux o Pinia aplicada a una consola |
+| Estado inmutable + pintado | El bucle pinta el estado actual cada 50 ms, sin procesar eventos | "La interfaz solo pinta estado": la misma regla de Redux o Pinia aplicada a una consola |
 | Parser como lógica pura | `ParserComandos`, `Comando` y `AyudaComandos` viven en `Shared` | Si la lógica no toca la consola ni la red, se prueba sin abrir una terminal |
 | Stores reactivas | `IObservable<T>` con `BehaviorSubject` para mensajes, usuarios, estadísticas y conexión | Un único flujo de estado para todo lo que se pinta; suscribirse, no consultar a menudo |
 | Reconexión sin dramas | `Reconnecting`/`Reconnected`/`Closed` + re-alta con `ConnectAsync` | El servidor no recuerda conexiones: el cliente es el responsable de re-presentarse |

@@ -503,7 +503,7 @@ La prueba que justifica la persistencia entera es la de integración: se escribe
 
 ## 4.12. Decisiones, patrones y técnicas del punto
 
-La persistencia es donde la arquitectura se pone seria: un fallo allí no es una pantalla rara, son mensajes perdidos. Éstas son las decisiones que defienden ese fallo:
+La persistencia es donde la arquitectura se pone seria: un fallo allí no es una pantalla rara, son mensajes perdidos. Estas son las decisiones que defienden ese fallo:
 
 | Patrón o técnica | Dónde vive en AulaChatNet | La lección transferible |
 |------------------|---------------------------|-------------------------|

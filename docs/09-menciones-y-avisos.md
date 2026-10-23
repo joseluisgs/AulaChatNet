@@ -12,9 +12,9 @@
 
 # 9. Menciones y avisos
 
-> 💡 **Punto de partida:** escribes un mensaje en un grupo de veinte personas y empiezas por "@Ana". En WhatsApp, en Discord, en Slack... alguien hace clic en el nombre, se pinta en azul, y si esa persona tenía la aplicación abajo recibe un aviso distinto al de cualquier otro mensaje: campana, badge, parpadeo de la pestaña. Nada de eso es magia: es un mensaje que va a TODOS... y además un empujoncito pequeño y dirigido a UNO. ¿Cómo se consigue eso en SignalR sin duplicar mensajes ni crear un canal paralelo?
+> 💡 **Punto de partida:** escribes un mensaje en un grupo de veinte personas y empiezas por "@Ana". En WhatsApp, en Discord, en Slack... alguien hace clic en el nombre, se pinta en azul, y si esa persona tenía la aplicación abajo recibe un aviso distinto al de cualquier otro mensaje: campana, contador sobre el icono, parpadeo de la pestaña. Nada de eso es magia: es un mensaje que va a TODOS... y además un empujoncito pequeño y dirigido a UNO. ¿Cómo se consigue eso en SignalR sin duplicar mensajes ni crear un canal paralelo?
 
-En este punto seguimos con las menciones. Lo interesante no es el `if` que busca la arroba —aunque también—, sino tres cosas: **por qué la detección vive en `Shared` y no en cada cliente, por qué el aviso es un evento aparte con DTO (objeto de transferencia de datos) propio, y cómo se convierte en ruido —badge, parpadeo, campana— SIN tocar el contrato del servidor dos veces**.
+En este punto seguimos con las menciones. Lo interesante no es el `if` que busca la arroba —aunque también—, sino tres cosas: **por qué la detección vive en `Shared` y no en cada cliente, por qué el aviso es un evento aparte con DTO (objeto de transferencia de datos) propio, y cómo se convierte en ruido —contador, parpadeo, campana— SIN tocar el contrato del servidor dos veces**.
 
 **Objetivos de aprendizaje:**
 
@@ -23,7 +23,7 @@ En este punto seguimos con las menciones. Lo interesante no es el `if` que busca
 - Usar expresiones regulares generadas por el compilador (`GeneratedRegex`) y trocear texto en tramos de forma segura
 - Entender por qué un aviso con el mismo destino que otro ya conocido NO es un destino nuevo de SignalR
 - Pintar menciones SIN `MarkupString`: escapado por construcción, inyección de HTML imposible por diseño
-- Dar avisos de navegador (badge, parpadeo de `document.title`) desde Blazor con una función JS pequeña
+- Dar avisos de navegador (contador sin mirar, parpadeo de `document.title`) desde Blazor con una función JS pequeña
 - Hacer sonar una terminal con `Console.Beep()` y teñir el token con la paleta del tema
 - Fijar límites honestos: sin persistencia, sin privados y nicks con espacios que no se pueden mencionar
 
@@ -46,7 +46,7 @@ sequenceDiagram
     H->>G: MensajeNuevo (el mensaje, igual que siempre)
     G-->>L: lo ven todos, Ana incluida
     H->>A: MencionRecibida (solo el aviso)
-    Note over A: badge + parpadeo (web)<br/>amarillo + campana (terminal)
+    Note over A: contador + parpadeo (web)<br/>amarillo + campana (terminal)
     Note over H: Luis NO recibe nada extra:<br/>mencionarse a uno no es noticia
 ```
 
@@ -135,7 +135,7 @@ Y una guardia barata al principio: si el texto no contiene ni una arroba, el mé
 
 En el cliente web, el evento `MencionRecibida` llega a la store —los componentes no hablan con SignalR directamente— y de ahí salen DOS consumidores distintos, cada uno con su flujo:
 
-1. **El badge de "sin mirar":** la store mantiene un contador (`BehaviorSubject<int>`), lo incrementa con cada aviso y lo pone a cero con `MarcarMencionesVistas()`, que solo llama quien corresponde: el clic del badge. El componente `AvisoMenciones` se suscribe, pinta la píldora "💬 2" cuando el contador es mayor que cero y libera sus suscripciones en `Dispose()`, como todo componente de la app.
+1. **El contador de "sin mirar":** la store mantiene un contador (`BehaviorSubject<int>`), lo incrementa con cada aviso y lo pone a cero con `MarcarMencionesVistas()`, que solo llama quien corresponde: el clic en la píldora. El componente `AvisoMenciones` se suscribe, pinta la píldora "💬 2" cuando el contador es mayor que cero y libera sus suscripciones en `Dispose()`, como todo componente de la app.
 
 2. **El parpadeo de la pestaña:** `document.title` es JavaScript, y desde Blazor no se "pinta" —se pide. `index.html` expone `aulachat.empezarParpadeo(texto)`, que alterna el título con el aviso cada pocos segundos y se PARA SOLO en cuanto la pestaña recupera el foco. Ni botones que apagar, ni temporizadores huérfanos: el navegador ya sabe cuándo vuelves.
 
@@ -145,7 +145,7 @@ El resaltado del texto tiene su propia lección. El componente `TextoMencion` re
 
 ## 9.6. Cómo suena la terminal
 
-La terminal no tiene badges persistentes ni pestañas, pero tiene dos herramientas de toda la vida que aquí encajan perfecto:
+La terminal no tiene contadores persistentes ni pestañas, pero tiene dos herramientas de toda la vida que aquí encajan perfecto:
 
 - **Color:** `VistaChat.LineaMensajeMarkup` —la MISMA fórmula que usan el modo en vivo y la tubería de pruebas— ahora manda los tramos de `Trocear` por `TextoConMencionesMarkup`, que teñe de amarillo (`#faa61a`, añadido a `TemaDiscord`) los tokens con `@` y escapa el resto ANTES de teñirlo. Un nombre con corchetes no se come el formato de la línea entera.
 
@@ -175,19 +175,19 @@ Y una puerta abierta, no un descuido: si mañana se quisiera un resumen de "menc
 
 Tres niveles, como en los puntos anteriores:
 
-1. **La regla sola** (`MencionesTests`, en `Shared.Tests`): sin red y sin UI — extraer nombres con y sin puntuación pegada, no duplicar por mayúsculas, `Contiene` con la comparación insensible, y `Trocear` separando tramos en orden. Como la regla es compartida, estas pruebas blindan a servidor y clientes a la vez.
+1. **La regla sola** (`MencionesTests`, en `Shared.Tests`): sin red y sin interfaz — extraer nombres con y sin puntuación pegada, no duplicar por mayúsculas, `Contiene` con la comparación insensible, y `Trocear` separando tramos en orden. Como la regla es compartida, estas pruebas blindan a servidor y clientes a la vez.
 
 2. **El hub con dobles** (`ChatHubTests`): el aviso va al mapa POR CONEXIÓN de `conn-ana` y a ningún otro, el mensaje sale igual al canal (contando solo los de tipo normal, que el alta en la sala también emite `MensajeNuevo` de sistema), y las ausencias se comprueban donde realmente se registra `Clients.Client` —el mismo mapa que usan los tests de privados—.
 
 3. **La red de verdad** (`MencionesEndToEndTests`): servidor real, tres clientes reales —dos en `#general`, una en `#smr`—. Luis menciona a Ana y el aviso viaja por la red hasta ella con su emisor y su canal; para comprobar que NO se cuela a nadie más se usa un punto de sincronía: una ida y vuelta más en cada conexión, porque SignalR ordena por conexión y la respuesta de esa llamada certifica que todo lo anterior ya llegó —o no—.
 
-En el cliente, `AvisoMencionesTests` prueba el contrato del badge (oculto a cero, contador visible, clic a la store) con `StoreFalsa`, y `VistaChatTests` el resaltado amarillo y el escapado del resto de la línea.
+En el cliente, `AvisoMencionesTests` prueba el contrato de la píldora (oculta a cero, contador visible, clic a la store) con `StoreFalsa`, y `VistaChatTests` el resaltado amarillo y el escapado del resto de la línea.
 
 > 📝 **Nota:** el parpadeo de la pestaña y la campana no se prueban en unitario: son APIs del navegador y de la consola. Se verifican en ejecución —dos pestañas y una terminal—, que es donde además se comprueba que las piezas conviven de verdad.
 
 ## 9.9. Decisiones, patrones y técnicas del punto
 
-Un aviso de mención parece pequeño y obliga a decisiones de arquitectura de verdad. Éstas son las que deja este punto:
+Un aviso de mención parece pequeño y obliga a decisiones de arquitectura de verdad. Estas son las que deja este punto:
 
 | Patrón o técnica | Dónde vive en AulaChatNet | La lección transferible |
 |------------------|---------------------------|-------------------------|
@@ -196,7 +196,7 @@ Un aviso de mención parece pequeño y obliga a decisiones de arquitectura de ve
 | Aviso por el camino de los privados | Mismo envío dirigido que los mensajes privados | Reutiliza el canal de entrega que ya funciona y está probado |
 | Cuatro decisiones del servidor | Quién se menciona, cuándo, a quién y cuántas veces | El servidor decide con su estado; el cliente solo pinta lo decidido |
 | Escapado por construcción | `TextoMencion` pinta trozos de texto; sin `MarkupString` en ninguna parte | Inyección de HTML imposible por diseño; la seguridad no se apoya en acordarse |
-| El "no visto" es del cliente | El badge cuenta lo que la pestaña aún no ha mirado | Lo que el usuario ha visto es estado de su pestaña, no del servidor |
+| El "no visto" es del cliente | El contador refleja lo que la pestaña aún no ha mirado | Lo que el usuario ha visto es estado de su pestaña, no del servidor |
 
 ---
 
@@ -209,8 +209,8 @@ Un aviso de mención parece pequeño y obliga a decisiones de arquitectura de ve
 | El aviso sale por | `Clients.Client`, el mismo camino que los privados; ningún destino nuevo |
 | Orden | el mensaje al grupo PRIMERO, el aviso después (orden por conexión) |
 | Cobertura | solo mensajes normales del canal; ni privados, ni sistema, ni a uno mismo |
-| Estado de lectura | del CLIENTE: badge con contador en la store, vaciado por clic |
-| Web | resaltado sin `MarkupString`, badge "💬 n", parpadeo de pestaña con JS que se para al recuperar foco |
+| Estado de lectura | del CLIENTE: píldora con contador en la store, vaciada por clic |
+| Web | resaltado sin `MarkupString`, píldora "💬 n", parpadeo de pestaña con JS que se para al recuperar foco |
 | Terminal | token en amarillo con la paleta del tema y `Console.Beep()` si te nombra |
 | Persistencia | ninguna: como los privados, el aviso vive en la conexión |
 | Límites honestos | nicks con espacios no se mencionan; una conexión por persona, como en los privados |

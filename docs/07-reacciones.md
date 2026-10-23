@@ -175,7 +175,7 @@ La suite vuelve a atacar por capas, y aquí hay una novedad: la prueba de red de
 
 ## 7.9. Decisiones, patrones y técnicas del punto
 
-Detrás de un emoji aparentemente trivial hay siete decisiones que cualquier red social tomaría igual. Éstas son:
+Detrás de un emoji aparentemente trivial hay siete decisiones que cualquier red social tomaría igual. Estas son:
 
 | Patrón o técnica | Dónde vive en AulaChatNet | La lección transferible |
 |------------------|---------------------------|-------------------------|

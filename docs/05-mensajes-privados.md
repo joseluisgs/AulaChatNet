@@ -202,7 +202,7 @@ Los privados son efímeros: no se guardan en el servidor ni salen en el historia
 ```
 
 - **Terminal**: sale en gris con el PRIMER privado de la sesión — el que envíes o el que te llegue, da igual — y no vuelve a aparecer. Se añade a la salida de abajo del lienzo y no al scroll, para no expulsar mensajes
-- **Web**: sale como nota gris bajo el input **mientras la línea va a ser un privado**, incluso antes de que exista el destinatario escrito (que es justo cuando estás decidiendo si mandarlo), y desaparece en cuanto la línea vuelve a ser un mensaje normal. Además, cada fila `🔒` lleva la nota en el `title`, así que es descubrible sin costar una línea más
+- **Web**: sale como nota gris bajo el campo de texto **mientras la línea va a ser un privado**, incluso antes de que exista el destinatario escrito (que es justo cuando estás decidiendo si mandarlo), y desaparece en cuanto la línea vuelve a ser un mensaje normal. Además, cada fila `🔒` lleva la nota en el `title`, así que es descubrible sin costar una línea más
 - **Ayuda**: la fila de `/privado` lo dice a su manera: "Mensaje privado a alguien de tu canal (efímero, no se guarda)"
 
 > 💡 **Consejo:** pregúntate siempre *¿cuándo necesita leer esto alguien por primera vez?* Casi nunca la respuesta es "en cada mensaje". Presenta la información en el momento oportuno y déjala ahí.
@@ -237,11 +237,11 @@ La privacidad es el tipo de requisito que **solo se prueba por el lado de "quié
 
 ## 5.9. Decisiones, patrones y técnicas del punto
 
-Este punto parece de interfaz y es, sobre todo, de diseño de sistema. Éstas son las decisiones que lo sostienen:
+Este punto parece de interfaz y es, sobre todo, de diseño de sistema. Estas son las decisiones que lo sostienen:
 
 | Patrón o técnica | Dónde vive en AulaChatNet | La lección transferible |
 |------------------|---------------------------|-------------------------|
-| Efimeridad deliberada | Los mensajes privados no se persisten jamás | Que algo no se guarde es una decisión de diseño, con su argumento: privacidad y tamaño |
+| Efímeros a propósito | Los mensajes privados no se persisten jamás | Que algo no se guarde es una decisión de diseño, con su argumento: privacidad y tamaño |
 | El canal manda | Solo puedes enviar a alguien de tu propio canal | Autoriza con lo que ya sabes (tu registro) y nunca con parámetros que el cliente pueda falsear |
 | Una sola cronología | `FilaChat` mezcla público y privado ordenado por hora | Los clientes no inventan el orden: un único criterio, decidido en servidor |
 | Eco al emisor | El servidor envía el mismo objeto al destino y a quien lo escribe | Misma identidad y misma hora en las dos pantallas, sin negociar nada |

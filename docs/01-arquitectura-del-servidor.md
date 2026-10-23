@@ -30,7 +30,7 @@
     - [Por qué no se hizo con Rx, si el proyecto ya lo usa](#por-qué-no-se-hizo-con-rx-si-el-proyecto-ya-lo-usa)
 - [4. Los canales como grupos de SignalR](#4-los-canales-como-grupos-de-signalr)
   - [4.1. Un canal, un grupo](#41-un-canal-un-grupo)
-  - [4.2. Configuración sin hardcodeos](#42-configuración-sin-hardcodeos)
+  - [4.2. Configuración sin valores fijos en el código](#42-configuración-sin-valores-fijos-en-el-código)
   - [4.3. Normalización: daw, #daw y #DAW](#43-normalización-daw-daw-y-daw)
 - [5. Logging con Serilog desde appsettings](#5-logging-con-serilog-desde-appsettings)
   - [5.1. Consola para ver, fichero para investigar](#51-consola-para-ver-fichero-para-investigar)
@@ -74,7 +74,7 @@ flowchart TD
         W["AulaChatNet.Client.Wpf<br/>escritorio (WPF + BlazorWebView)"]
     end
 
-    C["AulaChatNet.Client.Blazor.Components<br/>librería RCL: la UI compartida<br/>componentes · stores · servicios · CSS/JS"]
+    C["AulaChatNet.Client.Blazor.Components<br/>librería RCL: la interfaz compartida<br/>componentes · stores · servicios · CSS/JS"]
 
     S["AulaChatNet.Server :5030<br/>ASP.NET Core + SignalR<br/>ChatHub + ChatStore + SQLite"]
 
@@ -141,14 +141,14 @@ Antes de mirar una sola línea del hub, merece la pena contestar la pregunta inc
 La segunda pregunta incómoda: **¿hacían falta tres clientes?** Desde la perspectiva de quien usa el chat, sí: Discord mismo es web, aplicación de escritorio y móvil, y cada superficie tiene su momento. Desde la perspectiva de quien lo construye, hacer tres clientes es la **demostración viviente** de la arquitectura:
 
 - **SignalR es agnóstico por diseño.** El hub no pinta ni una letra: solo entiende `MensajeDto` y eventos. Atender a la vez a una consola, a un navegador y a una ventana de Windows sin saber con quién habla es la prueba de que el contrato de `Shared` es lo valioso, y el pintor es prescindible.
-- **Cada cliente enseña un modelo de interfaz distinto.** Terminal: marcado (markup) y estado inmutable, sin componentes ni CSS. Web: componentes Blazor, store reactiva y CSS propio. Escritorio: ventana nativa con una UI web dentro e integración con el sistema operativo. Un mismo protocolo, tres oficios.
+- **Cada cliente enseña un modelo de interfaz distinto.** Terminal: marcado (markup) y estado inmutable, sin componentes ni CSS. Web: componentes Blazor, store reactiva y CSS propio. Escritorio: ventana nativa con una interfaz web dentro e integración con el sistema operativo. Un mismo protocolo, tres oficios.
 - **Un cuarto cliente no tocaría el servidor.** Una app MAUI (.NET *Multi-platform App UI*, el stack móvil de .NET), por ejemplo, sería una flecha más en el diagrama de la 1.1: mismo hub, mismo `Shared`, misma store si se comparte la librería.
 
 | Cliente | Cuándo brilla | Qué enseña de arquitectura |
 |---------|---------------|-----------------------------|
-| **Terminal** | Consume casi nada, funciona por SSH o en máquinas sin escritorio gráfico, se maneja con teclado | Que la UI no necesita navegador: markup + estado + un bucle de repintado |
+| **Terminal** | Consume casi nada, funciona por SSH o en máquinas sin escritorio gráfico, se maneja con teclado | Que la interfaz no necesita navegador: markup + estado + un bucle de repintado |
 | **Web** | Cero instalación: un enlace basta desde cualquier sistema operativo con navegador | Componentes, stores y el cliente corriendo *dentro* del navegador (WebAssembly) |
-| **Escritorio** | Arranque con doble clic, icono y bandeja del sistema: no se cierra sin querer | Ventana nativa con UI web embebida (Blazor Hybrid) y ficheros propios |
+| **Escritorio** | Arranque con doble clic, icono y bandeja del sistema: no se cierra sin querer | Ventana nativa con interfaz web embebida (Blazor Hybrid) y ficheros propios |
 
 ### 1.1.4. El mapa de la reutilización: qué se comparte y por qué
 
@@ -160,7 +160,7 @@ flowchart TD
         SH["AulaChatNet.Shared<br/>DTOs · constantes del hub · ChatConfig<br/>parser de comandos · operadores Rx · helpers de texto"]
     end
 
-    subgraph CARA["Cara común (una sola UI para los clientes web)"]
+    subgraph CARA["Cara común (una sola interfaz para los clientes web)"]
         RCL["AulaChatNet.Client.Blazor.Components<br/>componentes · stores · servicios · CSS/JS"]
     end
 
@@ -189,7 +189,7 @@ flowchart TD
 | Operadores de Rx (Rx.NET, del inglés *Reactive Extensions*: filtrar, agrupar, formatear) | `Shared` | Terminal y web | La regla de negocio del filtrado, escrita dos veces y desincronizándose |
 | Helpers de texto (`EditadoTexto`, `ReaccionesTexto`) | `Shared` | Terminal y web | "(editado)" y "👍 3 (Ana, Bruno)" dirían cosas distintas según la pantalla |
 | Configuración del chat (`ChatConfig`: canales y límites) | `Shared` | El servidor valida; los clientes pintan y avisan | La regla tendría dos orígenes: el servidor rechazaría lo que la web deja escribir |
-| UI entera (componentes, stores, servicios, CSS) | RCL `Client.Blazor.Components` | Host web y WPF | El escritorio se habría escrito dos veces |
+| Interfaz entera (componentes, stores, servicios, CSS) | RCL `Client.Blazor.Components` | Host web y WPF | El escritorio se habría escrito dos veces |
 | Guardado de sesión | Interfaz `ILocalStorageService` en la RCL | Web (navegador) y WPF (fichero) | Un patrón que no se podría ampliar: el cuarto cliente reinventaría el suyo |
 
 > 💡 **Consejo:** la reutilización no acaba en el código. `Directory.Packages.props` fija la versión de cada paquete NuGet para **toda** la solución (Central Package Management) y `Directory.Build.props` aplica las mismas reglas de compilación (`LangVersion`, `Nullable`, `TreatWarningsAsErrors`) a los seis proyectos. Cambias una versión en un solo sitio y la solución entera se alinea: gobernar varios proyectos no es varias veces más difícil si todos comparten cimientos.
@@ -718,7 +718,7 @@ flowchart TD
 
 La belleza de esto es que **no hay que inventar la lógica de reenvío**: SignalR ya sabe a quién está enviando dentro del grupo, y quien se desconecta sale del grupo automáticamente.
 
-## 4.2. Configuración sin hardcodeos
+## 4.2. Configuración sin valores fijos en el código
 
 Los canales NO están escritos en el código: viven en `appsettings.json`, en la sección `Chat`:
 
@@ -832,12 +832,12 @@ public List<string> Canales { get; set; } = [];
 
 # 7. Decisiones, patrones y técnicas del punto
 
-El servidor es la pieza que sostiene todo lo demás, y sus decisiones no son caprichosas: éstas son las que volverás a ver en cualquier backend en tiempo real.
+El servidor es la pieza que sostiene todo lo demás, y sus decisiones no son caprichosas: estas son las que volverás a ver en cualquier backend en tiempo real.
 
 | Patrón o técnica | Dónde vive en AulaChatNet | La lección transferible |
 |------------------|---------------------------|-------------------------|
 | Arquitectura por capas | `ChatHub` (protocolo), `ChatStore` (lógica y estado), `MensajeRepository` (disco) | El hub coordina, no guarda ni calcula: cada capa se prueba y se sustituye sola |
-| Servidor agnóstico | Solo expone `/hubs/chat` y `GET /estadisticas`; ni `wwwroot` ni referencias a clientes | Si el servidor conoce a sus clientes, el contrato deja de mandar: él es el centro, no la UI |
+| Servidor agnóstico | Solo expone `/hubs/chat` y `GET /estadisticas`; ni `wwwroot` ni referencias a clientes | Si el servidor conoce a sus clientes, el contrato deja de mandar: él es el centro, no la interfaz |
 | Estado concurrente sin bloqueos | `ConcurrentDictionary` con `TryAdd`/`TryUpdate` atómicos | La unicidad se garantiza con operaciones atómicas, no con cerrojos globales que paralizan a todos |
 | Cola circular con techo | Historial limitado por `HistorialMaximo` | La memoria es un caché: si no le pones límite, el proceso no vive para siempre |
 | Productor/consumidor con `Channel` | `AddMensaje` encola; un `BackgroundService` escribe | El hilo que atiende usuarios nunca espera a E/S: el trabajo lento va a un hilo que no le quite tiempo a nadie |

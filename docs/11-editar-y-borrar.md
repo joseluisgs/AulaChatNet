@@ -1,6 +1,6 @@
 - [11. Editar y borrar mensajes](#11-editar-y-borrar-mensajes)
   - [11.1. Qué se puede tocar, desde dónde y sobre qué](#111-qué-se-puede-tocar-desde-dónde-y-sobre-qué)
-  - [11.2. La identidad de un mensaje: Id y Timestamp](#112-la-identidad-de-un-mensaje-id-y-timestamp)
+  - [11.2. La identidad de un mensaje: Id y hora](#112-la-identidad-de-un-mensaje-id-y-hora)
   - [11.3. La invocación: dos métodos con retorno](#113-la-invocación-dos-métodos-con-retorno)
   - [11.4. Las reglas que el servidor comprueba una a una](#114-las-reglas-que-el-servidor-comprueba-una-a-una)
   - [11.5. La cola de escritura y el bloqueo del historial](#115-la-cola-de-escritura-y-el-bloqueo-del-historial)
@@ -47,14 +47,14 @@ Solo se pueden tocar mensajes:
 
 > 📝 **Nota:** en la terminal, si no has escrito nada en el canal (o solo tocaste los de antes de conectarte), el comando te lo dice con un mensaje claro: "No tienes mensajes recientes en este canal".
 
-## 11.2. La identidad de un mensaje: Id y Timestamp
+## 11.2. La identidad de un mensaje: Id y hora
 
 Un mensaje editado **no es un mensaje nuevo**. Sigue siendo el mismo con la misma identidad, solo que con el texto cambiado y con `Editado = true`. Para que eso funcione, cada `MensajeDto` lleva dos marcas de identidad:
 
 - **`Id` (GUID)**: identificador único e inmutable del mensaje. Es el "DNI" que usan hub, store y clientes para decir "ese de ahí".
 - **`Timestamp`**: instante en que se publicó. **NO cambia al editar**: el mensaje editado conserva su hora de publicación original, igual que en Discord.
 
-Esa combinación permite reconciliar sin ambigüedad: si llega un `MensajeEditado` con un Id que ya tienes, **sustituyes** el mensaje y dejas la lista tal cual (misma posición, mismo timestamp); si no lo tienes (estabas desconectado o ese mensaje está fuera de la ventana), **lo insertas** y dejas que el marcado de la lista decida dónde queda.
+Esa combinación permite reconciliar sin ambigüedad: si llega un `MensajeEditado` con un Id que ya tienes, **sustituyes** el mensaje y dejas la lista tal cual (misma posición, misma hora); si no lo tienes (estabas desconectado o ese mensaje está fuera de la ventana), **lo insertas** y dejas que el marcado de la lista decida dónde queda.
 
 Además el `MensajeDto` gana un flag **`Editado`**, que es el que los clientes traducen en el marcador visual "(editado)".
 
@@ -90,7 +90,7 @@ sequenceDiagram
     alt Todo correcto
         H->>S: EditarMensajeAsync(id, texto, nick)
         S->>S: Sustituye el texto bajo el candado y recalcula el bloqueo
-        S-->>H: MensajeDto con Id y Timestamp originales
+        S-->>H: MensajeDto con Id y hora originales
         H-->>C: null (éxito)
         H->>G: MensajeEditado con el MensajeDto completo
         G-->>U: Todos repintan y muestran la marca (editado)
@@ -151,7 +151,7 @@ La solución combina dos mecanismos en el `ChatStore` del servidor:
 | Mecanismo | Para qué |
 |-----------|----------|
 | **Cola bajo candado** | Las mutaciones (editar, borrar, encolar) se ejecutan **bajo el mismo `SemaphoreSlim`** que el escritor de fondo: cada operación se serializa, y al terminar se vacía la cola pendiente para que ninguna escritura diferida se quede huérfana. |
-| **Ventana de bloqueo** | El store recuerda `BloqueoHistorial` (offset y timestamp del primer mensaje del último tramo servido). Bajo el candado se recalcula: si el borrado afecta a la ventana, se re-bloquea en el primer mensaje vivo restante; si no queda ninguno, se vacía el bloqueo y el `cacheOffset`. Y lo más importante: **al borrar se decrementa `cacheOffset`**, porque el total baja y la siguiente página 2 pediría un desplazamiento obsoleto. |
+| **Ventana de bloqueo** | El store recuerda `BloqueoHistorial` (offset y hora del primer mensaje del último tramo servido). Bajo el candado se recalcula: si el borrado afecta a la ventana, se re-bloquea en el primer mensaje vivo restante; si no queda ninguno, se vacía el bloqueo y el `cacheOffset`. Y lo más importante: **al borrar se decrementa `cacheOffset`**, porque el total baja y la siguiente página 2 pediría un desplazamiento obsoleto. |
 
 > ⚠️ **Advertencia:** sin el bloqueo, el paginado del historial y las mutaciones de este punto se pisan: el bloqueo es el contrato que dice "a partir de aquí, todo cambio invalida lo que el historial cacheado daba por hecho". En un proyecto con más tiempo se usaría un `Channel<T>` como cola de escritura (la opción ya comentada para el escritor de fondo); el `SemaphoreSlim` con espera activa mantiene el código didáctico con la misma semántica de serialización.
 
@@ -168,9 +168,9 @@ Y como el marcado es el que manda, el "(editado)" aparece solo: `LineaMensajeMar
 
 ### Web: la lista reactiva
 
-La web sí tiene modelo en memoria (`ChatStoreBlazor.Mensajes`), así que los handlers hacen lo mismo pero sobre `List<MensajeDto>`: sustituir (conservando el timestamp original) o quitar. Y un detalle importante: **si el mensaje borrado tenía chips de reacción en la ventana visible, se poda su entrada del mapa** para que la fila no deje colgando una sección vacía.
+La web sí tiene modelo en memoria (`ChatStoreBlazor.Mensajes`), así que los handlers hacen lo mismo pero sobre `List<MensajeDto>`: sustituir (conservando la hora original) o quitar. Y un detalle importante: **si el mensaje borrado tenía chips de reacción en la ventana visible, se poda su entrada del mapa** para que la fila no deje colgando una sección vacía.
 
-Cada cambio notifica a los suscriptores → el marcado se recalcula → el mensaje muestra "(editado)" o desaparece. **Los dos clientes terminales (Spectre y Blazor) implementan el mismo contrato de eventos**: `MensajeEditado`, `MensajeBorrado`, y ya está. Cambios que se reordenan: la 4.1 (reordenar por actividad) no se ve afectada; el mensaje editado **conserva su posición original**, porque no cambia su timestamp.
+Cada cambio notifica a los suscriptores → el marcado se recalcula → el mensaje muestra "(editado)" o desaparece. **Los dos clientes terminales (Spectre y Blazor) implementan el mismo contrato de eventos**: `MensajeEditado`, `MensajeBorrado`, y ya está. Cambios que se reordenan: la 4.1 (reordenar por actividad) no se ve afectada; el mensaje editado **conserva su posición original**, porque no cambia su hora.
 
 ## 11.7. Editor inline en la web y confirmación en la terminal
 
@@ -184,7 +184,7 @@ En la web, pulsar ✏️ reemplaza el contenido del mensaje por un `<input>` de 
 
 En la terminal no hay editor: `/editar <texto>` va directo al hub. Y la diferencia de UX entre superficies se decide **en el cliente**:
 
-- La **web pide confirmación en la propia fila**: al pulsar 🗑️, los botones ✏️/🗑️ se apartan y asoman **¿Borrar? ✔** y **✕**, con el ✔ en verde y el rojo reservado para el hover de 🗑️. Es el mismo patrón que Discord, y sin diálogos del navegador: un `confirm()` rompe el ritmo, no se puede estilizar y se cierra con cualquier tecla.
+- La **web pide confirmación en la propia fila**: al pulsar 🗑️, los botones ✏️/🗑️ se apartan y asoman **¿Borrar? ✔** y **✕**, con el ✔ en verde y el rojo reservado para cuando pasas el ratón por 🗑️. Es el mismo patrón que Discord, y sin diálogos del navegador: un `confirm()` rompe el ritmo, no se puede estilizar y se cierra con cualquier tecla.
 - La **terminal no pide nada**: escribe `/borrar` y se borró. En teclado, una confirmación obliga a un pulso extra en cada uso (mismo criterio que Discord con el borrado rápido).
 
 > 💡 **Consejo:** la confirmación no es más que un `bool` del componente (`_confirmandoBorrar`) que cambia qué botones pinta la fila. Cero JavaScript, cero `IJSRuntime`: los tests de bUnit simplemente pulsan 🗑️ y luego ✔ o ✕, y verifican si el store fue llamado o no.
@@ -207,9 +207,9 @@ Editar y borrar se prueban en los mismos anillos que el resto del chat —parser
 |------|---------------|
 | `ParserComandosTests` (Shared) | `"/editar hola"` → `Editar` con argumento; `"/e"`, `"/edit"`, `"/borrar"`, `"/del"` → atajos; sin argumento → error; `/borrar x` → error (no admite argumentos) |
 | `EditadoTextoTests` (Shared) | La marca es exactamente `(editado)` y `Descripcion` la anteponga o no según el flag |
-| `ChatStoreTests` (Servidor) | **11 tests**: editar con Id correcto, nick correcto y texto válido → `Editado=true` y `Texto` nuevo con el **mismo Id y Timestamp**; texto vacío o solo espacios → `null`; texto largo → `null`; mensaje ajeno o de sistema → `null` (sin tocar nada); GUID inexistente → `null`; borrar → desaparece del canal; **ya no se puede editar ni borrar lo borrado**; se recalcula el bloqueo del historial |
+| `ChatStoreTests` (Servidor) | **11 tests**: editar con Id correcto, nick correcto y texto válido → `Editado=true` y `Texto` nuevo con el **mismo Id y hora**; texto vacío o solo espacios → `null`; texto largo → `null`; mensaje ajeno o de sistema → `null` (sin tocar nada); GUID inexistente → `null`; borrar → desaparece del canal; **ya no se puede editar ni borrar lo borrado**; se recalcula el bloqueo del historial |
 | `ChatHubTests` (Servidor) | La misma matriz **en el hub**: éxito → evento `MensajeEditado`/`MensajeBorrado` al grupo y retorno `null`; cada error → el mensaje de error **en español literal**; nick con mayúsculas distintas → funciona (normalización) |
-| `EditarBorrarEndToEndTests` (Servidor, E2E) | Con **Kestrel y SQLite reales**: editar conserva Id y Timestamp y **persiste**; borrar es **definitivo** (desaparece de la fila de la base de datos); mensaje ajeno → error en español; el evento llega a un segundo cliente y **no genera re-aviso de mención** |
+| `EditarBorrarEndToEndTests` (Servidor, E2E) | Con **Kestrel y SQLite reales**: editar conserva Id y hora y **persiste**; borrar es **definitivo** (desaparece de la fila de la base de datos); mensaje ajeno → error en español; el evento llega a un segundo cliente y **no genera re-aviso de mención** |
 | `VistaChatTests` (Terminal) | El marcado añade la marca a los mensajes con `Editado=true` y **no la añade** a los demás |
 | `ClienteChatEditadoBorradoTests` (Terminal) | Con un **hub de pruebas que acepta y difunde** los eventos del contrato real: `MensajeEditado` sustituye el texto conservando Id y hora; un Id que no está en la vista no toca nada; `MensajeBorrado` quita el mensaje **y sus chips**; `EditarAsync`/`BorrarAsync` devuelven `null` al aceptar el servidor, **el texto del error en español** al rechazarlo y un fallo de red sin servidor |
 | `ProcesadorComandosTests` (Web) | `/editar` y `/borrar` con y sin mensajes propios; mensaje ajeno y de sistema → no se invoca el hub; texto vacío → no se invoca |
@@ -217,7 +217,7 @@ Editar y borrar se prueban en los mismos anillos que el resto del chat —parser
 
 ## 11.10. Decisiones, patrones y técnicas del punto
 
-Editar y borrar son las operaciones con más riesgo de un chat —tocan lo que otros ya vieron—, y por eso dejan las lecciones más útiles. Éstas son:
+Editar y borrar son las operaciones con más riesgo de un chat —tocan lo que otros ya vieron—, y por eso dejan las lecciones más útiles. Estas son:
 
 | Patrón o técnica | Dónde vive en AulaChatNet | La lección transferible |
 |------------------|---------------------------|-------------------------|
@@ -225,7 +225,7 @@ Editar y borrar son las operaciones con más riesgo de un chat —tocan lo que o
 | Identidad inmutable | El `Id` y la hora originales se conservan al editar | Editar no crea un registro nuevo: conserva identidad y posición, como en Discord |
 | Autorización por nick normalizado | Se compara el nick de la conexión con `OrdinalIgnoreCase` | Autoriza contra la identidad registrada en la conexión, no contra parámetros |
 | Cola bajo candado | Las mutaciones, con el mismo `SemaphoreSlim` del escritor de fondo | Serializa lo que comparte recursos: el candado es el contrato de escritura |
-| Ventana de bloqueo | `BloqueoHistorial` (offset + timestamp) recalculado al borrar | Lo cacheado daba por hecho una ventana: los cambios la invalidan y se recalcula |
+| Ventana de bloqueo | `BloqueoHistorial` (offset + hora) recalculado al borrar | Lo cacheado daba por hecho una ventana: los cambios la invalidan y se recalcula |
 | Reconciliación por Id | Sustituir el mensaje si existe; insertarlo si no | Tolerancia a la desincronización: el cliente repara su estado sin recargar |
 | Confirmación sin diálogos | ✔/✕ en la propia fila (web); borrado directo (terminal) | Confirma en la interfaz y solo si es irreversible; una ventana emergente rompe el ritmo |
 
@@ -240,7 +240,7 @@ Editar y borrar son las operaciones con más riesgo de un chat —tocan lo que o
 | Identidad del mensaje | `Id` inmutable + `Timestamp` original; editar no crea uno nuevo | El mensaje editado conserva su posición y hora |
 | Propiedad | Solo tus mensajes (Nick normalizado), solo tipo Normal, solo tu canal | El hub valida con el nick de la conexión |
 | Cola de escritura | Las mutaciones se serializan con el escritor de fondo | `SemaphoreSlim` + vaciado de cola pendiente |
-| Bloqueo del historial | Cambios en la ventana servida invalidan el cacheado | `BloqueoHistorial` (offset + timestamp) |
+| Bloqueo del historial | Cambios en la ventana servida invalidan el cacheado | `BloqueoHistorial` (offset + hora) |
 | Reconciliación | Sustituir o quitar por Id; los marcados recalculan solos | Almacén en terminal, lista en Blazor |
 | UX de borrado | Confirmación en la propia interfaz, sin diálogos del navegador | ✔/✕ en la fila de la web, borrado directo en terminal |
 

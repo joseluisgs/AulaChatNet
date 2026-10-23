@@ -162,7 +162,7 @@ flowchart TD
     D --> B
     B --> T["EscribiendoTexto:<br/>la frase compartida"]
     T --> P["Terminal: fila gris<br/>abajo del todo"]
-    T --> W["Web: línea gris<br/>sobre el input"]
+    T --> W["Web: línea gris<br/>sobre el campo de texto"]
 
     style E fill:#2196F3,color:#fff
     style M fill:#2196F3,color:#fff
@@ -216,7 +216,7 @@ Si la frase se montara en cada cliente, la terminal y la web podrían divergir �
 
 **Terminal** (`VistaChat.LineaEscribiendoMarkup`): gris, sin adornos y con `Markup.Escape` sobre la frase — un nombre con corchetes, tratado por Spectre como formato, teñiría la línea de un color que nadie eligió. Es la **última fila de la zona de mensajes**, justo encima del pie, y solo se añade si hay alguien (una fila vacía en balde empujaría mensajes fuera de la pantalla). El repintado lee `cliente.VistaEscribiendo` en el bucle de refresco. Y en **modo tubería esa zona ni se construye**: esa entrada no tiene teclas que detectar, así que tampoco se señala.
 
-**Web** (`CajaMensaje`): la componente se suscribe a `Store.Escribiendo` —junto a sus otras dos suscripciones, las tres se liberan en `Dispose`— y pinta la línea `.caja-escribiendo` dentro de la caja, **encima del input**, en gris y cursiva para que se lea como un estado y no como un mensaje. Desaparece sola cuando la store vacía la lista.
+**Web** (`CajaMensaje`): la componente se suscribe a `Store.Escribiendo` —junto a sus otras dos suscripciones, las tres se liberan en `Dispose`— y pinta la línea `.caja-escribiendo` dentro de la caja, **encima del campo de texto**, en gris y cursiva para que se lea como un estado y no como un mensaje. Desaparece sola cuando la store vacía la lista.
 
 📌 **Ejemplo real:** Discord y Slack ponen la línea justo sobre la caja de entrada, nunca en la lista de conectados ni en la cabecera: es información del "ahora mismo", y lo que es del ahora no se acumula en un sitio fijo. Además, solo se ve mientras dura, así que no hay nada que cerrar ni ninguna X que pulsar.
 
@@ -238,7 +238,7 @@ Lo interesante de esta funcionalidad es que se parte por la mitad: el TIEMPO en 
 
 ## 6.9. Decisiones, patrones y técnicas del punto
 
-Más allá de la señal concreta, este punto deja una caja de herramientas reactiva completa. Éstas son sus piezas:
+Más allá de la señal concreta, este punto deja una caja de herramientas reactiva completa. Estas son sus piezas:
 
 | Patrón o técnica | Dónde vive en AulaChatNet | La lección transferible |
 |------------------|---------------------------|-------------------------|
