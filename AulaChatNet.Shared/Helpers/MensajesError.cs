@@ -7,7 +7,7 @@ namespace AulaChatNet.Shared.Helpers;
 /// Traduce excepciones técnicas a mensajes que ENTienda quien usa el chat.
 ///
 /// <remarks>
-/// Regla de la casa: en pantalla <b>nunca</b> aparece el tipo de una
+/// Convención del proyecto: en pantalla <b>nunca</b> aparece el tipo de una
 /// excepción — "HttpRequestException" no le dice nada a quien solo quiere
 /// entrar al aula. El tipo es un detalle para nosotras: aquí se traduce a
 /// dos preguntas que sí se entienden, <c>¿qué pasa?</c> y <c>qué puedo

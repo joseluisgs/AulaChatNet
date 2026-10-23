@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Misma plataforma que el proyecto que prueba: un proyecto net10.0-windows
+         NO puede referenciar otro con versión de plataforma mayor -->
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <RootNamespace>AulaChatNet.Client.Wpf.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Using Include="NUnit.Framework" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="Moq" />
+    <PackageReference Include="NUnit" />
+    <PackageReference Include="NUnit.Analyzers" />
+    <PackageReference Include="NUnit3TestAdapter" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Se prueba la configuración y el registro de servicios del host WPF
+         (la UI vive en Client.Web y se prueba allí con bUnit) -->
+    <ProjectReference Include="..\AulaChatNet.Client.Wpf\AulaChatNet.Client.Wpf.csproj" />
+  </ItemGroup>
+
+</Project>

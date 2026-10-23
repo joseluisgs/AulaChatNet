@@ -9,7 +9,7 @@
   - [2.8. La capa reactiva con Rx](#28-la-capa-reactiva-con-rx)
   - [2.9. La configuración del terminal](#29-la-configuración-del-terminal)
   - [2.10. Cómo se prueba sin abrir una terminal](#210-cómo-se-prueba-sin-abrir-una-terminal)
-  - [2.11. Resumen del punto](#211-resumen-del-punto)
+  - [2.11. Decisiones, patrones y técnicas del punto](#211-decisiones-patrones-y-técnicas-del-punto)
 
 
 
@@ -23,11 +23,13 @@ Este punto tiene dos mitades: primero un **manual de uso** —recorrido pantalla
 
 - Usar el cliente como si fuera Discord: arranque guiado, vista en vivo, comandos y sesión recordada
 - Entender la vista en vivo (`AnsiConsole.Live` + `Layout`) y por qué la línea de estado ya no se reimprime
-- Ver la capa reactiva: stores con `BehaviorSubject` y una UI que solo **pinta el estado actual**
+- Ver la capa reactiva: stores con `BehaviorSubject` y una interfaz que solo **pinta el estado actual**
 - Conocer el parser de comandos como lógica pura y por qué eso se testea sin consola
 - Distinguir los dos modos de entrada (consola real y tubería)
 
 ## 2.1. Qué hay dentro del proyecto
+
+¿Y una app de consola en pleno siglo XXI? Trazamos razones prácticas: **consume casi nada** (abre al instante y cabe en cualquier máquina), **llega donde no hay escritorio** (un servidor con SSH, una sala de máquinas, el modo recuperación de Windows) y **obliga a diseñar interfaz con lo que hay**: sin ratón, sin CSS ni componentes, solo texto, color y un buen manejo del estado. Ese último punto es el que convierte este cliente en un ejercicio de arquitectura, no en un `Console.WriteLine` con intención.
 
 El cliente es una aplicación de consola normal (no usa `WebApplication` ni hosts): todo empieza y termina en `Program.cs`, y la lógica está partida en carpetas por responsabilidad:
 
@@ -152,8 +154,8 @@ Orden de lo que acaba de pasar (los colores —paleta Discord— no se ven en te
 
 1. **Banner + tabla de `/ayuda`**: nada más arrancar ya sabes qué puedes escribir.
 2. **📌 Conteo de conectados**: sale de `GET /estadisticas` **antes** de registrarse.
-3. **Bienvenida** con su mensaje según el caso (aqui, sesión del día anterior).
-4. **Prompts guiados**: nick y canal con sus defaults entre paréntesis, y la lista de canales con `←` marcando cuál se repite con Enter.
+3. **Bienvenida** con su mensaje según el caso (aquí, sesión del día anterior).
+4. **Prompts guiados**: nick y canal con sus valores por defecto entre paréntesis, y la lista de canales con `←` marcando el canal que Enter elige por defecto.
 5. **Confirmación** ("Entrarás como...") antes de tocar el servidor.
 6. **Conexión**: spinner mientras, y línea de éxito con los contadores + la línea de estado.
 
@@ -241,9 +243,11 @@ Una consola clásica "solo imprime": cada línea de estado nueva va subiendo por
 
 > ⚠️ **Advertencia:** debajo se usa `Console.ReadKey`, el mismo que usan los prompts de Spectre, así que las teclas muertas y los acentos se comportan igual que en el resto del programa. Y un detalle que costó un lunes: **cada etiqueta de markup debe estar cerrada y sin `]` sueltos** — un `[bold]#5865f2]` con un corchete de más hacía estallar el primer repintado con `Encountered unescaped ']' token`.
 
-📌 **Ejemplo real:** las aplicaciones TUI tipo `htop` o `btop`: el encabezado y la barra inferior no dejan de estar ahí mientras la lista del medio se actualiza. `AnsiConsole.Live` es la forma de Spectre de hacer eso sin salir de la consola.
+📌 **Ejemplo real:** las aplicaciones TUI (interfaz de usuario de terminal, del inglés *terminal user interface*) tipo `htop` o `btop`: el encabezado y la barra inferior no dejan de estar ahí mientras la lista del medio se actualiza. `AnsiConsole.Live` es la forma de Spectre de hacer eso sin salir de la consola.
 
 ## 2.4. Los comandos, con sus salidas
+
+El terminal entiende dos cosas: lo que empieza por `/` (comandos) y lo que no (mensajes del canal). Esta es la lista completa que reconoce el parser de `Shared`, con sus alias:
 
 | Comando | Alias | Qué hace |
 |---------|-------|----------|
@@ -363,7 +367,7 @@ Bórrala con /sesion borrar (útil si compartes el equipo).
 🗑️ Sesión borrada: la próxima vez se preguntará de cero (y esta vez no se guardará nada al salir).
 ```
 
-En aulas compartidas es la forma de no heredar el nick del compañero de la turno anterior.
+En aulas compartidas es la forma de no heredar el nick del compañero del turno anterior.
 
 > 📝 **Nota:** los tests de `SesionStoreTests` usan una carpeta temporal por test, así que el fichero real del equipo nunca se toca.
 
@@ -392,7 +396,7 @@ Ese pintado incremental es reactivo a su vez: Rx entrega la **vista completa** d
 
 ## 2.8. La capa reactiva con Rx
 
-`ClienteChat` no tiene eventos de UI ni delegados: mantiene el estado en **stores con `BehaviorSubject`** y lo expone como `IObservable<T>`. Cualquier parte que quiera "saber algo" se suscribe y pinta; nadie más entera:
+Rx.NET (del inglés *Reactive Extensions*, extensiones reactivas) es la librería .NET de flujos de datos: lo que emite un `IObservable<T>` se recibe, se filtra y se combina como una lista, pero en asíncrono. Sobre esa base, `ClienteChat` no tiene eventos de interfaz ni delegados: mantiene el estado en **stores con `BehaviorSubject`** y lo expone como `IObservable<T>`. Cualquier parte que quiera "saber algo" se suscribe y pinta; nadie más se entera:
 
 | Store | Tipo | De dónde viene |
 |-------|------|----------------|
@@ -427,6 +431,8 @@ Hay dos caminos sobre el MISMO dato, y conviene no confundirlos: los **operadore
 
 ## 2.9. La configuración del terminal
 
+La configuración del terminal cabe en dos claves, y ninguna escribe una URL ni un límite en el código. Así se ve su sección en el `appsettings.json`:
+
 ```json
 "Terminal": {
   "RecordarSesion": true,
@@ -435,9 +441,11 @@ Hay dos caminos sobre el MISMO dato, y conviene no confundirlos: los **operadore
 ```
 
 - **`UrlServidor`** es la base: la URL completa del hub es `UrlServidor` + `Chat:HubRuta`, y el `GET /estadisticas` se pide sobre la misma base. Nada de URLs escritas en el código.
-- La sección **`Chat`** del terminal es la MISMA que la del servidor (canales, límites de usuario y mensaje): una regla, dos orígenes. Los canales se usan para pintar el selector y la línea de estado; los límites, para el `maxlength` del input y los avisos. **La validación real la hace el servidor.**
+- La sección **`Chat`** del terminal es la MISMA que la del servidor (canales, límites de usuario y mensaje): una regla, dos orígenes. Los canales se usan para pintar el selector y la línea de estado; los límites, para el `maxlength` del campo de texto y los avisos. **La validación real la hace el servidor.**
 
 ## 2.10. Cómo se prueba sin abrir una terminal
+
+Parece difícil de probar una app de consola, y no lo es: casi todo lo del terminal es lógica pura —parser, sesiones, marcado, editor de línea— que se ejecuta y se comprueba sin pantalla. Las suites, una por pieza:
 
 | Suite | Qué cubre |
 |-------|-----------|
@@ -452,23 +460,42 @@ Hay dos caminos sobre el MISMO dato, y conviene no confundirlos: los **operadore
 
 > 💡 **Consejo:** el truco de `ServidorDePrueba` merece atención: no vale el *TestServer* de ASP.NET (su transporte es en memoria y un cliente SignalR necesita HTTP de verdad), así que se levanta **Kestrel real en un puerto 0** (el sistema elija uno libre) con un hub de dos líneas. Es la forma barata de probar el rechazo del servidor sin arrancar AulaChatNet.Server.
 
-Además, el **smoke E2E** arranca el servidor real y el terminal con `stdin`/`stdout` acoplados a ficheros, y comprueba por marcadores de texto que salen la bienvenida, la cuenta de conectados, el prompt guiado, el mensaje ecoado y la salida ordenada. Ese es precisamente el valor del **dual-mode**: la misma app, probada sin consola — y la misma técnica con la que se recabaron las capturas de este manual.
+Además, el **smoke E2E** (prueba de humo de extremo a extremo, del inglés *end-to-end*) arranca el servidor real y el terminal con `stdin`/`stdout` acoplados a ficheros, y comprueba por marcadores de texto que salen la bienvenida, la cuenta de conectados, el prompt guiado, el mensaje ecoado y la salida ordenada. Ese es precisamente el valor del **dual-mode**: la misma app, probada sin consola — y la misma técnica con la que se recabaron las capturas de este manual.
 
-## 2.11. Resumen del punto
+> 📝 **Nota (evolución):** el terminal **no se tocó** para la persistencia, y esa es precisamente la conclusión que conviene retener. Sigue recibiendo `MensajeNuevo` y pidiendo el historial exactamente igual que en la versión inicial; lo único que cambió es que el historial que llega al conectar procede ahora de SQLite en lugar de morirse con el servidor. El contrato compartido resistió completo. La parte que sí cambió vive en el servidor: [4. La persistencia con SQLite](04-persistencia.md).
+
+## 2.11. Decisiones, patrones y técnicas del punto
+
+El cliente que parece más sencillo es, paradójicamente, el que más decisiones de interfaz obliga a tomar. Estas son las que aporta este punto:
+
+| Patrón o técnica | Dónde vive en AulaChatNet | La lección transferible |
+|------------------|---------------------------|-------------------------|
+| Vista en vivo con repintado controlado | `AnsiConsole.Live` + `Layout` con cabecera, lista y estado fijos | En terminal el repintado es caro: redibuja lo que cambia y no reimprimas la pantalla entera |
+| Estado inmutable + pintado | El bucle pinta el estado actual cada 50 ms, sin procesar eventos | "La interfaz solo pinta estado": la misma regla de Redux o Pinia aplicada a una consola |
+| Parser como lógica pura | `ParserComandos`, `Comando` y `AyudaComandos` viven en `Shared` | Si la lógica no toca la consola ni la red, se prueba sin abrir una terminal |
+| Stores reactivas | `IObservable<T>` con `BehaviorSubject` para mensajes, usuarios, estadísticas y conexión | Un único flujo de estado para todo lo que se pinta; suscribirse, no consultar a menudo |
+| Reconexión sin dramas | `Reconnecting`/`Reconnected`/`Closed` + re-alta con `ConnectAsync` | El servidor no recuerda conexiones: el cliente es el responsable de re-presentarse |
+| Estado personal fuera del repositorio | La sesión vive en el perfil del usuario, no en `appsettings.json` | Configuración del equipo en el repo; estado de la persona, en su casa |
+| Entrada dual (consola y tubería) | Modo tubería para pruebas, capturas y smoke E2E | Diseña la entrada abstraída y podrás probar la app entera sin consola |
+| Logging a fichero únicamente | Serilog con sink de fichero en `Configuracion/` | Cada host loguea en su medio: aquí un sink de consola destruiría el lienzo |
+
+---
+
+**Resumen del punto:**
 
 | Concepto | Qué retener |
 |----------|-------------|
-| Arranque guiado | Banner → `GET /estadisticas` → bienvenida por casos → prompts con default → confirmación → conexión |
+| Arranque guiado | Banner → `GET /estadisticas` → bienvenida por casos → prompts por defecto → confirmación → conexión |
 | Vista en vivo | `AnsiConsole.Live` + `Layout` de 3 zonas; la cabecera y el pie se repintan en sitio, no se reimprimen |
 | Línea de entrada | `EditorLinea` (clase pura): texto + cursor, con el cursor resaltado en lugar de moverlo |
 | Reconexión | Al volver, se re-invoca `ConnectAsync` (el alta no viaja sola); si se agota, `R` o `/reconectar` sin reiniciar |
 | Horas | El servidor guarda en UTC y la terminal convierte a hora local SOLO al pintar (también en mensajes de sistema) |
-| Comandos | 11 comandos (los 9 de Fase 1 más `/privado` y `/reaccion` de la Fase 3), parser puro con `record` + pattern matching; procesamiento compartido entre modos |
+| Comandos | 11 comandos (los 9 iniciales más `/privado` y `/reaccion`, incorporados después), parser puro con `record` + pattern matching; procesamiento compartido entre modos |
 | Sesión | `%APPDATA%\AulaChatNet\sesion.json`; ver con `/sesion`, borrar con `/sesion borrar` |
 | Modos de entrada | Consola real → Live + `ReadKey`; tubería → `ReadLine` + pintado incremental (pruebas y capturas) |
 | Rx | Stores con `BehaviorSubject`; el bucle **solo pinta el estado actual** cada 50 ms |
 | Configuración | `Terminal:UrlServidor` + sección `Chat` compartida; la validación real, en el servidor |
 
-> 📝 **Nota (evolución de la Fase 2):** el terminal **no se tocó** para la persistencia, y esa es precisamente la conclusión que conviene retener. Sigue recibiendo `MensajeNuevo` y pidiendo el historial exactamente igual que en la Fase 1; lo único que cambió es que el historial que llega al conectar procede ahora de SQLite en lugar de morirse con el servidor. El contrato compartido resistió completo. La parte que sí cambió vive en el servidor: [4. La persistencia con SQLite](04-persistencia.md).
-
 Con el terminal listo, el siguiente cliente es la web: [Blazor WebAssembly con la estética de Discord y su store central](03-cliente-blazor.md), con la misma capa reactiva sobre el mismo hub.
+
+**Anterior:** [1. La arquitectura del servidor](01-arquitectura-del-servidor.md) · **Índice:** [README](../README.md)

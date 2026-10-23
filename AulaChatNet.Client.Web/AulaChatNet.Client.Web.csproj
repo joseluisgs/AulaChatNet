@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>AulaChatNet.Client.Web</RootNamespace>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- Sin NoWarn de CS1591: todo el API público está documentado, así que
+         con TreatWarningsAsErrors la compilación FALLA si aparece documentación
+         XML pendiente (la convención del proyecto se autocumple, no se silencia). -->
+  </PropertyGroup>
+
+  <!--
+    Este proyecto es solo el HOST de WebAssembly (Fase 5.1): la UI (componentes),
+    las stores y el procesador de comandos viven en la librería compartida
+    AulaChatNet.Client.Blazor.Components, que la web consume aquí y la app de escritorio
+    (WPF con BlazorWebView) consumirá allí. Aquí solo quedan el arranque, la
+    configuración y los recursos del navegador.
+  -->
+
+  <ItemGroup>
+    <!-- Host WASM + su DevServer; SignalR y Rx llegan vía la librería web -->
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" PrivateAssets="all" />
+
+    <!-- Configuración: lee wwwroot/appsettings.json (sección Chat, Web) -->
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" />
+
+    <!-- Logging: Serilog a la consola del navegador (BrowserConsole, vía JS;
+         el sink de consola normal no sirve en WASM) -->
+    <PackageReference Include="Serilog" />
+    <PackageReference Include="Serilog.Sinks.BrowserConsole" />
+    <PackageReference Include="Serilog.Extensions.Logging" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AulaChatNet.Client.Blazor.Components\AulaChatNet.Client.Blazor.Components.csproj" />
+    <ProjectReference Include="..\AulaChatNet.Shared\AulaChatNet.Shared.csproj" />
+  </ItemGroup>
+
+  <!--
+    Favicon: wwwroot/favicon.ico (copia del maestro resources/icon-app.ico).
+    No hay que declarar nada: el propio SDK mete todo wwwroot\** como static
+    web asset en tiempo de evaluación, así que se sirve en /favicon.ico y sale
+    en la publicación sin MSBuild a medida.
+  -->
+
+</Project>

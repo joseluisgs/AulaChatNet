@@ -1,6 +1,9 @@
 - [1. La arquitectura del servidor](#1-la-arquitectura-del-servidor)
   - [1.1. Los proyectos y su misión](#11-los-proyectos-y-su-misión)
     - [1.1.1. El servidor es agnóstico: qué expone y qué no](#111-el-servidor-es-agnóstico-qué-expone-y-qué-no)
+    - [1.1.2. ¿Por qué C# y .NET de punta a punta](#112-por-qué-c-y-net-de-punta-a-punta)
+    - [1.1.3. ¿Por qué tres clientes (y no uno solo)?](#113-por-qué-tres-clientes-y-no-uno-solo)
+    - [1.1.4. El mapa de la reutilización: qué se comparte y por qué](#114-el-mapa-de-la-reutilización-qué-se-comparte-y-por-qué)
   - [1.2. El viaje de un mensaje](#12-el-viaje-de-un-mensaje)
   - [1.3. Un patrón de errores, un solo formato](#13-un-patrón-de-errores-un-solo-formato)
 - [2. El ciclo de vida de una conexión](#2-el-ciclo-de-vida-de-una-conexión)
@@ -8,7 +11,7 @@
   - [2.2. Alta: ConnectAsync](#22-alta-connectasync)
   - [2.3. Envío: SendAsync](#23-envío-sendasync)
   - [2.4. Cambio de canal: CambiarCanalAsync](#24-cambio-de-canal-cambiarcanalasync)
-  - [2.5. Cambio de nick en caliente: CambiarNickAsync](#25-cambio-de-nick-en-caliente-cambiar.nickasync)
+  - [2.5. Cambio de nick en caliente: CambiarNickAsync](#25-cambio-de-nick-en-caliente-cambiarnickasync)
   - [2.6. Consulta de usuarios: ObtenerUsuariosAsync](#26-consulta-de-usuarios-obtenerusuariosasync)
   - [2.7. Desconexión: OnDisconnectedAsync](#27-desconexión-ondisconnectedasync)
   - [2.8. Cómo se prueba todo esto sin abrir una terminal](#28-cómo-se-prueba-todo-esto-sin-abrir-una-terminal)
@@ -17,20 +20,26 @@
   - [3.2. Unicidad de nombres sin bloqueos](#32-unicidad-de-nombres-sin-bloqueos)
   - [3.3. La cola circular del historial](#33-la-cola-circular-del-historial)
   - [3.4. Las estadísticas globales y GET /estadisticas](#34-las-estadísticas-globales-y-get-estadisticas)
-  - [3.5. Evolución: qué cambió en la Fase 2 y por qué](#35-evolución-qué-cambió-en-la-fase-2-y-por-qué)
+  - [3.5. Evolución: qué cambió cuando el historial se mudó a SQLite](#35-evolución-qué-cambió-cuando-el-historial-se-mudó-a-sqlite)
   - [3.6. Productor/consumidor: la cola de escritura con Channel](#36-productorconsumidor-la-cola-de-escritura-con-channel)
+    - [El problema: el hilo del hub no puede esperar](#el-problema-el-hilo-del-hub-no-puede-esperar)
+    - [El patrón productor/consumidor, en teoría](#el-patrón-productorconsumidor-en-teoría)
+    - [Sin el patrón: el bar se para](#sin-el-patrón-el-bar-se-para)
+    - [Con el patrón: el camarero sigue cobrando](#con-el-patrón-el-camarero-sigue-cobrando)
+    - [Qué es exactamente un Channel](#qué-es-exactamente-un-channel)
+    - [Por qué no se hizo con Rx, si el proyecto ya lo usa](#por-qué-no-se-hizo-con-rx-si-el-proyecto-ya-lo-usa)
 - [4. Los canales como grupos de SignalR](#4-los-canales-como-grupos-de-signalr)
   - [4.1. Un canal, un grupo](#41-un-canal-un-grupo)
-  - [4.2. Configuración sin hardcodeos](#42-configuración-sin-hardcodeos)
+  - [4.2. Configuración sin valores fijos en el código](#42-configuración-sin-valores-fijos-en-el-código)
   - [4.3. Normalización: daw, #daw y #DAW](#43-normalización-daw-daw-y-daw)
 - [5. Logging con Serilog desde appsettings](#5-logging-con-serilog-desde-appsettings)
   - [5.1. Consola para ver, fichero para investigar](#51-consola-para-ver-fichero-para-investigar)
   - [5.2. El símbolo doble dos puntos de Serilog](#52-el-símbolo-doble-dos-puntos-de-serilog)
   - [5.3. Rotación de 7 días](#53-rotación-de-7-días)
-- [6. Dos bugs reales del servidor](#6-dos-bugs-reales-del-servidor)
+- [6. Dos casos de estudio del servidor](#6-dos-casos-de-estudio-del-servidor)
   - [6.1. La carrera de los diez Anas](#61-la-carrera-de-los-diez-anas)
   - [6.2. El ConfigurationBinder que duplica listas](#62-el-configurationbinder-que-duplica-listas)
-- [7. Resumen del punto](#7-resumen-del-punto)
+- [7. Decisiones, patrones y técnicas del punto](#7-decisiones-patrones-y-técnicas-del-punto)
 
 
 
@@ -38,7 +47,7 @@
 
 > 💡 **Punto de partida:** abres Discord y entras al canal #general. En pantalla ves a 40 personas y el mensaje que escribió Marta hace tres minutos. Abres otra pestaña en #daw y ves a otras 12 y su historial, sin mezclarse. Nadie ha recargado nada: todo llega solo. ¿Cómo sabe el servidor quién está en cada canal? ¿Cómo hace para mandarte el historial correcto y no el de otro? ¿Y qué pasa si dos personas se ponen el mismo nombre a la vez?
 
-En este punto diseñamos por dentro el servidor de AulaChatNet: la arquitectura por capas, el ciclo de vida completo de una conexión de SignalR, las estructuras de datos que sostienen los canales en memoria, por qué cada canal es un "grupo", cómo se configura el logging sin tocar código, qué cambió de verdad en la Fase 2 cuando el historial se mudó a SQLite y, para rematar, los dos bugs reales que enseñó este servidor mientras se construía.
+En este punto diseñamos por dentro el servidor de AulaChatNet: la arquitectura por capas, el ciclo de vida completo de una conexión de SignalR, las estructuras de datos que sostienen los canales en memoria, por qué cada canal es un "grupo", cómo se configura el logging sin tocar código, qué cambió de verdad cuando el historial se mudó a SQLite y, para rematar, los dos casos de estudio que enseñó este servidor mientras se construía.
 
 **Objetivos de aprendizaje:**
 
@@ -46,7 +55,7 @@ En este punto diseñamos por dentro el servidor de AulaChatNet: la arquitectura 
 - Seguir el ciclo de vida de una conexión SignalR: alta, envío, cambio de canal, cambio de nick y desconexión
 - Comprender por qué el estado vive en `ConcurrentDictionary` y qué es la concurrencia
 - Ver la cola circular del historial y el límite configurable
-- Aplicar el criterio de longevidad que separa, en la Fase 2, lo que queda en memoria de lo que se persiste
+- Aplicar el criterio de longevidad que separa lo que queda en memoria de lo que se persiste
 - Entender el patrón **productor/consumidor** y usar un `Channel` para guardar en segundo plano sin bloquear el hilo de SignalR
 - Usar los grupos de SignalR para que cada canal reciba solo lo suyo
 - Sacar provecho de las estadísticas globales: evento `EstadisticasActualizadas` (push) y `GET /estadisticas` (pull)
@@ -61,8 +70,11 @@ AulaChatNet es una solución con varios proyectos porque **el contrato entre ser
 flowchart TD
     subgraph Clientes["Clientes (procesos independientes)"]
         T["AulaChatNet.Client.Terminal<br/>consola elegante (Spectre.Console)"]
-        B["AulaChatNet.Client.Blazor<br/>web (Blazor WebAssembly)<br/>DevServer :5031"]
+        B["AulaChatNet.Client.Web<br/>host WebAssembly<br/>DevServer :5031"]
+        W["AulaChatNet.Client.Wpf<br/>escritorio (WPF + BlazorWebView)"]
     end
+
+    C["AulaChatNet.Client.Blazor.Components<br/>librería RCL: la interfaz compartida<br/>componentes · stores · servicios · CSS/JS"]
 
     S["AulaChatNet.Server :5030<br/>ASP.NET Core + SignalR<br/>ChatHub + ChatStore + SQLite"]
 
@@ -70,12 +82,19 @@ flowchart TD
 
     T <-->|"SignalR"| S
     B <-->|"SignalR · otro origen → CORS"| S
+    W <-->|"SignalR"| S
+    B -.->|"ProjectReference"| C
+    W -.->|"ProjectReference"| C
     T -.-> SH
     B -.-> SH
+    W -.-> SH
+    C -.-> SH
     S -.-> SH
 
     style T fill:#FF9800,color:#fff
     style B fill:#FF9800,color:#fff
+    style W fill:#FF9800,color:#fff
+    style C fill:#9C27B0,color:#fff
     style S fill:#2196F3,color:#fff
     style SH fill:#9C27B0,color:#fff
 ```
@@ -87,14 +106,14 @@ Cada carpeta del servidor tiene una responsabilidad, y los nombres lo dicen todo
 | `Hubs/` | La puerta de entrada de SignalR | `ChatHub.cs` |
 | `Services/` | La lógica y el estado | `IChatStore`, `ChatStore` |
 | `Models/` | Los datos que usa el servidor | `EstadoCanal`, `ConexionChat` |
-| `Persistencia/` | La persistencia (Fase 2): entidad, contexto, repositorio y servicios de fondo | `AulaChatContexto`, `MensajeRepository`, `LimpiezaProgramada` |
+| `Persistencia/` | La persistencia: entidad, contexto, repositorio y servicios de fondo | `AulaChatContexto`, `MensajeRepository`, `LimpiezaProgramada` |
 | `Infrastructures/` | Extensiones de arranque (registran servicios, mapean rutas) | `AddChatServices`, `MapChatHub` |
 
 > 📝 **Nota:** el patrón de "extensiones en `Infrastructures/`" no es un capricho: es el mismo estilo que usan proyectos reales para dejar el `Program.cs` limpio y leerlo como un índice.
 
 ### 1.1.1. El servidor es agnóstico: qué expone y qué no
 
-Un dato que se entiende mejor abriendo el proyecto que leyéndolo: **este servidor no sirve ficheros y no sabe que los clientes existen**. No hay carpeta `wwwroot/` porque no hace falta: ni `index.html`, ni runtime de WebAssembly, ni CSS. De hecho, en toda la solución hay **un solo `index.html`** —el de `AulaChatNet.Client.Blazor/wwwroot/`— y lo entrega el proceso del cliente, no el servidor. Si pides `http://localhost:5030/` con el navegador, lo que recibes es un `404`.
+Un dato que se entiende mejor abriendo el proyecto que leyéndolo: **este servidor no sirve ficheros y no sabe que los clientes existen**. No hay carpeta `wwwroot/` porque no hace falta: ni `index.html`, ni runtime de WebAssembly, ni CSS. De hecho, cada host cliente trae su propio `index.html` —el de `AulaChatNet.Client.Web/wwwroot/` y el del escritorio, en `AulaChatNet.Client.Wpf/wwwroot/`— y lo entrega el proceso del cliente, no el servidor. Si pides `http://localhost:5030/` con el navegador, lo que recibes es un `404`.
 
 | El servidor **sí** expone | El servidor **no** hace |
 |---------------------------|-------------------------|
@@ -102,9 +121,78 @@ Un dato que se entiende mejor abriendo el proyecto que leyéndolo: **este servid
 | `GET /estadisticas`, una línea de API REST | Saber quién es su público: su único `ProjectReference` es `Shared` |
 | El historial de SQLite (escritura y limpieza en segundo plano) | Compilar junto a los clientes: cada uno arranca en su proceso |
 
-Por eso los tres viven en **procesos separados**: servidor en el `5030`, web en su DevServer del `5031`, terminal en consola. Y por eso existe CORS — es la consecuencia inevitable de que la web llame a un origen que no es el suyo. Si mañana añades un cliente de móvil o de escritorio, este servidor no se entera: basta con que hable SignalR y, si quiere contar gente antes de registrarse, pregunte por `/estadisticas`.
+Por eso cada cliente vive en su **proceso independiente**: el servidor en el `5030`, la web en su DevServer del `5031`, el terminal en su consola y el escritorio en su ventana. Y por eso existe CORS (*Cross-Origin Resource Sharing*: el permiso que un navegador exige para que una web pida recursos a otro origen) — es la consecuencia inevitable de que la web llame a un origen que no es el suyo. Si mañana añades un cliente de móvil, este servidor no se entera: basta con que hable SignalR y, si quiere contar gente antes de registrarse, pregunte por `/estadisticas`.
 
-> 💡 **Consejo:** esta es también la razón de que el hub y el contrato (`Shared`) puedan seguir intactos entre fases. Al servidor no le importa quién conecta ni cómo se pinta: solo habla por `MensajeDto` y eventos. Un cliente nuevo es una flecha más en este mismo diagrama.
+> 💡 **Consejo:** esta es también la razón de que el hub y el contrato (`Shared`) puedan seguir intactos ante clientes nuevos. Al servidor no le importa quién conecta ni cómo se pinta: solo habla por `MensajeDto` y eventos. Un cliente nuevo es una flecha más en este mismo diagrama.
+
+### 1.1.2. ¿Por qué C# y .NET de punta a punta
+
+Antes de mirar una sola línea del hub, merece la pena contestar la pregunta incómoda: **¿por qué C#?** No es la única respuesta posible, pero sí la que permite que todo esto sea UN proyecto:
+
+- **Un solo lenguaje en toda la solución.** El servidor, la terminal, la web, la librería de componentes y el escritorio están todos en C#: un solo compilador (`dotnet build` construye la solución entera), un solo juego de herramientas y un mismo formato de contrato. Los DTOs de `Shared` viajan como código fuente, no como un JSON que hay que mantener al día a mano.
+- **La plataforma trae de serie lo que este chat necesita.** ASP.NET Core aporta el host y el `GET /estadisticas`; SignalR, el tiempo real sin escribir un solo WebSocket a mano; EF Core (Entity Framework Core), el acceso a SQLite; la inyección de dependencias, el `ILogger<T>` y la configuración por `appsettings.json`, incluidos. Elegir C# no es solo elegir un lenguaje: es aceptar un ecosistema donde las piezas encajan porque nacieron juntas.
+- **Rendimiento y multiplataforma.** .NET corre en Windows, Linux y macOS: este servidor se desplegaría en un contenedor Linux sin tocar una línea. Y su modelo de concurrencia (`async/await`, `ConcurrentDictionary`, hilos de fondo) es exactamente el que pide un sistema en tiempo real.
+- **Encaja con el módulo.** C# y ASP.NET Core son el contenido de Desarrollo Web en Servidor: la energía que no se gasta en aprender otra sintaxis se gasta en entender el diseño.
+
+> 📝 **Nota:** ¿y si prefieres otra pila? Un chat idéntico se haría con Node.js + Socket.IO, con Java + WebSocket o con Python + FastAPI. Lo que cambiaría sería el ecosistema (npm o venv, un cliente en JavaScript obligatorio), **no el diseño**: "hub + estado en memoria + contrato compartido" es el mismo esquema en cualquier lenguaje. La arquitectura es la lección; el lenguaje es el vehículo.
+
+### 1.1.3. ¿Por qué tres clientes (y no uno solo)?
+
+La segunda pregunta incómoda: **¿hacían falta tres clientes?** Desde la perspectiva de quien usa el chat, sí: Discord mismo es web, aplicación de escritorio y móvil, y cada superficie tiene su momento. Desde la perspectiva de quien lo construye, hacer tres clientes es la **demostración viviente** de la arquitectura:
+
+- **SignalR es agnóstico por diseño.** El hub no pinta ni una letra: solo entiende `MensajeDto` y eventos. Atender a la vez a una consola, a un navegador y a una ventana de Windows sin saber con quién habla es la prueba de que el contrato de `Shared` es lo valioso, y el pintor es prescindible.
+- **Cada cliente enseña un modelo de interfaz distinto.** Terminal: marcado (markup) y estado inmutable, sin componentes ni CSS. Web: componentes Blazor, store reactiva y CSS propio. Escritorio: ventana nativa con una interfaz web dentro e integración con el sistema operativo. Un mismo protocolo, tres oficios.
+- **Un cuarto cliente no tocaría el servidor.** Una app MAUI (.NET *Multi-platform App UI*, el stack móvil de .NET), por ejemplo, sería una flecha más en el diagrama de la 1.1: mismo hub, mismo `Shared`, misma store si se comparte la librería.
+
+| Cliente | Cuándo brilla | Qué enseña de arquitectura |
+|---------|---------------|-----------------------------|
+| **Terminal** | Consume casi nada, funciona por SSH o en máquinas sin escritorio gráfico, se maneja con teclado | Que la interfaz no necesita navegador: markup + estado + un bucle de repintado |
+| **Web** | Cero instalación: un enlace basta desde cualquier sistema operativo con navegador | Componentes, stores y el cliente corriendo *dentro* del navegador (WebAssembly) |
+| **Escritorio** | Arranque con doble clic, icono y bandeja del sistema: no se cierra sin querer | Ventana nativa con interfaz web embebida (Blazor Hybrid) y ficheros propios |
+
+### 1.1.4. El mapa de la reutilización: qué se comparte y por qué
+
+La regla de oro del proyecto: **cada regla se escribe una sola vez y vive en un solo sitio**. Con tres clientes, la tentación de copiar "lo que ya funciona" es el principio del fin: a la primera corrección tendrías tres versiones de la verdad. El diseño responde con dos niveles de reutilización: uno para el **idioma** y otro para la **cara**. La cara la aporta una **RCL** (del inglés *Razor Class Library*, librería de clases Razor): una librería .NET que empaqueta componentes web con su CSS y su JS, lista para que cualquier host la consuma sin copiar nada:
+
+```mermaid
+flowchart TD
+    subgraph IDIOMA["Idioma común (una sola regla, un solo sitio)"]
+        SH["AulaChatNet.Shared<br/>DTOs · constantes del hub · ChatConfig<br/>parser de comandos · operadores Rx · helpers de texto"]
+    end
+
+    subgraph CARA["Cara común (una sola interfaz para los clientes web)"]
+        RCL["AulaChatNet.Client.Blazor.Components<br/>componentes · stores · servicios · CSS/JS"]
+    end
+
+    SH --> T["Client.Terminal"]
+    SH --> S["Server"]
+    SH --> RCL
+    RCL --> W["Client.Web (WebAssembly)"]
+    RCL --> D["Client.Wpf (Blazor Hybrid)"]
+    SH -.-> W
+    SH -.-> D
+
+    style SH fill:#9C27B0,color:#fff
+    style RCL fill:#9C27B0,color:#fff
+    style T fill:#FF9800,color:#fff
+    style S fill:#2196F3,color:#fff
+    style W fill:#FF9800,color:#fff
+    style D fill:#FF9800,color:#fff
+```
+
+¿Qué se reutiliza exactamente, y qué se pagaría si cada pieza tuviera su propia copia?
+
+| Pieza | Dónde vive | Quién la reutiliza | Qué pasaría si estuviera copiada |
+|-------|-----------|--------------------|----------------------------------|
+| DTOs (objetos de transferencia de datos) como `MensajeDto`, y las constantes del hub (`ChatHubMetodos`, `ChatHubEventos`, `ChatRutas`) | `Shared` | Servidor y los tres clientes | Los nombres divergirían y el primer cambio rompería en silencio a un cliente |
+| Parser de comandos y su catálogo de ayuda (`ParserComandos`, `AyudaComandos`) | `Shared/Comandos/` | Terminal y web | `/editar` funcionaría en una superficie y en la otra no |
+| Operadores de Rx (Rx.NET, del inglés *Reactive Extensions*: filtrar, agrupar, formatear) | `Shared` | Terminal y web | La regla de negocio del filtrado, escrita dos veces y desincronizándose |
+| Helpers de texto (`EditadoTexto`, `ReaccionesTexto`) | `Shared` | Terminal y web | "(editado)" y "👍 3 (Ana, Bruno)" dirían cosas distintas según la pantalla |
+| Configuración del chat (`ChatConfig`: canales y límites) | `Shared` | El servidor valida; los clientes pintan y avisan | La regla tendría dos orígenes: el servidor rechazaría lo que la web deja escribir |
+| Interfaz entera (componentes, stores, servicios, CSS) | RCL `Client.Blazor.Components` | Host web y WPF | El escritorio se habría escrito dos veces |
+| Guardado de sesión | Interfaz `ILocalStorageService` en la RCL | Web (navegador) y WPF (fichero) | Un patrón que no se podría ampliar: el cuarto cliente reinventaría el suyo |
+
+> 💡 **Consejo:** la reutilización no acaba en el código. `Directory.Packages.props` fija la versión de cada paquete NuGet para **toda** la solución (Central Package Management) y `Directory.Build.props` aplica las mismas reglas de compilación (`LangVersion`, `Nullable`, `TreatWarningsAsErrors`) a los seis proyectos. Cambias una versión en un solo sitio y la solución entera se alinea: gobernar varios proyectos no es varias veces más difícil si todos comparten cimientos.
 
 ## 1.2. El viaje de un mensaje
 
@@ -117,7 +205,7 @@ flowchart LR
     H --> CF["ChatConfig<br/>¿supera 500 caracteres?"]
     CF -->|"No"| ST["ChatStore.AddMensaje<br/>a #general"]
     ST --> GR["Clients.Group('#general')<br/>difunde MensajeNuevo"]
-    GR --> PB["Blazor recibe el evento<br/>Rx lo procesa y pinta"]
+    GR --> PB["El cliente recibe el evento<br/>Rx lo procesa y pinta"]
     CF -->|"Sí"| E["Devuelve error<br/>string? con el mensaje"]
 
     style C fill:#4CAF50,color:#fff
@@ -130,7 +218,7 @@ flowchart LR
     style E fill:#f44336,color:#fff
 ```
 
-📌 **Ejemplo real:** WhatsApp. Cuando envías un mensaje, tu móvil no espera a que el del otro esté encendido: el servidor lo recibe, lo guarda y lo reenvía a los que están conectados. Si el destinatario está fuera, el mensaje le llegará cuando se conecte (eso ya lo hace la Fase 2: el historial se guarda en SQLite y te recupera lo que te perdiste al volver; de momento, en la Fase 1, solo se enviaba a los conectados).
+📌 **Ejemplo real:** WhatsApp. Cuando envías un mensaje, tu móvil no espera a que el del otro esté encendido: el servidor lo recibe, lo guarda y lo reenvía a los que están conectados. Si el destinatario está fuera, el mensaje le llegará cuando se conecte (eso ya lo hace la versión con persistencia: el historial se guarda en SQLite y te recupera lo que te perdiste al volver; en la versión inicial, en memoria, solo se enviaba a los conectados).
 
 ## 1.3. Un patrón de errores, un solo formato
 
@@ -147,13 +235,13 @@ if (error is not null)
 }
 ```
 
-El mismo patrón se repite en las validaciones de `ChatConfig`: los métodos `ValidarUsuario` y `ValidarMensaje` devuelven `string?` (null = OK), y en el store (`AddUsuario`, `CambiarCanal`...). **Una sola convención en todo el sistema**: si devuelves texto, hay un problema; si devuelves `null`, sigue adelante.
+El mismo patrón se repite en las validaciones de `ChatConfig` (`ValidarUsuario` y `ValidarMensaje` devuelven `string?`, con `null` = OK) y en el store (`AddUsuario`, `CambiarCanal`...). **Una sola convención en todo el sistema**: si devuelves texto, hay un problema; si devuelves `null`, sigue adelante.
 
 > 💡 **Consejo:** fíjate en que `ConnectAsync`, `CambiarCanalAsync` y `CambiarNickAsync` **también** devuelven `string?`. La diferencia es semántica: `ConnectAsync` valida el nombre Y lo registra; `CambiarCanalAsync` y `CambiarNickAsync` comprueban que estés registrado antes de moverte o renombrarte. La única excepción del patrón es `ObtenerUsuariosAsync`, que **devuelve datos** (una lista de conectados, o `null` si el canal no existe): es una consulta, no una mutación.
 
-## 2. El ciclo de vida de una conexión
+# 2. El ciclo de vida de una conexión
 
-### 2.1. La secuencia completa
+## 2.1. La secuencia completa
 
 Este es el viaje completo de una conexión, desde que el cliente abre el WebSocket hasta que se desconecta. Presta atención a quién recibe cada cosa (el historial SOLO al que entra, los mensajes a todo el grupo):
 
@@ -214,7 +302,9 @@ sequenceDiagram
 
 > ⚠️ **Advertencia:** fíjate en el paso del cambio de canal. Cuando Ana cambia, el historial del nuevo canal se le envía **a ella sola** (`Clients.Caller`), mientras que los mensajes de sistema van al **grupo entero** (`Clients.Group`). Enviar el historial a todo el grupo saturaría a los demás, que no lo piden. Y las estadísticas viajan con `Clients.All`: el total es global, no de un canal.
 
-### 2.2. Alta: ConnectAsync
+## 2.2. Alta: ConnectAsync
+
+Toda entrada al chat pasa por este método: es el que **valida el nombre, elige canal si no se especifica y da de alta** la conexión en el store. La firma y las tres reglas que aplica:
 
 ```csharp
 public async Task<string?> ConnectAsync(string? usuario, string? canal = null)
@@ -226,7 +316,9 @@ public async Task<string?> ConnectAsync(string? usuario, string? canal = null)
 
 El nombre llega como parámetro de `ConnectAsync` y no en `OnConnectedAsync` porque **SignalR conecta primero y "quién eres" se dice después**: así el servidor puede rechazar nombres inválidos o duplicados devolviendo un mensaje de error al cliente.
 
-### 2.3. Envío: SendAsync
+## 2.3. Envío: SendAsync
+
+El camino completo de un mensaje escrito a mano: comprobar que estás registrado (una conexión fantasma no escribe), validar el texto y difundirlo por el grupo de tu canal.
 
 ```csharp
 public async Task<string?> SendAsync(string? texto)
@@ -238,13 +330,15 @@ public async Task<string?> SendAsync(string? texto)
 
 Un detalle de buenas prácticas: **el log registra la longitud del mensaje, no el contenido**. Los logs pueden verlos personas no autorizadas.
 
-### 2.4. Cambio de canal: CambiarCanalAsync
+## 2.4. Cambio de canal: CambiarCanalAsync
+
+Este es el método que hace que Discord "sienta vivo": moverte entre canales sin reconectar. La firma:
 
 ```csharp
 public async Task<string?> CambiarCanalAsync(string? canal)
 ```
 
-Este es el método que hace que Discord "sienta vivo": moverte entre canales sin reconectar. Los pasos, en orden:
+Los pasos, en orden:
 
 1. Se comprueba que estés registrado (`GetConexion`) y que el canal exista (`EncontrarCanal`)
 2. Se mueve el usuario en el store: alta en el destino (con la unicidad de nombre de ese canal) y liberación del nombre en el origen
@@ -254,25 +348,29 @@ Este es el método que hace que Discord "sienta vivo": moverte entre canales sin
 
 Si el nombre ya está ocupado en el destino, el cambio se rechaza con un error y **te quedas donde estabas**.
 
-### 2.5. Cambio de nick en caliente: CambiarNickAsync
+## 2.5. Cambio de nick en caliente: CambiarNickAsync
+
+Discord permite "Cambiar apodo" sin reconectar, y este método hace exactamente eso. La firma:
 
 ```csharp
 public async Task<string?> CambiarNickAsync(string? nuevoNick)
 ```
 
-Discord permite "Cambiar apodo" sin reconectar, y este método hace exactamente eso. Los pasos, en orden:
+Los pasos, en orden:
 
 1. Se comprueba que estés registrado (`GetConexion`)
 2. Se valida el nuevo nombre con `Config.ValidarUsuario` (mismas reglas que al entrar)
 3. Si el nombre es el mismo (ignorando mayúsculas), **no se emite nada**: silencio total
-4. El store aplica el cambio: `TryUpdate` en el índice de nombres por canal (la unicidad del destino se respeta: otro en el canal ya usando ese nombre lo rechaza)
+4. El store aplica el cambio: `TryUpdate` en el índice de nombres por canal (la unicidad del destino se respeta: si otro usuario del canal ya usa ese nombre, el cambio se rechaza)
 5. Aviso de sistema "X ahora se llama Y" al grupo y lista de conectados actualizada
 
 Un detalle importante: el nick **no cambia `Context.ConnectionId`** ni la identidad de la conexión; solo cambia el nombre visible y la clave del índice de ese canal. Por eso las estadísticas globales **no** se emiten aquí: el número de conectados no ha variado.
 
 > 📝 **Nota:** el store guarda `Usuario` dentro de `ConexionChat`, y `GetConexion` devuelve copias inmutables; por eso el cambio pasa por `TryUpdate` y no por "tocar el objeto".
 
-### 2.6. Consulta de usuarios: ObtenerUsuariosAsync
+## 2.6. Consulta de usuarios: ObtenerUsuariosAsync
+
+No todo en el hub es cambiar cosas: a veces el cliente solo quiere mirar. Este método es una consulta pura: pide la lista de conectados de un canal y el servidor responde **solo al que pregunta**, sin avisar a nadie más.
 
 ```csharp
 public Task<IReadOnlyList<UsuarioConectadoDto>?> ObtenerUsuariosAsync(string? canal)
@@ -287,7 +385,7 @@ Es el primer método del hub que **no muta nada ni sigue el patrón `string?`**:
 
 > 💡 **Consejo:** fíjate en la diferencia con `ListaUsuariosActualizada`: ese evento se **difunde** (push, a todo el grupo, sin que nadie lo pida); esta consulta es un **pull bajo demanda**. Los dos son lecturas de `store.GetUsuarios(canal)`, pero con destinatarios y momento distintos.
 
-### 2.7. Desconexión: OnDisconnectedAsync
+## 2.7. Desconexión: OnDisconnectedAsync
 
 SignalR llama a `OnDisconnectedAsync` cuando se corta la conexión (el cliente cierra la pestaña, se va el wifi...). El hub elimina al usuario del store y emite el aviso de salida **solo a su canal**:
 
@@ -316,9 +414,9 @@ public override async Task OnDisconnectedAsync(Exception? exception)
 
 Si la excepción no es `null`, es que la conexión cayó por un error (se registra como warning con la excepción). Si es `null`, es una desconexión limpia (se registra como información).
 
-### 2.8. Cómo se prueba todo esto sin abrir una terminal
+## 2.8. Cómo se prueba todo esto sin abrir una terminal
 
-La clave está en que **el hub depende de interfaces**: `IChatStore` (el estado), `IControlRafagas` (la cuota de ráfagas de la Fase 4.1) e `IHubCallerClients` (a quién emitir). Con Moq simulamos las tres, y con los *setters* públicos inyectamos el doble de contexto:
+La clave está en que **el hub depende de interfaces**: `IChatStore` (el estado), `IControlRafagas` (la cuota de ráfagas que limita el envío por usuario) e `IHubCallerClients` (a quién emitir). Con Moq simulamos las tres, y con los *setters* públicos inyectamos un doble del contexto:
 
 ```csharp
 var hub = new ChatHub(store, rafagas, Options.Create(config), logger.Object)
@@ -330,9 +428,9 @@ var hub = new ChatHub(store, rafagas, Options.Create(config), logger.Object)
 
 Los proxies no hacen nada de red: solo guardan en una lista cada `SendCoreAsync`. Así un test puede preguntar: "¿qué recibió el grupo #daw?" y "¿recibió algo el grupo #general?". En `ChatHubTests.cs` tienes el patrón completo, incluida la simulación de varias conexiones.
 
-## 3. El estado del chat: ChatStore
+# 3. El estado del chat: ChatStore
 
-### 3.1. Dos estructuras, dos misiones
+## 3.1. Dos estructuras, dos misiones
 
 El estado del chat vive en memoria, en dos colecciones concurrentes con misiones distintas:
 
@@ -364,7 +462,7 @@ flowchart LR
 
 Los nombres de canal y los usuarios se guardan con `ConcurrentDictionary`, pensada para que múltiples hilos (peticiones) lean y escriban a la vez sin bloquearse.
 
-### 3.2. Unicidad de nombres sin bloqueos
+## 3.2. Unicidad de nombres sin bloqueos
 
 Si dos personas intentan llamarse "Ana" a la vez en #general, **solo una puede ganar**. La clave no es un bloqueo tradicional, sino `TryAdd`, que es atómico: la operación entera es "o la hace alguien o la hace otro, nunca las dos":
 
@@ -379,7 +477,7 @@ if (!estado.UsuariosPorNombre.TryAdd(clave, nuevo))
 
 > 📝 **Nota:** las claves se normalizan con `ToUpperInvariant()` antes de comparar, así que "Ana", "ANA" y "ana" son la misma persona. El mismo truco se aplica a los canales (ver sección 4.3).
 
-### 3.3. La cola circular del historial
+## 3.3. La cola circular del historial
 
 Cada `EstadoCanal` guarda sus últimos N mensajes en una `ConcurrentQueue`. Al añadir uno nuevo, si la cola supera el límite configurado, se descarta el más antiguo:
 
@@ -394,9 +492,9 @@ while (estado.Historial.Count > Config.HistorialMaximo
 }
 ```
 
-📌 **Ejemplo real:** Discord te muestra los últimos 100 mensajes de un canal; más atrás, no hay nada (eso es historial persistido, que en nuestra Fase 2 ya se guarda en SQLite, como veremos en la sección 3.5).
+📌 **Ejemplo real:** Discord te muestra los últimos 100 mensajes de un canal; más atrás, no hay nada (eso es historial persistido, que en nuestro caso ya se guarda en SQLite, como veremos en la sección 3.5).
 
-### 3.4. Las estadísticas globales y GET /estadisticas
+## 3.4. Las estadísticas globales y GET /estadisticas
 
 Además de "quién hay en cada canal", la app necesita "cuánta gente hay en TOTAL" (el contador de arranque de la terminal, por ejemplo). El store lo resuelve con un único barrido de las conexiones vivas:
 
@@ -434,11 +532,11 @@ app.MapGet(ChatRutas.Estadisticas, (IChatStore store) =>
 
 📌 **Ejemplo real:** abrir Discord sin iniciar sesión y ver "12.345.678 personas en línea": ese número no viene de una conexión de chat, viene de una consulta rápida como esta.
 
-### 3.5. Evolución: qué cambió en la Fase 2 y por qué
+## 3.5. Evolución: qué cambió cuando el historial se mudó a SQLite
 
-La Fase 1 terminó con **todo** el estado en memoria, y ese era el problema de fondo: al parar el servidor, el historial desaparecía. La Fase 2 lo arregló, pero sin meterlo todo en la base de datos. La decisión fue aplicar el criterio de **longevidad**: separar por la pregunta *¿qué pasa si apago el proceso?*
+La versión inicial dejó **todo** el estado en memoria, y ese era el problema de fondo: al parar el servidor, el historial desaparecía. La persistencia lo arregló, pero sin meterlo todo en la base de datos. La decisión fue aplicar el criterio de **longevidad**: separar por la pregunta *¿qué pasa si apago el proceso?*
 
-| Estado | Fase 1 | Fase 2 | Por qué |
+| Estado | Antes (en memoria) | Ahora (con SQLite) | Por qué |
 |--------|--------|--------|---------|
 | Presencia (`_conexiones`) | Memoria | **Sigue en memoria** | Un `connectionId` no significa nada tras un reinicio: las conexiones ya no existen |
 | Unicidad de nicks (`_canales`) | Memoria | **Sigue en memoria** | Nadie está conectado al arrancar, así que todos los nicks están libres |
@@ -447,14 +545,14 @@ La Fase 1 terminó con **todo** el estado en memoria, y ese era el problema de f
 
 Dos detalles de diseño que no son evidentes y conviene retener:
 
-1. **El hub y la lógica de los clientes no se tocaron.** El contrato (`MensajeDto`, los eventos, `GetHistorial`) seguía valiendo tal cual: la memoria dejó de ser la *única* fuente de verdad del historial para pasar a ser su **caché**. Ese es el verdadero éxito de la fase: añadir persistencia con **cero cambios en el protocolo**. Único matiz honesto, comprobado con `git diff 0.2.0 0.3.0`: los clientes SÍ recibieron cambios en ese tramo, pero solo de imagen —el icono de la app (`feat:` de cosmética)—; ni una línea de lógica ni del contrato.
-2. **Escribir dejó de ser síncrono respecto al disco.** `AddMensaje` sigue siendo síncrono —memoria más encolado en un `Channel`, instantáneo— y la escritura real pasó a un `BackgroundService`. Así el hilo de SignalR **nunca espera a un disco**, que es la regla de oro de los hubs en tiempo real. Qué es exactamente ese `Channel` y por qué hace falta, en la sección 3.6.
+1. **El hub y la lógica de los clientes no se tocaron.** El contrato (`MensajeDto`, los eventos, `GetHistorial`) seguía valiendo tal cual: la memoria dejó de ser la *única* fuente de verdad del historial para pasar a ser su **caché**. Ese es el verdadero éxito del cambio: añadir persistencia con **cero cambios en el protocolo**. Único matiz honesto, comprobado con `git diff 0.2.0 0.3.0`: los clientes SÍ recibieron cambios en ese tramo, pero solo de imagen —el icono de la app, un cambio de imagen en un commit `feat:`—; ni una línea de lógica ni del contrato.
+2. **Escribir dejó de ser síncrono con el disco.** `AddMensaje` sigue siendo síncrono —memoria más encolado en un `Channel`, instantáneo— y la escritura real pasó a un `BackgroundService`. Así el hilo de SignalR **nunca espera a un disco**, que es la regla de oro de los hubs en tiempo real. Qué es exactamente ese `Channel` y por qué hace falta, en la sección 3.6.
 
 La asimetría que esto produce es deliberada y es lo que más confunde al principio: `IChatStore` es síncrono (no hace E/S) e `IMensajesRepository` es asíncrono (siempre toca disco). **`async` va donde hay E/S**, no por convención.
 
 > 📝 **Nota:** en el punto 4 está la evolución completa de esa decisión —el modelo de datos, las migraciones, el escritor en segundo plano, la limpieza con `VACUUM` y las tres trampas reales que solo salieron al ejecutar—, con el detalle de cada porqué: [4. La persistencia con SQLite](04-persistencia.md).
 
-### 3.6. Productor/consumidor: la cola de escritura con Channel
+## 3.6. Productor/consumidor: la cola de escritura con Channel
 
 La sección 3.5 decía que el `AddMensaje` "encola en un `Channel`" sin explicar qué es eso ni por qué hace falta. Vamos a ello, porque detrás hay un patrón de programación que aparece cada vez que dos piezas trabajan a ritmos distintos.
 
@@ -467,9 +565,9 @@ La sección 3.5 decía que el `AddMensaje` "encola en un `Channel`" sin explicar
 - Saber qué es un `System.Threading.Channels.Channel` y usar sus cuatro métodos
 - Distinguir qué resuelve el `Channel` y qué no (y por qué no es lo mismo que Rx)
 
-#### El problema: el hilo del hub no puede esperar
+### El problema: el hilo del hub no puede esperar
 
-`ChatStore.AddMensaje` se ejecuta **dentro del hilo de SignalR** que atiende a ese alumno. En la Fase 1 eso no importaba: solo tocaba memoria. Pero en la Fase 2 hay que guardar el mensaje en SQLite, y una escritura en disco **cuesta milisegundos reales** —que suenen a poco, pero que se multiplican:
+`ChatStore.AddMensaje` se ejecuta **dentro del hilo de SignalR** que atiende a ese alumno. Cuando todo vivía en memoria eso no importaba: solo tocaba memoria. Pero con la persistencia hay que guardar el mensaje en SQLite, y una escritura en disco **cuesta milisegundos reales** —que suenen a poco, pero que se multiplican:
 
 | Situación | Coste | Qué ocurre |
 |-----------|-------|------------|
@@ -479,7 +577,7 @@ La sección 3.5 decía que el `AddMensaje` "encola en un `Channel`" sin explicar
 
 Y la regla de oro es simple: **un hub de SignalR atiende conexiones, no espera E/S**. Su hilo es caro y compartido; gastarlo esperando a un disco es exactamente lo contrario de lo que debe hacer.
 
-#### El patrón productor/consumidor, en teoría
+### El patrón productor/consumidor, en teoría
 
 El problema tiene nombre y es anterior a .NET: cuando **quien produce** algo y **quien lo consume** trabajan a ritmos distintos, se intercala una **cola** entre ambos y cada uno hace lo suyo:
 
@@ -503,7 +601,7 @@ Las tres propiedades que aporta la cola son las que nos interesan:
 
 📌 **Ejemplo real:** es el mismo patrón de una cinta de montaje, de un buzón de correos o de la lista de reproducción de Spotify —tú añades canciones (productor) y el reproductor las va tragando (consumidor), aunque añadas más rápido de lo que dura cada una—.
 
-#### Sin el patrón: el bar se para
+### Sin el patrón: el bar se para
 
 Para ver la diferencia, comparemos los dos escenarios con el mismo mensaje:
 
@@ -523,7 +621,9 @@ sequenceDiagram
     Note over H: con la clase entera escribiendo,<br/>el pool de hilos se agota y<br/>el chat deja de responder
 ```
 
-#### Con el patrón: el camarero sigue cobrando
+### Con el patrón: el camarero sigue cobrando
+
+Ahora el mismo escenario con el patrón encendido: el mensaje se guarda en la caché y se encola en un santiamén; el hilo del hub queda libre al instante y el servicio de fondo escribe a su ritmo, sin quitarle tiempo a nadie.
 
 ```mermaid
 sequenceDiagram
@@ -549,7 +649,7 @@ sequenceDiagram
 
 La diferencia sustancial no es la velocidad del disco —esa es igual en los dos—, sino **quién espera**. En el primer caso espera el hilo que atiende a todos; en el segundo espera un hilo propio que no le quita tiempo a nadie. El alumno ve su mensaje al instante en los dos casos; lo que cambia es si el servidor sigue en pie.
 
-#### Qué es exactamente un Channel
+### Qué es exactamente un Channel
 
 `System.Threading.Channels.Channel<T>` es una clase **del propio SDK de .NET** —no hay que instalar ningún paquete— pensada exactamente para esto: comunicar un productor y un consumidor con una cola thread-safe. No inventa nada nuevo, es la formalización del patrón.
 
@@ -576,7 +676,7 @@ while (await lector.WaitToReadAsync(stoppingToken))     // espera sin CPU
 
 > 💡 **Consejo:** cuando necesites desacoplar "quien produce" de "quien consume" en .NET —una cola de trabajos, un envío de correos, un logger con cola—, `System.Threading.Channels` es la respuesta por defecto. No construyas colas propias con `ConcurrentQueue` y semáforos: el `Channel` ya es thread-safe, ya sabe esperar y ya sabe drenar.
 
-#### Por qué no se hizo con Rx, si el proyecto ya lo usa
+### Por qué no se hizo con Rx, si el proyecto ya lo usa
 
 Este proyecto usa Rx.NET por todas partes —`Shared/Observables` y las stores de los dos clientes—, así que la pregunta es legítima: ¿por qué aquí un `Channel` y no un `Subject<T>`?
 
@@ -589,9 +689,9 @@ Es decir: Rx está pensado para **componer y transformar** flujos, y el `Channel
 
 > ⚠️ **Advertencia:** el `Channel` **sin límite** tiene una contrapartida. Si el disco se colgara del todo, la cola crecería sin parar y se comería la memoria. En un servidor de aula es un riesgo despreciable; en producción habría que ponerle un techo y decidir qué hacer cuando se llene. Esa decisión es, precisamente, la que un patrón productor/consumidor te obliga a tomar en serio.
 
-## 4. Los canales como grupos de SignalR
+# 4. Los canales como grupos de SignalR
 
-### 4.1. Un canal, un grupo
+## 4.1. Un canal, un grupo
 
 SignalR tiene un concepto nativo llamado **grupos**: conjuntos de conexiones a las que puedes enviar mensajes de golpe. Un canal de AulaChatNet **es exactamente un grupo de SignalR**:
 
@@ -618,7 +718,7 @@ flowchart TD
 
 La belleza de esto es que **no hay que inventar la lógica de reenvío**: SignalR ya sabe a quién está enviando dentro del grupo, y quien se desconecta sale del grupo automáticamente.
 
-### 4.2. Configuración sin hardcodeos
+## 4.2. Configuración sin valores fijos en el código
 
 Los canales NO están escritos en el código: viven en `appsettings.json`, en la sección `Chat`:
 
@@ -642,15 +742,15 @@ La configuración se carga en un objeto tipado `ChatConfig` (opciones de .NET) q
 
 > 📝 **Nota:** **el orden del array importa**: es el orden en que se pintan los canales en el selector de los clientes, y el primero (`#general`) es además el `CanalPorDefecto` al que se entra sin escribir nada.
 
-### 4.3. Normalización: daw, #daw y #DAW
+## 4.3. Normalización: daw, #daw y #DAW
 
 Los usuarios escriben a su manera: "daw", "#daw", "#DAW", " #daw ". Para que todo el mundo caiga en el mismo canal, `ChatConfig.NormalizarCanal` recorta espacios, añade la almohadilla si falta y pasa a mayúsculas. Después, `EncontrarCanal` devuelve la forma canónica (la que aparece en la configuración) para usarla como clave interna.
 
 > 💡 **Consejo:** el cliente terminal aprovecha esto: escribir `/canal daw` funciona igual que `/canal #daw` o `/canal #DAW`, porque la normalización ocurre en `ChatConfig`, compartida por ambos lados.
 
-## 5. Logging con Serilog desde appsettings
+# 5. Logging con Serilog desde appsettings
 
-### 5.1. Consola para ver, fichero para investigar
+## 5.1. Consola para ver, fichero para investigar
 
 El logging se configura **entero** en `appsettings.json`, sin tocar código: la sección `Serilog` describe dos destinos (sinks):
 
@@ -668,10 +768,10 @@ flowchart LR
 
 | Destino | Nivel mínimo | Detalle |
 |---------|--------------|---------|
-| Consola | Information | Se ve casi todo; las peticiones HTTP a `/hubs` se bajan a Debug para no ensuciar |
+| Consola | Information | Se ve casi todo; las peticiones HTTP a `/hubs` se bajan al nivel `Debug` para no ensuciar |
 | Fichero | Error | Solo errores, en `logs/aulachat-YYYY-MM-DD.log` |
 
-### 5.2. El símbolo doble dos puntos de Serilog
+## 5.2. El símbolo doble dos puntos de Serilog
 
 Hay un detalle de sintaxis en el JSON que desconcierta al principio: el tema de la consola se referencia así:
 
@@ -681,17 +781,17 @@ Hay un detalle de sintaxis en el JSON que desconcierta al principio: el tema de 
 
 Ese `::` es la forma de que Serilog se refiera a un **miembro estático** de un tipo de un ensamblado externo: `Tipo::Miembro, Ensamblado`. Es como si el JSON hiciera lo mismo que en C#: `AnsiConsoleTheme.Code`.
 
-### 5.3. Rotación de 7 días
+## 5.3. Rotación de 7 días
 
 El fichero de errores usa rotación diaria (`rollingInterval: Day`) y retiene un máximo de 7 ficheros (`retainedFileCountLimit: 7`). Además, si un fichero pasa de 10 MB, rueda antes (`rollOnFileSizeLimit`). El resultado es que `logs/` nunca crece sin control: siempre tendrás los últimos 7 días de errores.
 
 > 📝 **Nota:** la carpeta `logs/` está en `.gitignore`. Los logs son de ejecución, no del repositorio.
 
-## 6. Dos bugs reales del servidor
+# 6. Dos casos de estudio del servidor
 
 No todo fue suave. Estos dos fallos aparecieron mientras se construía el servidor, y ambos son material de estudio.
 
-### 6.1. La carrera de los diez Anas
+## 6.1. La carrera de los diez Anas
 
 **El problema.** Imagina diez personas entrando a la vez a un mismo canal y todas llamándose "Ana". Sin protección, el resultado sería imprevisible. Este es el test que lo reproduce:
 
@@ -704,7 +804,7 @@ Parallel.For(0, 10, i => resultados[i] = _store.AddUsuario(General, "Ana", $"con
 
 📌 **Ejemplo real:** el mostrador de un bar. Dos clientes llegan a la vez a pedir la última croqueta: el cajero atiende a uno primero y al otro le dice que ya no queda. No hace falta cerrar el bar entero.
 
-### 6.2. El ConfigurationBinder que duplica listas
+## 6.2. El ConfigurationBinder que duplica listas
 
 **El problema.** Al arrancar el servidor, el banner de inicio mostraba los canales dos veces:
 
@@ -712,7 +812,7 @@ Parallel.For(0, 10, i => resultados[i] = _store.AddUsuario(General, "Ana", $"con
 Disponibles: #general, #smr, #daw, #asir, #dam, #general, #smr, #daw, #asir, #dam
 ```
 
-¿Por qué? **El `ConfigurationBinder` de .NET añade los valores de `appsettings.json` a la lista existente en lugar de reemplazarla**. Si la propiedad `Canales` arrancaba con una lista por defecto de 5 canales, y el JSON traía otros 5, el resultado eran 10.
+¿Por qué? **El `ConfigurationBinder` de .NET añade los valores de `appsettings.json` a la lista existente en lugar de reemplazarla**. Si la propiedad `Canales` arrancaba con una lista por defecto de 5 canales, y el JSON traía otros 5, el resultado eran 10 canales.
 
 **La solución.** La propiedad arranca **vacía a propósito**:
 
@@ -730,11 +830,29 @@ public List<string> Canales { get; set; } = [];
 
 📌 **Ejemplo real:** el equivalente del "doble envío" en formularios web: si tu validador "añade" en vez de "reemplazar", acabas con registros duplicados.
 
-## 7. Resumen del punto
+# 7. Decisiones, patrones y técnicas del punto
+
+El servidor es la pieza que sostiene todo lo demás, y sus decisiones no son caprichosas: estas son las que volverás a ver en cualquier backend en tiempo real.
+
+| Patrón o técnica | Dónde vive en AulaChatNet | La lección transferible |
+|------------------|---------------------------|-------------------------|
+| Arquitectura por capas | `ChatHub` (protocolo), `ChatStore` (lógica y estado), `MensajeRepository` (disco) | El hub coordina, no guarda ni calcula: cada capa se prueba y se sustituye sola |
+| Servidor agnóstico | Solo expone `/hubs/chat` y `GET /estadisticas`; ni `wwwroot` ni referencias a clientes | Si el servidor conoce a sus clientes, el contrato deja de mandar: él es el centro, no la interfaz |
+| Estado concurrente sin bloqueos | `ConcurrentDictionary` con `TryAdd`/`TryUpdate` atómicos | La unicidad se garantiza con operaciones atómicas, no con cerrojos globales que paralizan a todos |
+| Cola circular con techo | Historial limitado por `HistorialMaximo` | La memoria es un caché: si no le pones límite, el proceso no vive para siempre |
+| Productor/consumidor con `Channel` | `AddMensaje` encola; un `BackgroundService` escribe | El hilo que atiende usuarios nunca espera a E/S: el trabajo lento va a un hilo que no le quite tiempo a nadie |
+| Grupos de SignalR como salas | Un canal = un grupo (`Clients.Group(canal)`) | Reutiliza el transporte que ya viene en vez de inventar tu propio direccionamiento |
+| Push y pull complementarios | `EstadisticasActualizadas` (evento) y `GET /estadisticas` (endpoint) | Tiempo real para lo que cambia; REST para lo que se pregunta cuando se quiere |
+| Convención `string?` (null = OK) | Todos los métodos del hub y las validaciones de `ChatConfig` | Un solo idioma de error en todo el sistema, legible para el usuario y para el log |
+| Logging como configuración | Serilog entero desde `appsettings.json` | Los logs no se piden en código: se gobiernan desde fuera (niveles, rotación, destino) |
+
+---
+
+**Resumen del punto:**
 
 | Concepto | Qué retener |
 |----------|-------------|
-| Arquitectura | Hub (transporte) → Store (estado) → Shared (contrato compartido); desde la Fase 2, el historial se respalda en SQLite |
+| Arquitectura | Hub (transporte) → Store (estado) → Shared (contrato compartido); el historial se respalda en SQLite |
 | Superficie del servidor | **Agnóstico**: solo expone `/hubs/chat` y `GET /estadisticas`; no sirve ficheros (`"/"` → `404`) y no tiene referencia a ningún cliente. Cada cliente es un proceso aparte (web en `5031`, de ahí CORS) |
 | Errores | `Task<string?>`: `null` = OK, texto = mensaje para el cliente (`ObtenerUsuariosAsync` devuelve datos) |
 | Ciclo de vida | Conectar → alta → historial (solo al caller) → mensajes al grupo → salida |
@@ -742,10 +860,12 @@ public List<string> Canales { get; set; } = [];
 | Consultas | `ObtenerUsuariosAsync` mira cualquier canal sin cambiar de él y sin avisar a nadie |
 | Estado | `_conexiones` global + un `EstadoCanal` (nombres + historial) por canal; separación **por longevidad**: solo el historial se persiste |
 | Unicidad | `TryAdd` atómico por canal, con claves normalizadas |
-| Historial | `ConcurrentQueue` circular, límite `HistorialMaximo` configurable; desde la Fase 2, cacheado en memoria y respaldado en SQLite |
+| Historial | `ConcurrentQueue` circular, límite `HistorialMaximo` configurable; cacheado en memoria y respaldado en SQLite |
 | Canales | Cada canal es un grupo de SignalR; lista en `appsettings.json`, **el orden del array es el orden de pantalla** |
 | Estadísticas | `GetEstadisticas` → evento `EstadisticasActualizadas` (push a todos) + `GET /estadisticas` (pull, antes de registrarse) |
 | Logging | Serilog desde `appsettings.json`; consola Information, fichero Error con rolling de 7 días |
-| Bugs reales | Carreras de concurrencia y el ConfigurationBinder que duplica listas |
+| Casos de estudio | Carreras de concurrencia y el ConfigurationBinder que duplica listas |
 
 En el siguiente punto vamos al primer cliente: el [terminal con Spectre.Console, su vista en vivo y su capa reactiva con Rx](02-cliente-terminal.md). Después vendrá la web con Blazor WebAssembly y su estética de Discord.
+
+**Índice:** [README](../README.md)

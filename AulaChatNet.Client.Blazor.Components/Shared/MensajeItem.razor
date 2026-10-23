@@ -1,0 +1,250 @@
+@* Una fila de mensaje — NUNCA burbujas: Discord y Slack son "filas" con
+   hora a la izquierda, avatar circular, nombre en su color derivado y el
+   texto. Los mensajes de sistema salen en gris cursiva y sin avatar, con un
+   espaciador que los alinea con la columna de texto.
+
+   Fase 4.4: tus mensajes de persona asoman, al pasar el ratón, con dos
+   botones junto al "+" de reacciones — ✏️ editar y 🗑️ borrar — y el texto
+   se sustituye por un editor INLINE: Enter guarda, Escape cancela. El
+   borrado pide confirmación en la propia fila ("¿Borrar? ✔ / ✕"), sin
+   diálogos del navegador. Nada de esto aparece en los mensajes ajenos ni
+   en los de sistema: el servidor también lo rechaza, pero no hace falta
+   ni preguntar. *@
+@inject IChatStore Store
+@inject ChatConfig Config
+@inject IJSRuntime JS
+
+@if (Mensaje.Tipo == TipoMensaje.Sistema)
+{
+    <div class="mensaje sistema">
+        <span class="mensaje-hora">@Hora</span>
+        <span class="mensaje-espaciador"></span>
+        <div class="mensaje-cuerpo">
+            <span class="mensaje-texto">· @Mensaje.Texto</span>
+        </div>
+    </div>
+}
+else
+{
+    <div class="mensaje">
+        <span class="mensaje-hora">@Hora</span>
+        <Avatar Usuario="@Mensaje.Usuario" Tamano="40" />
+        <div class="mensaje-cuerpo">
+            <span class="mensaje-nombre" style="color: @ColorNombre">@Mensaje.Usuario</span>
+
+            @if (_editando)
+            {
+                @* Editor inline: MISMO ancho que el texto, con la longitud
+                   máxima de un envío normal (una edición no se salta la
+                   validación) y foco puesto al abrirse *@
+                <input class="editor-inline"
+                       id="@IdEditor"
+                       maxlength="@Config.MensajeLongitudMaxima"
+                       autocomplete="off"
+                       value="@_textoEdicion"
+                       @oninput="AlEscribir"
+                       @onkeydown="AlPulsarTecla"
+                       @onblur="CancelarEdicion" />
+
+                @if (_errorEdicion is not null)
+                {
+                    <p class="editor-aviso">@_errorEdicion</p>
+                }
+            }
+            else
+            {
+                <span class="mensaje-texto"><TextoMencion Texto="@Mensaje.Texto" /></span>
+
+                @* La marca "(editado)" con el MISMO texto que pinta la
+                   terminal (viene de Shared) *@
+                @if (Mensaje.Editado)
+                {
+                    <span class="mensaje-editado">@EditadoTexto.Marca</span>
+                }
+            }
+
+            @* Los chips y el "+" de reaccionar: solo a los mensajes de
+               persona (los avisos de sistema no se reaccionan) *@
+            <ReaccionesMensaje IdMensaje="@Mensaje.Id" Reacciones="@Reacciones" Nick="@Nick" />
+
+            @* ✏️ y 🗑️: solo en tus mensajes de persona. Van en su propio
+               grupo, a la izquierda del "+" — el mismo hover de la fila los
+               muestra y los esconde. Borrar es definitivo, así que los 🗑️
+               se apartan y la propia fila pregunta: ✔ confirma, ✕ cancela
+               (nada de diálogos del navegador: la UI vive en Blazor) *@
+            @if (PuedeModificar)
+            {
+                <div class="acciones-edicion">
+                    @if (_confirmandoBorrar)
+                    {
+                        <button type="button" class="boton-edicion boton-confirmar" title="Confirmar el borrado"
+                                @onclick="BorrarAsync">¿Borrar? ✔</button>
+                        <button type="button" class="boton-edicion boton-cancelar" title="Cancelar el borrado"
+                                @onclick="CancelarBorrado">✕</button>
+                    }
+                    else
+                    {
+                        <button type="button" class="boton-edicion" title="Editar este mensaje"
+                                @onclick="EmpezarAEditar">✏️</button>
+                        <button type="button" class="boton-edicion" title="Borrar este mensaje"
+                                @onclick="EmpezarBorrar">🗑️</button>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    /// <summary>Mensaje a pintar.</summary>
+    [Parameter] public MensajeDto Mensaje { get; set; } = default!;
+
+    /// <summary>Chips de reacción actuales del mensaje (vacío si no tiene ninguno).</summary>
+    [Parameter] public IReadOnlyList<ReaccionDto> Reacciones { get; set; } = [];
+
+    /// <summary>Nick local, para resaltar el chip propio y mostrar los botones (null sin sesión).</summary>
+    [Parameter] public string? Nick { get; set; }
+
+    // Estado del editor inline: si está abierto, el texto de trabajo y el
+    // error de validación local (junto al campo, convención del proyecto)
+    private bool _editando;
+    private string? _textoEdicion;
+    private string? _errorEdicion;
+
+    // true mientras la fila pide confirmar el borrado (¿Borrar? ✔ / ✕)
+    private bool _confirmandoBorrar;
+
+    // true si hay que devolver el foco al editor tras el repintado (se
+    // consume en OnAfterRenderAsync, como en la caja de texto)
+    private bool _focoPendiente;
+
+    /// <summary>Hora local de quien mira: el servidor guarda UTC (regla de oro: guardar UTC, convertir SOLO al presentar) — sin esta conversión la web enseñaría la hora del servidor.</summary>
+    private string Hora => Mensaje.Timestamp.ToLocalTime().ToString("HH:mm");
+
+    /// <summary>Color con el que se pinta el nombre del autor (derivado del nombre).</summary>
+    private string ColorNombre
+    {
+        get
+        {
+            var (rojo, verde, azul) = AvatarHelper.ObtenerColor(Mensaje.Usuario);
+            return $"rgb({rojo}, {verde}, {azul})";
+        }
+    }
+
+    /// <summary>
+    /// true si la fila puede llevar ✏️ y 🗑️: mensaje de persona y del que
+    /// estás mirando SU nick (sin autenticación, el nick normalizado es el
+    /// Único control posible — el servidor lo comprueba igual).
+    /// </summary>
+    private bool PuedeModificar =>
+        Mensaje.Tipo == TipoMensaje.Normal
+        && Nick is not null
+        && string.Equals(Mensaje.Usuario, Nick, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Id del DOM del editor: único por mensaje, para ponerle el foco.</summary>
+    private string IdEditor => $"editor-{Mensaje.Id}";
+
+    /// <summary>✏️: abre el editor con el texto ACTUAL del mensaje.</summary>
+    private void EmpezarAEditar()
+    {
+        _editando = true;
+        _errorEdicion = null;
+        _textoEdicion = Mensaje.Texto;
+        _focoPendiente = true;
+    }
+
+    /// <summary>
+    /// Escape cancela (vuelve el texto tal cual estaba); Enter GUARDA. En
+    /// un <c>input</c> de una línea, Enter no tiene otra acción por defecto
+    /// — no hace falta impedirla.
+    /// </summary>
+    /// <param name="e">Tecla pulsada.</param>
+    private async Task AlPulsarTecla(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            await GuardarAsync();
+        else if (e.Key == "Escape")
+            CancelarEdicion();
+    }
+
+    /// <summary>Cada tecla pone el texto en la variable de trabajo (lo mismo que haría un @bind).</summary>
+    /// <param name="e">Evento con el texto actual del cuadro.</param>
+    private void AlEscribir(ChangeEventArgs e) => _textoEdicion = e.Value?.ToString();
+
+    /// <summary>
+    /// Enter del editor: misma validación local que un envío normal y
+    /// llamada al hub. El eco por evento (mensaje editado) repinta la fila;
+    /// si el servidor rechazó, el aviso va al flujo de mensajes (regla de
+    /// la casa) y el editor se cierra — no hay nada que corregir aquí.
+    /// </summary>
+    private async Task GuardarAsync()
+    {
+        var texto = _textoEdicion?.Trim() ?? string.Empty;
+
+        // Validación local ANTES de tocar la red: mismo criterio que el
+        // servidor, para no gastar una ida y vuelta por algo evidente
+        var fallo = Config.ValidarMensaje(texto);
+
+        if (fallo is not null)
+        {
+            _errorEdicion = fallo;
+            return;
+        }
+
+        // Sin cambios no se toca el servidor: el texto ya era ese
+        if (string.Equals(texto, Mensaje.Texto, StringComparison.Ordinal))
+        {
+            CancelarEdicion();
+            return;
+        }
+
+        _editando = false;
+        _errorEdicion = null;
+
+        var error = await Store.EditarMensajeAsync(Mensaje.Id, texto);
+
+        if (error is not null)
+            Store.Aviso(error);
+    }
+
+    /// <summary>Cierra el editor sin guardar (Escape y pérdida del foco).</summary>
+    private void CancelarEdicion()
+    {
+        _editando = false;
+        _errorEdicion = null;
+    }
+
+    /// <summary>
+    /// 🗑️: aparta ✏️ y 🗑️ y pone la fila en modo confirmación —el borrado
+    /// es definitivo, y en la web un clic desfortunado es más fácil que un
+    /// comando escrito a mano en la terminal—.
+    /// </summary>
+    private void EmpezarBorrar() => _confirmandoBorrar = true;
+
+    /// <summary>✕: se cancela el borrado y la fila vuelve a la normalidad.</summary>
+    private void CancelarBorrado() => _confirmandoBorrar = false;
+
+    /// <summary>
+    /// ✔: borra de verdad. Si el servidor rechaza, el aviso va al flujo de
+    /// mensajes (convención del proyecto) y la fila se queda como estaba.
+    /// </summary>
+    private async Task BorrarAsync()
+    {
+        _confirmandoBorrar = false;
+
+        var error = await Store.BorrarMensajeAsync(Mensaje.Id);
+
+        if (error is not null)
+            Store.Aviso(error);
+    }
+
+    /// <summary>Tras repintar, pone el foco en el editor recién abierto.</summary>
+    protected override async Task OnAfterRenderAsync(bool primero)
+    {
+        if (!_focoPendiente)
+            return;
+
+        _focoPendiente = false;
+        await JS.InvokeVoidAsync("aulachat.enfocar", IdEditor);
+    }
+}

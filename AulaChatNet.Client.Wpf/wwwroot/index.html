@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AulaChatNet</title>
+    <!-- Base del enrutamiento de Blazor (idéntica a la de la web) -->
+    <base href="/" />
+    <!--
+      El CSS y el JavaScript de la UI viven en la librería compartida
+      (AulaChatNet.Client.Blazor.Components), igual que en la web: la app de escritorio y
+      el navegador cargan EXACTAMENTE los mismos ficheros por la ruta
+      _content/... del paquete.
+    -->
+    <link rel="stylesheet" href="_content/AulaChatNet.Client.Blazor.Components/css/app.css" />
+</head>
+<body>
+    <!--
+      "Loading..." y el banner de error: NO son decorado, son la VENTANA de
+      diagnóstico del propio template oficial de Blazor Hybrid (el tutorial de
+      Microsoft los incluye y yo los había quitado a propósito — error). Con
+      ellos la ventana deja de quedarse muda:
+        - "Loading..." persistiendo  → la página cargó pero Blazor no arranca.
+        - banner con "Recargar"      → Blazor arrancó pero un componente lanza
+                                       excepción al renderizar.
+        - pantalla del fondo         → ni siquiera se sirve el index.html.
+      El fondo oscuro lo pinta app.css de la librería (#app a su altura).
+    -->
+    <div id="app">Loading...</div>
+
+    <div id="blazor-error-ui" data-nosnippet>
+        Ha ocurrido un error no controlado.
+        <a href="" class="reload">Recargar</a>
+        <a class="dismiss">🗙</a>
+    </div>
+
+    <!-- JS de la UI (scroll, foco, parpadeo de pestaña): mismo fichero que
+         la web. Hay DOM de verdad (WebView2), así que funciona igual -->
+    <script src="_content/AulaChatNet.Client.Blazor.Components/js/aulachat.js"></script>
+    <!-- Runtime de Blazor Hybrid: NOTA el nombre blazor.webview.js, no
+         blazor.webassembly.js — no hay runtime wasm que descargar -->
+    <script src="_framework/blazor.webview.js"></script>
+</body>
+</html>

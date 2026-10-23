@@ -200,7 +200,7 @@ static void PrintStartupInfo(IConfiguration configuration)
     Log.Information("SIGNALR (realtime):");
     Log.Information("  Hub del chat:  http://{Host}:{Puerto}{Ruta}", host, puerto, chat.HubRuta);
     Log.Information("CLIENTES (cada uno en su propio proceso):");
-    Log.Information("  Web (Blazor):  dotnet run --project AulaChatNet.Client.Blazor  → :5031");
+    Log.Information("  Web (Blazor):  dotnet run --project AulaChatNet.Client.Web  → :5031");
     Log.Information("  Terminal:      dotnet run --project AulaChatNet.Client.Terminal");
     Log.Information("LÍMITES (appsettings.json → sección Chat):");
     Log.Information("  Usuario:       entre {Minima} y {Maxima} caracteres",

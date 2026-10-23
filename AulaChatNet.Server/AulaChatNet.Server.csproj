@@ -6,7 +6,7 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <!-- Sin NoWarn de CS1591: todo el API público está documentado, así que
          con TreatWarningsAsErrors la compilación FALLA si aparece documentación
-         XML pendiente (la regla de la casa se autocumple, no se silencia). -->
+         XML pendiente (la convención del proyecto se autocumple, no se silencia). -->
   </PropertyGroup>
 
   <ItemGroup>

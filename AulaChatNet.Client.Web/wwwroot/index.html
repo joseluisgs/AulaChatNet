@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AulaChatNet</title>
+    <base href="/" />
+    <link rel="icon" type="image/x-icon" href="favicon.ico" />
+    <!--
+      El CSS y el JavaScript de la UI viven en la librería compartida
+      (AulaChatNet.Client.Blazor.Components) y se sirven con la ruta _content/...: así la
+      web y la app de escritorio WPF usan EXACTAMENTE los mismos ficheros.
+    -->
+    <link rel="stylesheet" href="_content/AulaChatNet.Client.Blazor.Components/css/app.css" />
+</head>
+<body>
+    <!--
+      Pantalla de carga (splash): se ve mientras el navegador descarga el
+      runtime de WebAssembly (unos MB la primera vez). Blazor vacía este
+      div en cuanto arranca y pinta la app encima.
+    -->
+    <div id="app">
+        <div class="carga">
+            <img class="carga-icono"
+                 src="resources/icon-app.png"
+                 alt="AulaChatNet"
+                 width="88" height="88" />
+            <div class="carga-logo"># AulaChatNet</div>
+            <div class="carga-texto">Cargando el chat&hellip;</div>
+            <div class="carga-barra"><span></span></div>
+        </div>
+    </div>
+
+    <!-- Aviso de error irrecuperable (runtime de Blazor caído en mitad de la sesión) -->
+    <div id="blazor-error-ui">
+        Se ha producido un error inesperado. Recarga la página para continuar.
+        <a href="" class="reload">Recargar</a>
+        <button type="button" class="dismiss" aria-label="Cerrar">✕</button>
+    </div>
+
+    <!--
+      JS de la UI (scroll, foco, parpadeo de pestaña): vive en la librería
+      compartida y se carga ANTES que Blazor, para que los componentes
+      encuentren window.aulachat desde el primer render.
+    -->
+    <script src="_content/AulaChatNet.Client.Blazor.Components/js/aulachat.js"></script>
+    <script src="_framework/blazor.webassembly.js"></script>
+</body>
+</html>
