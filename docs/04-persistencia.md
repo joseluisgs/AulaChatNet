@@ -256,7 +256,7 @@ public void AddMensaje(string canal, MensajeDto mensaje)
 
 ### Por qué un Channel y no otra cosa
 
-La cola del esquema es un `Channel` de `System.Threading.Channels`. **Qué es, por qué hace falta y en qué se diferencia de Rx** está explicado con diagramas en el punto 3.6 de la arquitectura del servidor: [3.6 Productor/consumidor: la cola de escritura con Channel](01-arquitectura-del-servidor.md#36-productorconsumidor-la-cola-de-escritura-con-channel).
+La cola del esquema es un `Channel` de `System.Threading.Channels`. **Qué es, por qué hace falta y en qué se diferencia de Rx** está explicado con diagramas en el punto 3.6 de la arquitectura del servidor: [3.6. Productor/consumidor: la cola de escritura con Channel](01-arquitectura-del-servidor.md#36-productorconsumidor-la-cola-de-escritura-con-channel).
 
 Aquí nos quedamos solo con lo que toca a la persistencia —quién produce, quién consume y qué se descartó:
 
@@ -277,7 +277,7 @@ Las alternativas que se descartaron, mirando desde la persistencia:
 
 > 💡 **Consejo:** cuando necesites desacopar "quien produce" de "quien consume" en .NET —una cola de trabajos, un envío de correos, un logger con cola—, `System.Threading.Channels` es la respuesta por defecto. Lo que conviene retener aquí es sencillo: si un día toque añadir persistencia a otro sitio del servidor, el `Channel` es la pieza por defecto — no construyas colas propias con `ConcurrentQueue` y semáforos.
 
-📖 **Para seguir:** el lado lector de la misma historia —cómo el historial se precarga al arrancar y por qué los clientes no notan nada—, en [§4.6 Leer: el historial ya está cargado](#46-leer-el-historial-ya-esta-cargado); y la trampa real de arrancar un servicio de fondo, en [§4.10 Tres trampas que solo salen al ejecutar](#410-tres-trampas-que-solo-salen-al-ejecutar).
+📖 **Para seguir:** el lado lector de la misma historia —cómo el historial se precarga al arrancar y por qué los clientes no notan nada—, en [§4.6 Leer: el historial ya está cargado](#46-leer-el-historial-ya-está-cargado); y la trampa real de arrancar un servicio de fondo, en [§4.10 Tres trampas que solo salen al ejecutar](#410-tres-trampas-que-solo-salen-al-ejecutar).
 
 ### La asimetría que confunde a todo el mundo
 
