@@ -102,7 +102,6 @@ AulaChatNet/
 ├── Directory.Build.props                    # LangVersion, Nullable, warnings como errores
 ├── Directory.Packages.props                 # Central Package Management (versiones aquí)
 ├── docs/                                   # Documentación didáctica
-├── scripts/                                # Utilidades de la repo (auditoría de diagramas Mermaid)
 ├── resources/                              # Icono de la app (maestro): cada cliente lleva su propia copia dentro del proyecto
 ├── AulaChatNet.Shared/                      # DTOs, constantes del hub, ChatConfig, avatar, operadores Rx, comandos (parser + ayuda) y helpers (mezcla del chat, seguimiento de escritura)
 │   └── AulaChatNet.Shared.Tests/
