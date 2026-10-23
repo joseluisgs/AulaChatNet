@@ -58,7 +58,7 @@ sequenceDiagram
 
 ## 7.2. Una lista cerrada de emoji
 
-La primera decisión es de seguridad y de sanidad: **la lista de emoji es cerrada**. El servidor admite exactamente seis:
+La primera decisión es de seguridad y de sentido común: **la lista de emoji es cerrada**. El servidor admite exactamente seis:
 
 | Emoji | Código |
 |-------|--------|
@@ -91,7 +91,7 @@ El DTO (objeto de transferencia de datos) que viaja (`ReaccionesMensajeDto`) exp
 Dos detalles de emisión que no son menores:
 
 - **El emisor recibe su propia reacción** (`Clients.Group` entero, no `OthersInGroup`): lo contrario de la señal de escritura. Allí, verte escribir a ti mismo era un error; aquí, ver TU chip en tu pantalla es la confirmación de que el gesto salió
-- **El mensaje trae el estado COMPLETO del mensaje, no el delta**: si un cliente pierde un evento por la red, la siguiente emisión lo realinea entero. Con deltas, un paquete perdido dejaba a esa pantalla desincronizada para siempre
+- **La emisión trae el estado COMPLETO del mensaje, no el delta**: si un cliente pierde un evento por la red, la siguiente emisión lo realinea entero. Con deltas, un paquete perdido dejaba a esa pantalla desincronizada para siempre
 
 📌 **Ejemplo real:** los "reacciones" de Slack o Teams se comportan igual: la cifra que ves es lo que el servidor dice, no lo que tú acabas de pulsar. Si aprietas rápido y la red va lenta, el chip puede tardar un instante en aparecer... pero nunca aparece mal.
 
@@ -104,7 +104,7 @@ La semántica del gesto es la de un interruptor, y hay que decirla en voz alta p
 - Pulsas un emoji distinto → es OTRO chip: nadie está condenado a una sola reacción por mensaje (máximo seis, uno por emoji)
 - El chip propio se resalta en la web (borde en el color de la casa) y el tooltip de cada chip dice QUIÉNES lo pusieron
 
-Toda la lógica del alterna vive en el servidor (`AlternarReaccion`), protegida con el mismo cuidado que el resto del store: las operaciones sobre el par clave-valor del mensaje se hacen juntas, para que dos clics simultáneos sobre el mismo mensaje no acaben ambos añadiendo o ambos quitando.
+Toda la lógica de la alternancia vive en el servidor (`AlternarReaccion`), protegida con el mismo cuidado que el resto del store: las operaciones sobre el par clave-valor del mensaje se hacen juntas, para que dos clics simultáneos sobre el mismo mensaje no acaben ambos añadiendo o ambos quitando.
 
 > ⚠️ **Advertencia:** no guardes "mi reacción actual" en el cliente para pintar más rápido. El cliente guarda el mapa que llega del servidor, y ya está. Guardar el propio gesto localmente es como hacer la foto antes de que el camarero traiga el plato: puede que no se parezca en nada a lo que acabas de pedir.
 
@@ -135,7 +135,7 @@ flowchart TD
     style N fill:#9C27B0,color:#fff
 ```
 
-📌 **Ejemplo real:** en Discord, cuando un mensaje se edita o la conversación envejece fuera del caché, sus reacciones no viajan a un segundo plano: viven y mueren con la fila. Y como en los puntos anteriores, **nada de esto se guarda en SQLite**: las reacciones son efímeras por diseño, memoria del caché y no más.
+📌 **Ejemplo real:** en Discord, cuando un mensaje se edita o la conversación envejece fuera de la caché, sus reacciones no viajan a un segundo plano: viven y mueren con la fila. Y como en los puntos anteriores, **nada de esto se guarda en SQLite**: las reacciones son efímeras por diseño, memoria de la caché y no más.
 
 > 💡 **Consejo:** cuando añadas estado a un contenedor con poda (aquí, el historial), busca en el MISMO momento dónde se poda tu estado nuevo. Si tu estado no aparece junto a la poda, es que tiene un agujero de memoria — literalmente.
 
@@ -167,11 +167,11 @@ La suite vuelve a atacar por capas, y aquí hay una novedad: la prueba de red de
 | Parser y catálogo | `/reaccion` y `/react` reconocidos, argumento vacío rechazado y fila de ayuda presente |
 | Store del servidor | El alternar (alta, baja y que la misma persona no se duplica), el `null` para mensajes ajenos o de sistema, el orden de chips y personas, y que la PODA del historial se lleva sus reacciones |
 | Hub con doble de SignalR | Registro obligatorio, emoji fuera de lista rechazado, emisión a TODO el canal con el emisor incluido, snapshot solo al caller y que nada se guarda en el historial ni en SQLite |
-| **Red de verdad** | Kestrel escuchando en un puerto aleatorio y clientes SignalR reales: la reacción de uno llega a todos — incluido el que la hizo —, el alterna la quita, y el que entra después recibe el snapshot del canal |
+| **Red de verdad** | Kestrel escuchando en un puerto aleatorio y clientes SignalR reales: la reacción de uno llega a todos — incluido el que la hizo —, la alternancia la quita, y el que entra después recibe el snapshot del canal |
 | Terminal | Los chips en markup: vacíos sin reacciones, contador, nombres con corchetes inofensivos y ausencia en el modo tubería |
 | Web | El componente: chips con contador, resaltado del propio, selector con EXACTAMENTE la lista cerrada, la invocación al pulsar y el aviso si el servidor rechaza; y el procesador: objetivo correcto, validación sin tocar la red y traducción de errores |
 
-> 💡 **Consejo:** la prueba que más enseña de este punto es la de red: con dobles puedes equivocarte sobre QUÉ emite el hub, pero nunca sobre lo que la otra punta del WebSocket recibe. Y al probar el alterna, haz SIEMPRE la ronda completa (alta, baja, alta): los fallos de alternar viven en el segundo paso, no en el primero.
+> 💡 **Consejo:** la prueba que más enseña de este punto es la de red: con dobles puedes equivocarte sobre QUÉ emite el hub, pero nunca sobre lo que la otra punta del WebSocket recibe. Y al probar la alternancia, haz SIEMPRE la ronda completa (alta, baja, alta): los fallos de alternar viven en el segundo paso, no en el primero.
 
 ## 7.9. Decisiones, patrones y técnicas del punto
 

@@ -12,7 +12,7 @@
 
 # 9. Menciones y avisos
 
-> 💡 **Punto de partida:** escribes un mensaje en un grupo de veinte personas y empiezas por "@Ana". En WhatsApp, en Discord, en Slack... alguien hace clic en el nombre, se pinta en azul, y si esa persona tenía la aplicación abajo recibe un aviso distinto al de cualquier otro mensaje: campana, contador sobre el icono, parpadeo de la pestaña. Nada de eso es magia: es un mensaje que va a TODOS... y además un empujoncito pequeño y dirigido a UNO. ¿Cómo se consigue eso en SignalR sin duplicar mensajes ni crear un canal paralelo?
+> 💡 **Punto de partida:** escribes un mensaje en un grupo de veinte personas y empiezas por "@Ana". En WhatsApp, en Discord, en Slack... alguien hace clic en el nombre, se pinta en azul, y si esa persona tenía la aplicación abierta recibe un aviso distinto al de cualquier otro mensaje: campana, contador sobre el icono, parpadeo de la pestaña. Nada de eso es magia: es un mensaje que va a TODOS... y además un empujoncito pequeño y dirigido a UNO. ¿Cómo se consigue eso en SignalR sin duplicar mensajes ni crear un canal paralelo?
 
 En este punto seguimos con las menciones. Lo interesante no es el `if` que busca la arroba —aunque también—, sino tres cosas: **por qué la detección vive en `Shared` y no en cada cliente, por qué el aviso es un evento aparte con DTO (objeto de transferencia de datos) propio, y cómo se convierte en ruido —contador, parpadeo, campana— SIN tocar el contrato del servidor dos veces**.
 
@@ -63,7 +63,7 @@ Dos eventos, dos razones distintas. `MensajeNuevo` responde a "¿qué pasa en el
 private static partial Regex Patron();
 ```
 
-La clase es `partial` a propósito: `GeneratedRegex` es un *source generator* que crea la máquina de estados en tiempo de compilación, sin reflexión ni coste de primera llamada —y funciona igual en el servidor que en WebAssembly, que es justo lo que nos falta cuando el código corre en el navegador.
+La clase es `partial` a propósito: `GeneratedRegex` es un *source generator* que crea la máquina de estados en tiempo de compilación, sin reflexión ni coste de primera llamada —y funciona igual en el servidor que en WebAssembly: eso es justo lo que necesitamos cuando el código corre en el navegador.
 
 De esa base salen tres métodos con encargos distintos:
 
@@ -96,7 +96,7 @@ return null;
 
 Ese orden no es cosmético: SignalR garantiza el orden dentro de CADA conexión, así que Ana recibe primero el mensaje y después el aviso —su cliente puede anclar el aviso al mensaje que acaba de ver—. Si fuera al revés, un cliente rápido podría recibir "Ana te mencionó" un instante antes de existir el mensaje que la provoca.
 
-El DTO propio es mínimo: emisor, canal, texto completo y hora. Ni identificador de la mención ni estado de leída: **el "no visto" es asunto de cada cliente** (lo veremos en 9.5), porque el servidor no debe llevar la cuenta de lo que un usuario ha mirado en su propia pestaña.
+El DTO propio es mínimo: emisor, canal, texto completo y hora. Ni identificador de la mención ni estado de lectura: **el "no visto" es asunto de cada cliente** (lo veremos en 9.5), porque el servidor no debe llevar la cuenta de lo que un usuario ha mirado en su propia pestaña.
 
 ```mermaid
 flowchart LR
@@ -121,7 +121,7 @@ Detrás del bucle corto de `NotificarMencionesAsync` hay cuatro decisiones que c
 | Decisión | Por qué |
 |----------|---------|
 | Se emite DESPUÉS del mensaje | orden por conexión: el aviso nunca llega antes que su texto |
-| El mensaje no cambie aunque nadie reciba el aviso | una mención no es una entrega garantizada; si a quien nombras no está conectado, su mensaje es un mensaje normal |
+| El mensaje no cambie aunque nadie reciba el aviso | una mención no es una entrega garantizada; si a quien nombras no está conectado, el mensaje es un mensaje normal |
 | Nunca a uno mismo | mencionarte a ti no es noticia — la misma lógica de `Clients.OthersInGroup` en "está escribiendo" |
 | Sin estado y sin persistencia | el aviso viaja y se olvida; el contador de "sin mirar" lo lleva cada cliente |
 

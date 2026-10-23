@@ -180,7 +180,7 @@ flowchart TD
     style D fill:#FF9800,color:#fff
 ```
 
-¿Qué se reutiliza exactamente, y qué se pagaría si cada uno tuviera la suya?
+¿Qué se reutiliza exactamente, y qué se pagaría si cada pieza tuviera su propia copia?
 
 | Pieza | Dónde vive | Quién la reutiliza | Qué pasaría si estuviera copiada |
 |-------|-----------|--------------------|----------------------------------|
@@ -235,7 +235,7 @@ if (error is not null)
 }
 ```
 
-El mismo patrón se repite en las validaciones de `ChatConfig`: los métodos `ValidarUsuario` y `ValidarMensaje` devuelven `string?` (null = OK), y en el store (`AddUsuario`, `CambiarCanal`...). **Una sola convención en todo el sistema**: si devuelves texto, hay un problema; si devuelves `null`, sigue adelante.
+El mismo patrón se repite en las validaciones de `ChatConfig` (`ValidarUsuario` y `ValidarMensaje` devuelven `string?`, con `null` = OK) y en el store (`AddUsuario`, `CambiarCanal`...). **Una sola convención en todo el sistema**: si devuelves texto, hay un problema; si devuelves `null`, sigue adelante.
 
 > 💡 **Consejo:** fíjate en que `ConnectAsync`, `CambiarCanalAsync` y `CambiarNickAsync` **también** devuelven `string?`. La diferencia es semántica: `ConnectAsync` valida el nombre Y lo registra; `CambiarCanalAsync` y `CambiarNickAsync` comprueban que estés registrado antes de moverte o renombrarte. La única excepción del patrón es `ObtenerUsuariosAsync`, que **devuelve datos** (una lista de conectados, o `null` si el canal no existe): es una consulta, no una mutación.
 
@@ -361,7 +361,7 @@ Los pasos, en orden:
 1. Se comprueba que estés registrado (`GetConexion`)
 2. Se valida el nuevo nombre con `Config.ValidarUsuario` (mismas reglas que al entrar)
 3. Si el nombre es el mismo (ignorando mayúsculas), **no se emite nada**: silencio total
-4. El store aplica el cambio: `TryUpdate` en el índice de nombres por canal (la unicidad del destino se respeta: otro en el canal ya usando ese nombre lo rechaza)
+4. El store aplica el cambio: `TryUpdate` en el índice de nombres por canal (la unicidad del destino se respeta: si otro usuario del canal ya usa ese nombre, el cambio se rechaza)
 5. Aviso de sistema "X ahora se llama Y" al grupo y lista de conectados actualizada
 
 Un detalle importante: el nick **no cambia `Context.ConnectionId`** ni la identidad de la conexión; solo cambia el nombre visible y la clave del índice de ese canal. Por eso las estadísticas globales **no** se emiten aquí: el número de conectados no ha variado.
@@ -416,7 +416,7 @@ Si la excepción no es `null`, es que la conexión cayó por un error (se regist
 
 ## 2.8. Cómo se prueba todo esto sin abrir una terminal
 
-La clave está en que **el hub depende de interfaces**: `IChatStore` (el estado), `IControlRafagas` (la cuota de ráfagas que limita el envío por usuario) e `IHubCallerClients` (a quién emitir). Con Moq simulamos las tres, y con los *setters* públicos inyectamos el doble de contexto:
+La clave está en que **el hub depende de interfaces**: `IChatStore` (el estado), `IControlRafagas` (la cuota de ráfagas que limita el envío por usuario) e `IHubCallerClients` (a quién emitir). Con Moq simulamos las tres, y con los *setters* públicos inyectamos un doble del contexto:
 
 ```csharp
 var hub = new ChatHub(store, rafagas, Options.Create(config), logger.Object)
@@ -545,8 +545,8 @@ La versión inicial dejó **todo** el estado en memoria, y ese era el problema d
 
 Dos detalles de diseño que no son evidentes y conviene retener:
 
-1. **El hub y la lógica de los clientes no se tocaron.** El contrato (`MensajeDto`, los eventos, `GetHistorial`) seguía valiendo tal cual: la memoria dejó de ser la *única* fuente de verdad del historial para pasar a ser su **caché**. Ese es el verdadero éxito del cambio: añadir persistencia con **cero cambios en el protocolo**. Único matiz honesto, comprobado con `git diff 0.2.0 0.3.0`: los clientes SÍ recibieron cambios en ese tramo, pero solo de imagen —el icono de la app (`feat:` de cosmética)—; ni una línea de lógica ni del contrato.
-2. **Escribir dejó de ser síncrono respecto al disco.** `AddMensaje` sigue siendo síncrono —memoria más encolado en un `Channel`, instantáneo— y la escritura real pasó a un `BackgroundService`. Así el hilo de SignalR **nunca espera a un disco**, que es la regla de oro de los hubs en tiempo real. Qué es exactamente ese `Channel` y por qué hace falta, en la sección 3.6.
+1. **El hub y la lógica de los clientes no se tocaron.** El contrato (`MensajeDto`, los eventos, `GetHistorial`) seguía valiendo tal cual: la memoria dejó de ser la *única* fuente de verdad del historial para pasar a ser su **caché**. Ese es el verdadero éxito del cambio: añadir persistencia con **cero cambios en el protocolo**. Único matiz honesto, comprobado con `git diff 0.2.0 0.3.0`: los clientes SÍ recibieron cambios en ese tramo, pero solo de imagen —el icono de la app, un cambio de imagen en un commit `feat:`—; ni una línea de lógica ni del contrato.
+2. **Escribir dejó de ser síncrono con el disco.** `AddMensaje` sigue siendo síncrono —memoria más encolado en un `Channel`, instantáneo— y la escritura real pasó a un `BackgroundService`. Así el hilo de SignalR **nunca espera a un disco**, que es la regla de oro de los hubs en tiempo real. Qué es exactamente ese `Channel` y por qué hace falta, en la sección 3.6.
 
 La asimetría que esto produce es deliberada y es lo que más confunde al principio: `IChatStore` es síncrono (no hace E/S) e `IMensajesRepository` es asíncrono (siempre toca disco). **`async` va donde hay E/S**, no por convención.
 
@@ -812,7 +812,7 @@ Parallel.For(0, 10, i => resultados[i] = _store.AddUsuario(General, "Ana", $"con
 Disponibles: #general, #smr, #daw, #asir, #dam, #general, #smr, #daw, #asir, #dam
 ```
 
-¿Por qué? **El `ConfigurationBinder` de .NET añade los valores de `appsettings.json` a la lista existente en lugar de reemplazarla**. Si la propiedad `Canales` arrancaba con una lista por defecto de 5 canales, y el JSON traía otros 5, el resultado eran 10.
+¿Por qué? **El `ConfigurationBinder` de .NET añade los valores de `appsettings.json` a la lista existente en lugar de reemplazarla**. Si la propiedad `Canales` arrancaba con una lista por defecto de 5 canales, y el JSON traía otros 5, el resultado eran 10 canales.
 
 **La solución.** La propiedad arranca **vacía a propósito**:
 

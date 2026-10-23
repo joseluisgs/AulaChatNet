@@ -58,7 +58,7 @@ Con ese panorama, montar un contenedor de PostgreSQL es montar una infraestructu
 
 📌 **Ejemplo real:** es la base de datos más extendida del planeta y casi seguro la usas a diario sin saberlo: Chrome y Firefox guardan tu historial de navegación en SQLite, Android la lleva de fábrica, y Windows y macOS la traen integrada en el sistema. No es "la base de datos de los pequeños": es la de los que necesitan datos fiables en un fichero.
 
-> ⚠️ **Advertencia:** SQLite tiene límites reales y conviene conocerlos. Un solo escritor a la vez (los demás esperan), todo el mundo en el mismo fichero (no sirve para varios servidores escribiendo a la vez en red), y el crecimiento de un fichero enorme cuesta más que una tabla partida. Cuando el proyecto crezca hasta ahí, toca migrar a un servidor de verdad. Elegir SQLite aquí no es ignorar sus límites: es conocerlos y decidir que no nos afectan todavía.
+> ⚠️ **Advertencia:** SQLite tiene límites reales y conviene conocerlos. Un solo escritor a la vez (los demás esperan), todo el mundo en el mismo fichero (no sirve para varios servidores escribiendo a la vez en red), y un fichero que crece sin parar acaba costando más que partir la tabla desde el principio. Cuando el proyecto crezca hasta ahí, toca migrar a un servidor de verdad. Elegir SQLite aquí no es ignorar sus límites: es conocerlos y decidir que no nos afectan todavía.
 
 > 💡 **Consejo:** elige tecnología respondiendo a "¿qué problema tengo y cuál es la solución más pequeña que lo resuelve bien?". La respuesta a menudo no es la más reluciente del anuncio.
 
@@ -99,7 +99,7 @@ flowchart TD
 
 > 📝 **Nota:** la consecuencia honesta de esta decisión es que, tras un reinicio, la lista de conectados empieza vacía (los clientes vuelven a dar de alta al reconectar) y un nick que usaba alguien se libera. En un aula es exactamente lo que quieres: no quedan fantasmas de sesiones que ya no existen.
 
-> 💡 **Consejo:** si te aprendes una sola frase de este punto, que sea esta: **si moriría al apagar el proceso y eso no es un problema, no va a disco.** Aplicado con rigor, la respuesta sale sola casi siempre.
+> 💡 **Consejo:** si te aprendes una sola frase de este punto, que sea esta: **si muere al apagar el proceso y eso no es un problema, no va a disco.** Aplicado con rigor, la respuesta sale sola casi siempre.
 
 📌 **Ejemplo real:** es el mismo criterio que usan Discord o Slack. Tu lista de amigos "en línea" se recalcula con las conexiones vivas, mientras que el historial de un canal es lo que buscas cuando vuelves tres días después. Nadie persiste a los usuarios conectados en una tabla: se hubieran muerto con cada caída de red.
 
@@ -205,7 +205,7 @@ dotnet ef migrations add DescripcionDelCambio
 dotnet ef database update     # opcional: en arranque lo hace MigrateAsync()
 ```
 
-> 📝 **Nota:** el comando `dotnet ef` está instalado a nivel de SDK en la versión 10.0.12 mientras el runtime es el 10.0.13. Aparece un aviso de versión menor, pero no bloquea nada: funciona correctamente.
+> 📝 **Nota:** el comando `dotnet ef` pertenece al SDK en su versión 10.0.12, mientras el runtime es el 10.0.13. Aparece un aviso de versión menor, pero no bloquea nada: funciona correctamente.
 
 > ⚠️ **Advertencia:** si pones `MigrarAutomaticamente` a `false`, no se aplican migraciones y **no hay tablas nuevas**. Y si además `LimpiarAlArrancar` está en `true`, habrás borrado la base sin recrear el esquema: la aplicación fallará al arrancar. `Program.cs` lo detecta y lo avisa alto y claro en el log, pero es una combinación que solo tiene sentido si vas a aplicar las migraciones tú a mano.
 
@@ -534,7 +534,7 @@ La persistencia es donde la arquitectura se pone seria: un fallo allí no es una
 | `async` | Va donde hay E/S de disco: el repositorio sí, el store no |
 | Lectura | Precarga antes de `app.Run()`; `GetHistorial` sigue leyendo la caché, así que el hub no cambió |
 | Limpieza | Retención por tiempo + `VACUUM` opcional, decidido por `freelist_count / page_count` |
-| WAL | El tamaño del `.db` mide mentira: los datos viven en `-.db-wal` |
+| WAL | El tamaño del `.db` mide mentira: los datos viven en el `.db-wal` |
 | Desarrollo | `LimpiarAlArrancar` es clave explícita, no regla de entorno, para poder comprobar la supervivencia |
 | Trampas | `:memory:` por conexión, el `PRAGMA` que EF no compone, y `StartAsync` que no espera |
 

@@ -243,7 +243,7 @@ Y como la ventana necesita su icono de bandeja, `AddClienteWpf` registra además
 
 ## 12.6. De dónde salen el HTML, el CSS y el JS
 
-Cuando la ventana se aplica, el `BlazorWebView` arranca el `WebView2` y le dice: "esta página y todo lo que pida bajo tu origen, sérvelo **tú**, desde mi contenido estático":
+Cuando la ventana se muestra, el `BlazorWebView` arranca el `WebView2` y le dice: "esta página y todo lo que pida bajo tu origen, sérvelo **tú**, desde mi contenido estático":
 
 ```mermaid
 sequenceDiagram
@@ -307,7 +307,7 @@ flowchart LR
     style D fill:#4CAF50,color:#fff
 ```
 
-`FileStorageService` es sencillo de leer y tiene tres detalles que conviene estudiar:
+`FileStorageService` es sencillo de leer y tiene cuatro detalles que conviene estudiar:
 
 | Detalle | Cómo es | Por qué |
 |---------|---------|---------|
@@ -318,7 +318,7 @@ flowchart LR
 
 Por qué `%LOCALAPPDATA%` (DatosLocales) y no Roaming: igual que los logs, los datos de la app no deben viajar entre equipos del mismo perfil de Windows — es el equivalente de escritorio a "este navegador concreto".
 
-Si aun así sustituyeras el registro por el `LocalStorageService` de navegador (o quitaras el `Replace`), la app no "se rompería poco a poco": la primera llamada lanzaría la excepción de la 12.6 y un componente sin capturar la pintaría. De ahí dos reglas que sí son de diseño:
+Si aun así sustituyeras el registro por el `LocalStorageService` de navegador (o quitaras el `Replace`), la app no "se rompería poco a poco": la primera llamada lanzaría la excepción de la 12.6 y la pintaría un componente sin capturar. De ahí dos reglas que sí son de diseño:
 
 - **La sesión nunca puede tumbar el chat**: `SesionStore` captura cualquier excepción en sus tres métodos; si la sesión no se puede leer, se empieza de cero, y si no se puede guardar, se avisa pero la app sigue.
 - **No se arregla bajando el ámbito a *scoped***: las stores son *singletons* a propósito (una por ventana) y el `ProcesadorComandos` las consume; bajarles el ámbito contagiaría medio grafo de DI para parchear un síntoma. La implementación distinta por programa ataca la causa.
@@ -401,7 +401,7 @@ e.Cancel = true;
 Hide();
 ```
 
-Detrás de `Hide()` van dos ideas: primero, `_bandeja.Mostrar()` (el icono aparece; la llamada es idempotente, ocultar dos veces no crea dos iconos) y después el aviso de segundo plano **solo la primera vez**. Y todo va envuelto en un `try/catch` que registra el error y sigue: **la bandeja es comodidad, jamás se tumba el chat por un icono**.
+Detrás de `Hide()` van dos ideas: primero, `_bandeja.Mostrar()` (el icono aparece; la llamada es idempotente, mostrar dos veces no crea dos iconos) y después el aviso de segundo plano **solo la primera vez**. Y todo va envuelto en un `try/catch` que registra el error y sigue: **la bandeja es comodidad, jamás se tumba el chat por un icono**.
 
 **El icono nace del código.** El `TaskbarIcon` se construye en C# —icono `pack://` (el mismo maestro de la ventana y del `.exe`), tooltip "AulaChatNet" y menú—, y hay un detalle que rompió la primera prueba:
 
@@ -433,7 +433,7 @@ public async Task<bool> EsPrimeraVezAsync()
 
 Como `PreferenciasBandeja` es lógica pura (no toca WPF), se prueba con un doble de su almacenamiento, sin crear ventanas.
 
-**Salir, solo desde el menú y sin confirmación.** Elegir **Salir de AulaChatNet** en el menú de la bandeja YA es el paso deliberado — abrir el menú y apuntar a esa opción no es un accidente—, así que la app sale directo, como cualquier app nativa: se marca `_salidaConfirmada`, se llama a `Application.Shutdown()` y, al llegar el `Closing`, el manejador deja pasar el cierre en vez de mandar la ventana a la bandeja otra vez. Al morir, `OnExit` dispone el contenedor de servicios: `BandejaService.Dispose()` retira el icono — sin ese paso, el icono queda **huérfano** en la bandeja hasta el siguiente logoff de Windows.
+**Salir, solo desde el menú y sin confirmación.** Elegir **Salir de AulaChatNet** en el menú de la bandeja YA es el paso deliberado — abrir el menú y apuntar a esa opción no es un accidente—, así que la app sale directo, como cualquier app nativa: se marca `_salidaConfirmada`, se llama a `Application.Shutdown()` y, al llegar el `Closing`, el manejador deja pasar el cierre en vez de mandar la ventana a la bandeja otra vez. Al morir, `OnExit` libera el contenedor de servicios: `BandejaService.Dispose()` retira el icono — sin ese paso, el icono queda **huérfano** en la bandeja hasta el siguiente logoff de Windows.
 
 Estas son las trampas que enseñó este punto, resumidas:
 

@@ -87,7 +87,7 @@ AulaChatNet es un proyecto educativo de ejemplo para el módulo **Desarrollo Web
 - **SQLite + EF Core 10** - Base de datos embebida en un fichero, sin servidor ni contenedor; migraciones aplicadas al arrancar
 - **Rx.NET (System.Reactive)** - Programación reactiva en los clientes
 - **Blazor (Razor Class Library + WebAssembly)** - Cliente web: la interfaz de usuario vive en la librería compartida `AulaChatNet.Client.Blazor.Components` y el host WebAssembly la sirve en el 5031
-- **WPF + Blazor Hybrid (`BlazorWebView`)** - Cliente de escritorio: la MISMA librería `Client.Web` dentro de una ventana WPF, con el navegador WebView2 embebido (sin servidor detrás: los estáticos salen del propio .exe)
+- **WPF + Blazor Hybrid (`BlazorWebView`)** - Cliente de escritorio: la MISMA RCL (`Client.Blazor.Components`) dentro de una ventana WPF, con el navegador WebView2 embebido (sin servidor detrás: los estáticos salen del propio .exe)
 - **Spectre.Console** - Cliente de terminal
 - **Serilog** - Logging en los cuatro procesos de la solución: servidor (consola + fichero), terminal (fichero), escritorio (fichero en `%LOCALAPPDATA%`) y web (consola del navegador)
 - **DiceBear API** - Avatares deterministas por nombre de usuario
@@ -128,7 +128,7 @@ AulaChatNet/
 La solución (`AulaChatNet.slnx`) reúne **11 proyectos**: seis de código y cinco de tests. El criterio de reparto es sencillo: **cada proceso es un proyecto** —el servidor no comparte ejecutable con ningún cliente— y **cada proyecto de código tiene sus tests al lado**, con una única excepción: `AulaChatNet.Client.Web`, un host mínimo que solo arranca la interfaz, sin lógica propia que probar.
 
 - 📦 **`AulaChatNet.Shared`**: el contrato común de todo el sistema — DTOs (objetos de transferencia de datos), constantes del hub, `ChatConfig`, avatares, operadores Rx, parser de comandos `/` y helpers. **Sin dependencias de nadie**: si servidor y clientes deben decir exactamente lo mismo, ese código vive aquí y solo aquí.
-- 🖥️ **`AulaChatNet.Server`**: ASP.NET Core + SignalR + SQLite con EF Core. Expone `/hubs/chat` y `GET /estadisticas`, y **nada más**: no sirve ficheros estáticos ni referencia a ningún cliente, así que una interfaz nueva se conecta sin que el servidor se entere de quién es.
+- 🖥️ **`AulaChatNet.Server`**: ASP.NET Core + SignalR + SQLite con EF Core. Expone `/hubs/chat` y `GET /estadisticas`, y **nada más**: no sirve ficheros estáticos ni referencia a ningún cliente, así que un cliente nuevo se conecta sin que el servidor se entere de quién es.
 - 💻 **`AulaChatNet.Client.Terminal`**: consola con Spectre.Console (TUI estilo Discord). El cliente más autónomo: pinta sus vistas él mismo con `Shared`; no consume la librería web.
 - 🧩 **`AulaChatNet.Client.Blazor.Components`** (RCL, librería de clases Razor): la **interfaz de usuario compartida** — componentes Razor, stores reactivas, servicios, CSS y JS de la estética Discord. Una sola librería con dos consumidores.
 - 🌐 **`AulaChatNet.Client.Web`**: host WebAssembly de esa interfaz: `Program.cs`, `index.html` y `wwwroot` (DevServer en el `5031`). Delgado a propósito: la lógica vive en la RCL, no aquí.
@@ -162,17 +162,17 @@ flowchart BT
     style WP fill:#FF9800,color:#fff
 ```
 
-> 💡 **Consejo:** para entender la solución entera, lee `Shared` primero (el vocabulario), después `Server` (quién manda) y después el cliente que te interese: ya solo consumirá ese contrato.
+> 💡 **Consejo:** para entender la solución entera, lee primero `Shared` (el contrato que comparten servidor y clientes), después `Server` (quién manda) y, por último, el cliente que te interese: a partir de ahí solo consumirá ese contrato.
 
 ## 🏗️ Arquitectura
 
-Capa compartida (`Shared`) como contrato entre servidor y clientes, un hub de SignalR como puerta de entrada, el estado en el `ChatStore` y el historial respaldado en SQLite — **la escritura y el mantenimiento del fichero ocurren en dos servicios en segundo plano**, para que el hilo de SignalR nunca espere a disco. Fíjate en que **los cuatro son procesos separados**: el servidor está en el `5030` y no sirve ficheros, la web corre en su DevServer del `5031`, el terminal en consola y el de escritorio en su ventana WPF — la web habla con el servidor por `Web:UrlServidor` y, al ser otro origen, con CORS por medio; el escritorio apunta a esa misma URL pero **sin CORS**, porque su BlazorWebView no es un navegador de verdad (el HTML y el JS salen del propio .exe). Detalle en [`docs/01-arquitectura-del-servidor.md`](docs/01-arquitectura-del-servidor.md), en [`docs/04-persistencia.md`](docs/04-persistencia.md) y en [`docs/12-cliente-escritorio.md`](docs/12-cliente-escritorio.md):
+Capa compartida (`Shared`) como contrato entre servidor y clientes, un hub de SignalR como puerta de entrada, el estado en el `ChatStore` y el historial persistido en SQLite — **la escritura y el mantenimiento del fichero ocurren en dos servicios en segundo plano**, para que el hilo de SignalR nunca espere a disco. Fíjate en que **los cuatro son procesos separados**: el servidor está en el `5030` y no sirve ficheros, la web corre en su DevServer del `5031`, el terminal en consola y el de escritorio en su ventana WPF — la web habla con el servidor por `Web:UrlServidor` y, al ser otro origen, con CORS por medio; el escritorio apunta a esa misma URL pero **sin CORS**, porque su BlazorWebView no es un navegador de verdad (el HTML y el JS salen del propio .exe). Detalle en [`docs/01-arquitectura-del-servidor.md`](docs/01-arquitectura-del-servidor.md), en [`docs/04-persistencia.md`](docs/04-persistencia.md) y en [`docs/12-cliente-escritorio.md`](docs/12-cliente-escritorio.md):
 
 ```mermaid
 flowchart TD
     subgraph Clientes["Clientes (cada uno en su proceso)"]
         T["Terminal<br/>Spectre.Console + Rx<br/>consola propia"]
-        B["Web Blazor<br/>interfaz compartida (RCL Client.Web) + WASM<br/>DevServer :5031"]
+        B["Web Blazor<br/>interfaz compartida (RCL Client.Blazor.Components) + WASM<br/>DevServer :5031"]
         W["Escritorio WPF<br/>la MISMA interfaz de la RCL<br/>BlazorWebView (WebView2) en la ventana"]
     end
 
@@ -353,6 +353,6 @@ Codificado con :sparkling_heart: por [José Luis González Sánchez](https://jos
 
 ## Licencia de uso
 
-Este repositorio está licenciado bajo **Creative Commons**. Por favor si compartes, usas o modifica este proyecto cita a su autor.
+Este repositorio está licenciado bajo **Creative Commons**. Por favor, si compartes, usas o modificas este proyecto, cita a su autor.
 
 <a rel="license" href="https://creativecommons.org/licenses/by-nc-sa/4.0/deed.es"><img alt="Licencia de Creative Commons" style="border-width:0" src="https://i.creativecommons.org/l/by-nc-sa/4.0/88x31.png" /></a>

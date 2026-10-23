@@ -131,7 +131,7 @@ if (conexion is null) return null;   // sin registro, no hay sala propia
 return await store.GetAnterioresAsync(conexion.Canal, antesDe, cantidad);
 ```
 
-Si el canal fuera parámetro, cualquiera podría tirar de sonda: `ObtenerHistorialAsync("#profesores", ...)`. Al sacarlo del registro, **solo se puede mirar la sala en la que estás** — la seguridad por construcción, sin permisos ni roles (que, sin autenticación, no protegerían nada; véase la nota de la moderación en el README).
+Si el canal fuera parámetro, cualquiera podría tirar de sonda: `ObtenerHistorialAsync("#profesores", ...)`. Al sacarlo del registro, **solo se puede mirar la sala en la que estás** — la seguridad por construcción, sin permisos ni roles (que, sin autenticación, no protegerían nada).
 
 ## 10.6. Invocación en la web: store reactiva, como todo
 
@@ -193,7 +193,7 @@ La paginación toca cuatro anillos, y cada uno se prueba donde vive:
 | `ChatHub` | Dobles de SignalR como en toda la suite | Sin registro → `null`; el canal sale del SUYO; **cero eventos emitidos** (es una consulta) |
 | Red completa | E2E con **Kestrel + SQLite de verdad** | Página 1, página 2, página vacía, tope y `null` sin registro |
 
-El E2E es el único que enciende la persistencia en el arnés, y no es capricho: bajando `HistorialMaximo` a 3 se garantiza que cualquier página profunda **pisa disco de verdad**. Y como la escritura es *write-behind*, el test espera a que la cola haya persistido el último mensaje antes de paginar — FIFO: si el último está, los anteriores también. Ese "punto de sincronía" es el mismo truco del TCS de los E2E de menciones, cruzando el proceso de un servicio en segundo plano.
+El E2E es el único que enciende la persistencia en el arnés, y no es capricho: bajando `HistorialMaximo` a 3 se garantiza que cualquier página profunda **pisa disco de verdad**. Y como la escritura es *write-behind*, el test espera a que la cola haya persistido el último mensaje antes de paginar — FIFO: si el último está, los anteriores también. Ese "punto de sincronía" es el mismo truco del TCS de los E2E de menciones: se cruzan el proceso del test y el del servicio en segundo plano.
 
 > 📝 **Nota:** en los tests de componentes de Blazor (bUnit), un ayudante de JS que **coincide pero no tiene resultado fijado** no devuelve nada: cuelga la invocación. Por eso cada uno se configura con su `SetResult`/`SetVoidResult`, igual que el parpadeo de las menciones.
 

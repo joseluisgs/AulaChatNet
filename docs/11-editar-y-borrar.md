@@ -17,13 +17,13 @@
 
 > 💡 **Punto de partida:** en Discord borras un mensaje con la papelera y lo editas escribiendo encima. Ese mensaje *cambia* sin que se publique uno nuevo: mismo sitio, mismo momento de publicación, texto distinto. En WhatsApp pasa igual cuando ves la etiqueta *Editado*. ¿Cómo se hace sin liar la página y sin romper la persistencia? Ese es el trabajo de este punto: **editar y borrar mensajes propios**.
 
-📌 **Ejemplo real:** Discord permite editar y borrar tus mensajes (y en canales con permisos, los de cualquiera). WhatsApp solo los tuyos, con aviso. Slack borra y edita también los suyos. La regla que comparten: **tú tocas lo tuyo, el servidor lo decide**. Y si el registro ya no existe (alguien lo borró, se fue la conexión...), el cliente se re-sincroniza en vez de quedarse con texto fantasma.
+📌 **Ejemplo real:** Discord permite editar y borrar tus mensajes (y en canales con permisos, los de cualquiera). WhatsApp solo los tuyos, con aviso. Slack borra y edita también los suyos. La regla que comparten: **tú tocas lo tuyo, el servidor lo decide**. Y si el mensaje ya no existe (alguien lo borró, se fue la conexión...), el cliente se re-sincroniza en vez de quedarse con texto fantasma.
 
 **Objetivos de aprendizaje:**
 
 - Comprender la diferencia entre **invocación con retorno** (el cliente pregunta "¿he podido?") y **evento broadcast** (el servidor avisa "esto ha cambiado")
 - Diseñar reglas de negocio en el servidor: propiedad por **nick normalizado**, tipos de mensaje, **canal del registro de la conexión**
-- Gestionar una **cola de escritura** (`SemaphoreSlim`) y una **ventana de bloqueo** del historial para que la paginación 4.3 no sirva datos obsoletos
+- Gestionar una **cola de escritura** (`SemaphoreSlim`) y una **ventana de bloqueo** del historial para que la paginación no sirva datos obsoletos
 - Reconciliar estado en dos clientes muy distintos: el marcado de repintado de terminal y la lista reactiva de Blazor
 - Pedir confirmación **en la propia interfaz** (sin diálogos del navegador) solo cuando la acción es irreversible
 
@@ -128,7 +128,7 @@ flowchart LR
 
 - **Nick registrado**: el hub no confía en parámetros: usa el nick que **tu conexión** registró al entrar al canal (`Context.Items`). Si no lo hay, no hay propiedad que discutir.
 - **Existencia**: el mensaje puede haberse borrado en los últimos segundos (el borrar es definitivo). Si ya no está, se responde con el error y **no se re-sincroniza automáticamente**: el que invocó es quien decide qué hacer (y el resto de clientes se entera por el evento correspondiente).
-- **Tipo**: los mensajes de sistema (entradas, salidas, ediciones de otros usuarios ya borrados...) no se pueden tocar.
+- **Tipo**: los mensajes de sistema (entradas, salidas y cambios de nick) no se pueden tocar.
 - **Propiedad**: comparación con `StringComparison.OrdinalIgnoreCase` del nick de la conexión contra el del mensaje. Sin esto, cualquiera podría editar el mensaje de cualquiera con su GUID (y el GUID no es secreto: va de camino a todos los clientes).
 
 Una sola casuística compartida por los dos métodos: `EditarMensajeAsync` devuelve además el `null`-éxito; `BorrarMensajeAsync` no tiene caso "vacío" porque el borrado siempre lleva Id.
@@ -170,7 +170,7 @@ Y como el marcado es el que manda, el "(editado)" aparece solo: `LineaMensajeMar
 
 La web sí tiene modelo en memoria (`ChatStoreBlazor.Mensajes`), así que los handlers hacen lo mismo pero sobre `List<MensajeDto>`: sustituir (conservando la hora original) o quitar. Y un detalle importante: **si el mensaje borrado tenía chips de reacción en la ventana visible, se poda su entrada del mapa** para que la fila no deje colgando una sección vacía.
 
-Cada cambio notifica a los suscriptores → el marcado se recalcula → el mensaje muestra "(editado)" o desaparece. **Los dos clientes terminales (Spectre y Blazor) implementan el mismo contrato de eventos**: `MensajeEditado`, `MensajeBorrado`, y ya está. Cambios que se reordenan: la 4.1 (reordenar por actividad) no se ve afectada; el mensaje editado **conserva su posición original**, porque no cambia su hora.
+Cada cambio notifica a los suscriptores → el marcado se recalcula → el mensaje muestra "(editado)" o desaparece. **Los dos clientes (la terminal de Spectre y la web de Blazor) implementan el mismo contrato de eventos**: `MensajeEditado`, `MensajeBorrado`, y ya está. En cuanto al orden: el mensaje editado **conserva su posición original**, porque no cambia su hora; solo el borrado quita su fila.
 
 ## 11.7. Editor inline en la web y confirmación en la terminal
 
@@ -193,7 +193,7 @@ En la terminal no hay editor: `/editar <texto>` va directo al hub. Y la diferenc
 
 Como siempre, dejar claro el perímetro:
 
-- **No hay edición de mensajes ajenos** (ni rol de moderación, que además está deshabilitado por configuración desde la 4.2).
+- **No hay edición de mensajes ajenos** (ni un rol de moderación que lo permita: aquí no hay roles).
 - **No hay historial de versiones**: el texto anterior se pierde (Discord, por ejemplo, sí lo guarda por su cuenta; aquí no).
 - **No hay borrado de mensajes del sistema** ni de otros usuarios.
 - **No hay "editando..." en vivo** ni indicador de "X está editando".
@@ -209,9 +209,9 @@ Editar y borrar se prueban en los mismos anillos que el resto del chat —parser
 | `EditadoTextoTests` (Shared) | La marca es exactamente `(editado)` y `Descripcion` la anteponga o no según el flag |
 | `ChatStoreTests` (Servidor) | **11 tests**: editar con Id correcto, nick correcto y texto válido → `Editado=true` y `Texto` nuevo con el **mismo Id y hora**; texto vacío o solo espacios → `null`; texto largo → `null`; mensaje ajeno o de sistema → `null` (sin tocar nada); GUID inexistente → `null`; borrar → desaparece del canal; **ya no se puede editar ni borrar lo borrado**; se recalcula el bloqueo del historial |
 | `ChatHubTests` (Servidor) | La misma matriz **en el hub**: éxito → evento `MensajeEditado`/`MensajeBorrado` al grupo y retorno `null`; cada error → el mensaje de error **en español literal**; nick con mayúsculas distintas → funciona (normalización) |
-| `EditarBorrarEndToEndTests` (Servidor, E2E) | Con **Kestrel y SQLite reales**: editar conserva Id y hora y **persiste**; borrar es **definitivo** (desaparece de la fila de la base de datos); mensaje ajeno → error en español; el evento llega a un segundo cliente y **no genera re-aviso de mención** |
+| `EditarBorrarEndToEndTests` (Servidor, E2E) | Con **Kestrel y SQLite reales**: editar conserva Id y hora y **persiste**; borrar es **definitivo** (la fila desaparece de la base de datos); mensaje ajeno → error en español; el evento llega a un segundo cliente y **no genera re-aviso de mención** |
 | `VistaChatTests` (Terminal) | El marcado añade la marca a los mensajes con `Editado=true` y **no la añade** a los demás |
-| `ClienteChatEditadoBorradoTests` (Terminal) | Con un **hub de pruebas que acepta y difunde** los eventos del contrato real: `MensajeEditado` sustituye el texto conservando Id y hora; un Id que no está en la vista no toca nada; `MensajeBorrado` quita el mensaje **y sus chips**; `EditarAsync`/`BorrarAsync` devuelven `null` al aceptar el servidor, **el texto del error en español** al rechazarlo y un fallo de red sin servidor |
+| `ClienteChatEditadoBorradoTests` (Terminal) | Con un **hub de pruebas que acepta y difunde** los eventos del contrato real: `MensajeEditado` sustituye el texto conservando Id y hora; un Id que no está en la vista no toca nada; `MensajeBorrado` quita el mensaje **y sus chips**; `EditarAsync`/`BorrarAsync` devuelven `null` al aceptar el servidor, **el texto del error en español** al rechazarlo y «Sin conexión con el servidor» si no hay servidor al otro lado |
 | `ProcesadorComandosTests` (Web) | `/editar` y `/borrar` con y sin mensajes propios; mensaje ajeno y de sistema → no se invoca el hub; texto vacío → no se invoca |
 | `MensajeItemTests` (Web) | Los botones ✏️/🗑️ **solo aparecen si el mensaje es tuyo y es Normal**; al pulsarlos se cambia a modo edición y se llama al store; **Enter guarda, Esc cancela**; **el borrado pide confirmación en línea (✔/✕) y la cancelación no invoca nada**; el texto se recorta antes de enviar |
 

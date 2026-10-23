@@ -23,7 +23,7 @@ En este punto incorporamos el control de ráfagas: una ventana deslizante que el
 - Colocar estado entre invocaciones en un **singleton**, porque los hubs de SignalR se crean y se tiran en cada llamada
 - Elegir la clave correcta del estado (la conexión) y borrarla al desconectar para no gotear memoria
 - Ordenar las validaciones del hub por coste y por justicia: un mensaje malformado no gasta cuota
-- Añadir un límite configurable que CERO lo apague, siguiendo el criterio de `RetencionDias`
+- Añadir un límite configurable que se apague con CERO, siguiendo el criterio de `RetencionDias`
 - Ampliar el servidor sin tocar NADA de los clientes: el aviso viaja por el mismo canal que los errores de siempre
 
 ## 8.1. El problema del que nadie habla
@@ -105,11 +105,11 @@ Tres apuntes de esa lectura:
 - La `Queue<DateTime>` **no es thread-safe**, y dos invocaciones de la MISMA conexión pueden solaparse. El candado es por conexión (`lock` sobre SU cola), nunca global: un aula llena no debe frener a las demás
 - El instante lo **pasa quien llama** (`Intentar(clave, ahoraUtc)`): en producción el hub pasa `DateTime.UtcNow` y las pruebas pasan instantes fijos, así que se prueba la ventana entera **sin esperar ni un segundo real**
 
-> 💡 **Consejo:** cuando un mecanismo dependa del tiempo, no leáis el reloj desde dentro del código que queréis probar. Sacad el reloj a fuera —parámetro, `TimeProvider` o el planificador de Rx— y las pruebas dejan de ser lentas y dejan de ser frágiles.
+> 💡 **Consejo:** cuando un mecanismo dependa del tiempo, no leas el reloj desde dentro del código que quieras probar. Saca el reloj a fuera —parámetro, `TimeProvider` o el planificador de Rx— y las pruebas dejan de ser lentas y dejan de ser frágiles.
 
 ## 8.3. Dónde vive la cuota: los hubs son transitorios
 
-Aquí viene la lección más importante del punto, y es de SignalR, no de ráfagas. En AulaChatNet pensamos que "el hub" es una pieza única que vive mientras el servidor está encendido... **mentira**. SignalR crea una instancia NUEVA del hub en cada invocación: llamas a `EnviarAsync`, se construye un `ChatHub`, hace su trabajo y se recicla. Si guardaras la cuota en un campo del hub, la instauración siguiente no encontraría nada y cada mensaje tendría la cuota recién estrenada.
+Aquí viene la lección más importante del punto, y es de SignalR, no de ráfagas. En AulaChatNet pensamos que "el hub" es una pieza única que vive mientras el servidor está encendido... **mentira**. SignalR crea una instancia NUEVA del hub en cada invocación: llamas a `SendAsync`, se construye un `ChatHub`, hace su trabajo y se recicla. Si guardaras la cuota en un campo del hub, la instanciación siguiente no encontraría nada y cada mensaje tendría la cuota recién estrenada.
 
 Por eso la cuota vive en un **singleton** registrado en la composición raíz:
 
@@ -189,7 +189,7 @@ La cuota cubre `SendAsync` y `EnviarPrivadoAsync`: los dos caminos por los que u
 
 | Método del hub | ¿Cuota? | Por qué |
 |----------------|---------|---------|
-| `EnviarAsync` | ✅ Sí | El vector clásico de inundación: escribe en el canal, va al historial y a todos los del grupo |
+| `SendAsync` | ✅ Sí | El vector clásico de inundación: escribe en el canal, va al historial y a todos los del grupo |
 | `EnviarPrivadoAsync` | ✅ Sí | También es escritura, y comparte la misma cuota de la conexión |
 | `ReaccionarAsync` | ❌ No | Son interruptores, no texto: alternar no crece sin límite y no entra en el historial |
 | `EscribiendoAsync` | ❌ No | El cliente ya lo muestrea a un aviso por segundo, y su estado caduca solo a los 5 s |
@@ -243,7 +243,7 @@ Limitar no es solo contar: hay que decidir dónde se cuenta, con qué clave, en 
 | Estado fuera del hub | La cuota vive en `ControlRafagas`, un singleton | SignalR crea un hub por invocación: lo que se comparte entre llamadas va en singleton |
 | Clave = conexión | `ConnectionId`, limpiado en `OnDisconnectedAsync` | Cuelga la cuota de una identidad que el servidor conoce y que muere con su dueño |
 | Orden de comprobaciones | Registro → validación de campo → cuota → efecto | El orden también es seguridad y justicia: la basura no gasta la cuota de nadie |
-| Qué se limita y qué no | Solo `EnviarAsync` y `EnviarPrivadoAsync` | Dejar algo fuera es una decisión documentada, no un descuido |
+| Qué se limita y qué no | Solo `SendAsync` y `EnviarPrivadoAsync` | Dejar algo fuera es una decisión documentada, no un descuido |
 | Apagador en configuración | `RafagaMensajes = 0` desactiva el control entero | Apagar el límite debe ser una línea en JSON, no un despliegue |
 | Tiempo por parámetro | `Intentar` recibe el instante como argumento | Quien recibe el tiempo por parámetro prueba la ventana sin esperar ni un segundo |
 

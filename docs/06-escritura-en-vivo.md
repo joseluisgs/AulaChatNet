@@ -28,7 +28,7 @@ En este punto añadimos el indicador de escritura: la señal que nace en cada te
 
 ## 6.1. El viaje de una señal de escritura
 
-El recorrido empieza en el editor de cada cliente y termina en la pantalla de los demás. La terminal, en su bucle de teclas, llama a `cliente.SenalarEscritura()` justo después de insertar cada carácter imprimible. La web usa `@oninput` en el cuadro de texto: Blazor no deja tener dos manejadores sobre el mismo evento, así que el `@bind` de toda la vida se sustituyó por `value` + un manejador manual que hace las dos cosas — guardar el texto y avisar a la store — y de paso cubre pegar y dictar, que son cambios de texto sin tecla que por un `onkeydown` no saldrían.
+El recorrido empieza en el editor de cada cliente y termina en la pantalla de los demás. La terminal, en su bucle de teclas, llama a `cliente.SenalarEscritura()` justo después de insertar cada carácter imprimible. La web usa `@oninput` en el cuadro de texto: Blazor no deja tener dos manejadores sobre el mismo evento, así que el `@bind` de toda la vida se sustituyó por `value` + un manejador manual que hace las dos cosas — guardar el texto y avisar a la store —. De paso, ese manejador cubre pegar y dictar, que son cambios de texto sin tecla y que un `onkeydown` no detectaría.
 
 Ambos caminos acaban en lo mismo: `SenalEscritura.Tecla()`, de `Shared`. De ahí en adelante el cliente ya no decide nada:
 
@@ -102,7 +102,7 @@ flowchart TD
 
 > 💡 **Consejo:** elige el operador por el COMPORTAMIENTO que quieres observar, no por el nombre que recuerdes. Pregúntate "¿qué debe pasar mientras la gente sigue haciendo esto?" y después "¿qué debe pasar cuando para?". Con esas dos respuestas, `Sample` frente a `Throttle` se decide solo.
 
-Además, por coherencia con todo lo que se ha decidido en este proyecto: **el señal no viaja solo el nombre**, nunca el texto. Una pulsación de teclas no es un mensaje — no es historia de nadie, no se guarda y no se cuenta.
+Además, por coherencia con todo lo que se ha decidido en este proyecto: **la señal solo lleva el nombre**, nunca el texto. Una pulsación de teclas no es un mensaje — no es historia de nadie, no se guarda y no se cuenta.
 
 ## 6.3. El quinto destino de SignalR
 
@@ -116,7 +116,7 @@ Hasta ahora el proyecto usaba cuatro formas de emitir con SignalR. Este punto a�
 | `Clients.Client(conexión)` | Dos conexiones concretas | El mensaje privado y su eco |
 | `Clients.OthersInGroup(canal)` | El canal MENOS el que manda | "Está escribiendo..." |
 
-`OthersInGroup` es justo lo que hace falta aquí: SignalR ya se encarga de **excluir al emisor**, así que nadie ve su propio nombre como "está escribiendo...". Con `Group` habría que filtrar el propio mensaje en CADA cliente, que es una comprobación repartida — y olvidarse de una de las pantallas es exactamente lo que produce el "estás escribiendo tú mismo" que se ve en algunos chats por ahí.
+`OthersInGroup` es justo lo que hace falta aquí: SignalR ya se encarga de **excluir al emisor**, así que nadie ve su propio nombre como "está escribiendo...". Con `Group` habría que filtrar la propia señal en CADA cliente, que es una comprobación repartida — y olvidarse de una de las pantallas es exactamente lo que produce el "estás escribiendo tú mismo" que se ve en algunos chats por ahí.
 
 Y como el resto, es emisión **al grupo del canal del emisor**: quien está en otra sala no oye nada, porque en la suya nadie está escribiendo. Una sola llamada, sin parámetros de lista: el servidor no sabe ni le importa quiénes están escuchando.
 
@@ -130,7 +130,7 @@ De las tres formas de estado que podría tener esto, el servidor no tiene NINGUN
 
 Lo único que hace el hub es comprobar el registro y reenviar. El log de la señal es `LogDebug` **a propósito**: una señal por segundo y persona, con el nivel Information por defecto, llenaría el fichero de log en minutos con información que nadie va a querer leer.
 
-📌 **Ejemplo real:** es el mismo criterio de los mensajes privados (ver [`05-mensajes-privados.md`](05-mensajes-privados.md)): **estado que necesita limpieza, es estado que se pudre**. Si el servidor guardara quién escribe, haría falta un temporizador por conexión, una limpieza al desconectar y —lo que siempre se olvida— una limpieza por si el proceso se cae a mitad de frase. Con la caducidad en el cliente, nada de eso existe: el que se desconecta a mitad de una palabra no deja rastro en nadie, y sus marcas mueren solas en las pantallas que las tenían, a los cinco segundos.
+📌 **Ejemplo real:** es el mismo criterio de los mensajes privados (ver [`05-mensajes-privados.md`](05-mensajes-privados.md)): **un estado que necesita limpieza es un estado que se pudre**. Si el servidor guardara quién escribe, haría falta un temporizador por conexión, una limpieza al desconectar y —lo que siempre se olvida— una limpieza por si el proceso se cae a mitad de frase. Con la caducidad en el cliente, nada de eso existe: el que se desconecta a mitad de una palabra no deja rastro en nadie, y sus marcas mueren solas en las pantallas que las tenían, a los cinco segundos.
 
 > ⚠️ **Advertencia:** no confundas "el servidor no guarda ESTO" con "el servidor no guarda nada": la presencia y la unicidad de nicks siguen en memoria y el historial en SQLite. La pregunta correcta es siempre **¿esto es información con valor que alguien tiene derecho a recuperar más tarde?** Una señal de "sigue escribiendo" no lo es.
 

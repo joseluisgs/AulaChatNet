@@ -145,7 +145,7 @@
             app — este documento enlaza <code>wwwroot/css/app.css</code> directamente. Las personas, los
             mensajes y las horas están simulados: aquí no hay SignalR ni Rx.NET, solo la maqueta visual.
             El <b>estado</b> que se ve en cada fila (selector de reacciones abierto, chip de privado
-            activo, badge de menciones) es el de una interacción cualquiera, para que se aprecie sin
+            activo, aviso de menciones) es el de una interacción cualquiera, para que se aprecie sin
             tener que interaccionar.
         </p>
         <nav class="doc-nav">
@@ -205,10 +205,10 @@
         </div>
 
         <p class="doc-nota">
-            <b>Estados no mostrados</b> (todos con su propio mensaje, diferenciados por caso):
+            <b>Estados no mostrados</b> (cada uno con su propio mensaje, según el caso):
             ⚠ si las estadísticas no se pueden consultar, la línea de arriba sale en naranja pero no corta
             el arranque; <code>✗ error</code> en rojo justo bajo el botón cuando la validación falla (p. ej.
-            nombre de 1 letra); el botón pasa a <b>“Conectando…”</b> mientras abre la conexión y a
+            nombre de 1 letra); el botón pasa a <b>“Conectando…”</b> mientras se abre la conexión y a
             <b>“Reintentar”</b> si no hay red — conservando el nick escrito para no volver a preguntar.
         </p>
     </section>
@@ -618,7 +618,7 @@
             tuyo— <b>✏️</b> y <b>🗑️</b> (el 🗑️ los sustituye por <b>¿Borrar? ✔ ✕</b> en la propia fila).
             Los <b>chips son interruptores</b> y el tuyo sale resaltado en blurple; los privados van en la
             <b>misma cronología</b> que el canal, con su 🔒 “para/de” y la nota de no-guardado colgada del
-            title. El badge <b>💬 1</b> es <code>position: fixed</code>: en la app se clava en la esquina de
+            title. El contador <b>💬 1</b> es <code>position: fixed</code>: en la app se clava en la esquina de
             la ventana (aquí flota sobre el documento, que es lo mismo).
             <b>Estados no mostrados:</b> si la conexión cae, el punto pasa a rojo y aparece
             <b>“Reconectar”</b> en la barra; los fallos de conexión entran al flujo de mensajes como aviso

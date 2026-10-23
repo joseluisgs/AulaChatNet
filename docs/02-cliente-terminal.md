@@ -154,8 +154,8 @@ Orden de lo que acaba de pasar (los colores —paleta Discord— no se ven en te
 
 1. **Banner + tabla de `/ayuda`**: nada más arrancar ya sabes qué puedes escribir.
 2. **📌 Conteo de conectados**: sale de `GET /estadisticas` **antes** de registrarse.
-3. **Bienvenida** con su mensaje según el caso (aqui, sesión del día anterior).
-4. **Prompts guiados**: nick y canal con sus defaults entre paréntesis, y la lista de canales con `←` marcando cuál se repite con Enter.
+3. **Bienvenida** con su mensaje según el caso (aquí, sesión del día anterior).
+4. **Prompts guiados**: nick y canal con sus valores por defecto entre paréntesis, y la lista de canales con `←` marcando el canal que Enter elige por defecto.
 5. **Confirmación** ("Entrarás como...") antes de tocar el servidor.
 6. **Conexión**: spinner mientras, y línea de éxito con los contadores + la línea de estado.
 
@@ -367,7 +367,7 @@ Bórrala con /sesion borrar (útil si compartes el equipo).
 🗑️ Sesión borrada: la próxima vez se preguntará de cero (y esta vez no se guardará nada al salir).
 ```
 
-En aulas compartidas es la forma de no heredar el nick del compañero de la turno anterior.
+En aulas compartidas es la forma de no heredar el nick del compañero del turno anterior.
 
 > 📝 **Nota:** los tests de `SesionStoreTests` usan una carpeta temporal por test, así que el fichero real del equipo nunca se toca.
 
@@ -396,7 +396,7 @@ Ese pintado incremental es reactivo a su vez: Rx entrega la **vista completa** d
 
 ## 2.8. La capa reactiva con Rx
 
-Rx.NET (del inglés *Reactive Extensions*, extensiones reactivas) es la librería .NET de flujos de datos: lo que produce un `IObservable<T>` se puede suscribir, filtrar y combinar como una lista, pero en asíncrono. Sobre esa base, `ClienteChat` no tiene eventos de interfaz ni delegados: mantiene el estado en **stores con `BehaviorSubject`** y lo expone como `IObservable<T>`. Cualquier parte que quiera "saber algo" se suscribe y pinta; nadie más se entera:
+Rx.NET (del inglés *Reactive Extensions*, extensiones reactivas) es la librería .NET de flujos de datos: lo que emite un `IObservable<T>` se recibe, se filtra y se combina como una lista, pero en asíncrono. Sobre esa base, `ClienteChat` no tiene eventos de interfaz ni delegados: mantiene el estado en **stores con `BehaviorSubject`** y lo expone como `IObservable<T>`. Cualquier parte que quiera "saber algo" se suscribe y pinta; nadie más se entera:
 
 | Store | Tipo | De dónde viene |
 |-------|------|----------------|
@@ -485,7 +485,7 @@ El cliente que parece más sencillo es, paradójicamente, el que más decisiones
 
 | Concepto | Qué retener |
 |----------|-------------|
-| Arranque guiado | Banner → `GET /estadisticas` → bienvenida por casos → prompts con default → confirmación → conexión |
+| Arranque guiado | Banner → `GET /estadisticas` → bienvenida por casos → prompts por defecto → confirmación → conexión |
 | Vista en vivo | `AnsiConsole.Live` + `Layout` de 3 zonas; la cabecera y el pie se repintan en sitio, no se reimprimen |
 | Línea de entrada | `EditorLinea` (clase pura): texto + cursor, con el cursor resaltado en lugar de moverlo |
 | Reconexión | Al volver, se re-invoca `ConnectAsync` (el alta no viaja sola); si se agota, `R` o `/reconectar` sin reiniciar |

@@ -68,7 +68,7 @@ sequenceDiagram
 
 > 📝 **Nota:** el servidor loguea la **longitud** del privado, no su contenido. Es el mismo criterio que con los mensajes del canal: un fichero de log puede leer gente que no debería.
 
-📌 **Ejemplo real:** Discord enruta los mensajes directos por el mismo cliente que usa para los servidores, pero el servidor los manda a dos personas concretas y nunca los mete en la transcripción de un canal. Y si te fijas, tampoco forman parte del historial de nadie.
+📌 **Ejemplo real:** Discord enruta los mensajes directos por la misma conexión que usa para los servidores, pero el servidor los manda a dos personas concretas y nunca los mete en la transcripción de un canal. Y si te fijas, tampoco forman parte del historial de nadie.
 
 ## 5.2. Por qué no se guarda nada
 

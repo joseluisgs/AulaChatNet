@@ -220,9 +220,9 @@
         <p class="doc-nota">
             <b>Convenciones visibles en esta pantalla:</b> el banner es un <code>FigletText("AulaChat")</code>
             en <i>blurple</i> —el nombre corto a propósito: el font FIGlet no cabría en una terminal de 80
-            columnas con «AulaChatNet»—; el contador de gente sale de <code>GET /estadisticas</code>
+            columnas con "AulaChatNet"—; el contador de gente sale de <code>GET /estadisticas</code>
             <b>antes de registrarse</b> (el servidor todavía no sabe que existes); y la lista de canales marca
-            con <code>←</code> cuál se repite al pulsar Enter — nunca se elige «a ciegas».
+            con <code>←</code> el canal que Enter elige por defecto — nunca se elige a ciegas.
         </p>
     </section>
 
@@ -253,12 +253,12 @@
 
         <p class="doc-nota">
             <b>Convenciones visibles en esta vista:</b> el lienzo es un <code>Layout</code> de tres zonas
-            —cabecera, mensajes y pie— que <b>no se reimprimen</b>: solo cambian los números. Cada fila del canal
+            —cabecera, mensajes y pie— que <b>no se reimprime</b> en bloque: solo cambian los números. Cada fila del canal
             es <code>hora + [iniciales] + nombre en color + texto</code>, con los avisos de sistema en
             <i>gris cursiva</i>, las menciones en amarillo, los chips de reacción en gris y los privados con el
             <code>🔒</code> en rosa. El color de cada nick no está elegido: sale del <b>hash del nombre</b>
             (<code>TemaDiscord.ColorDe</code>), igual que los avatares de DiceBear en la web. Y abajo, el pie
-            fijo con el reparto por salas y el prompt <code>&gt;</code> con su cursor de bloque.
+            fijo con el reparto por canales y el prompt <code>&gt;</code> con su cursor de bloque.
         </p>
     </section>
 

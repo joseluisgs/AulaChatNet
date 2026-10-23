@@ -48,7 +48,7 @@ Antes de mirar una sola línea de código, conviene aterrizar la plataforma: est
 
 **WebAssembly (WASM)** es, junto a HTML y JavaScript, el tercer lenguaje del navegador: un formato **binario** que los navegadores ejecutan casi a velocidad nativo, dentro de una caja de arena (sandbox) sin acceso al disco ni al DOM. Desde 2017 lo soportan Chrome, Firefox, Edge y Safari.
 
-📌 **Ejemplo real:** Figma, la web de Photoshop y Google Earth se apoyan en WebAssembly para rendir en el navegador — tareas que antes solo JavaScript podía hacer hoy corren ahí dentro con código compilado.
+📌 **Ejemplo real:** Figma, la web de Photoshop y Google Earth se apoyan en WebAssembly para rendir en el navegador — tareas que antes solo hacía JavaScript hoy corren ahí dentro con código compilado.
 
 Blazor WebAssembly combina las dos cosas: el runtime de .NET (Mono) **compilado a WebAssembly** junto con tus DLLs. La primera vez que entras, el navegador descarga unos megas de runtime (el *splash* que verás en la 3.2) y a partir de ahí todo tu C# corre dentro de la pestaña:
 
@@ -262,7 +262,7 @@ flowchart TD
     style H0 fill:#FF9800,color:#fff
 ```
 
-Este modelo **propiedades abajo, eventos arriba** es perfecto para árboles pequeños y para componentes decorativos. Su límite aparece en cuanto el dato es de INTERÉS GENERAL: si la lista de mensajes quiere saber el canal actual, y la barra también, y las píldoras también, el dato tendría que bajar de `Chat.razor` a cada uno — y cada pulsación subir por eventos hasta la página para que sea ella quien decida. En React y Vue le llaman *prop drilling* (taladro de propiedades): el dato perfora niveles que no lo usan, y la página se convierte en el centralita de todos los eventos.
+Este modelo **propiedades abajo, eventos arriba** es perfecto para árboles pequeños y para componentes decorativos. Su límite aparece en cuanto el dato es de INTERÉS GENERAL: si la lista de mensajes quiere saber el canal actual, y la barra también, y las píldoras también, el dato tendría que bajar de `Chat.razor` a cada uno — y cada pulsación subir por eventos hasta la página para que sea ella quien decida. En React y Vue le llaman *prop drilling* (taladro de propiedades): el dato perfora niveles que no lo usan, y la página se convierte en la centralita de todos los eventos.
 
 > 📝 **Nota:** fíjate en un detalle revelador de este cliente: hay `[Parameter]` en dos componentes hoja, pero **ni un solo `EventCallback`** en todo el proyecto. No es un descuido: la comunicación "hacia arriba" la absorbe la store. Ese es precisamente el salto de la siguiente subsección.
 
@@ -301,7 +301,7 @@ Un cambio es, siempre, el mismo viaje: **acción → store → hub → evento de
 
 ### Propiedades y eventos: el contrato de la store
 
-La `ChatStore` es el **puerto** de la `ClienteChat` de la terminal: mismo contrato con el hub, mismos estados y mismas traducciones de error (`MensajesError`, nunca "HttpRequestException" en pantalla). Su cara pública se agrupa en tres familias:
+La `ChatStore` es el **equivalente** de la `ClienteChat` de la terminal: mismo contrato con el hub, mismos estados y mismas traducciones de error (`MensajesError`, nunca "HttpRequestException" en pantalla). Su cara pública se agrupa en tres familias:
 
 | Familia | En C# | Ejemplos | Para qué |
 |---------|-------|----------|----------|
@@ -370,7 +370,7 @@ flowchart TD
     style ST fill:#9C27B0,color:#fff
 ```
 
-¿Qué se gana con la estrella?
+¿Qué se gana con la store?
 
 - **Reutilización**: `ListaMensajes` sirve en cualquier página; no pide parámetros a su padre, se suscribe a `Store.Mensajes`.
 - **Pruebas**: un componente se prueba solo, contra una `StoreFalsa` — no hace falta montar la página entera.
@@ -521,7 +521,7 @@ Sesión guardada: Ana → #general
 
 ## 3.8. Un caso de estudio: el Closed fantasma
 
-Al probar la web en el navegador con dos pestañas (mismo nick "Ambas dicen llamarse Ana"), el servidor rechazó correctamente el segundo alta — pero **en la consola del navegador aparecía un warning fantasma**: `Conexión perdida de forma inesperada…`, justo después del aviso legítimo del rechazo. El servidor estaba en lo cierto, el cliente mentía.
+Al probar la web en el navegador con dos pestañas (ambas dicen llamarse Ana), el servidor rechazó correctamente el segundo alta — pero **en la consola del navegador aparecía un warning fantasma**: `Conexión perdida de forma inesperada…`, justo después del aviso legítimo del rechazo. El servidor estaba en lo cierto, el cliente mentía.
 
 La causa: el cliente marca `_cierreIntencionado = true` antes de cerrar la conexión tras un rechazo (para que el evento `Closed` no avise de una caída que pedimos nosotros)… y **reseteaba el flag justo después del `StopAsync`**. El problema es de tiempo: SignalR invoca `Closed` de forma **asíncrona**, a veces DESPUÉS de que `StopAsync` devuelva. El evento tardío llegaba con el flag ya en `false` y soltaba su aviso fantasma:
 
@@ -554,7 +554,7 @@ La terminal guardaba la sesión en un fichero del perfil; aquí no hay disco, pe
 - **Qué se guarda**: nick y canal — al conectar con éxito, si `Web:RecordarSesion` es `true`.
 - **Nunca rompe**: un chat no puede estrellarse porque el navegador esté en modo privado. Todos los fallos (`JSException` de lectura o escritura) se traducen en "no hay sesión" + un warning **en el log del navegador**, nunca en pantalla.
 
-`/sesion` relee del navegador y te enseña lo guardado; `/sesion borrar` lo borra — en aulas compartidas, la forma de no heredar el nick del compañero de la turno anterior. El enlace "¿No eres tú? Borrar sesión" del panel de entrada hace exactamente lo mismo a un clic.
+`/sesion` relee del navegador y te enseña lo guardado; `/sesion borrar` lo borra — en aulas compartidas, la forma de no heredar el nick del compañero del turno anterior. El enlace "¿No eres tú? Borrar sesión" del panel de entrada hace exactamente lo mismo a un clic.
 
 ## 3.10. Desarrollo: dotnet watch y el manifiesto de assets
 
@@ -588,7 +588,7 @@ El truco de los tests de componentes es la **`StoreFalsa`**: en lugar de una con
 
 > 📝 **Nota:** un detalle de Moq aprendido a golpe: `It.Is<T>(x => x is Tipo)` no compila (CS8122) porque los árboles de expresión no admiten `is`; en su lugar se verifica sobre `_procesador.Invocations[0].Arguments[0]`, que es lo que de verdad se invocó.
 
-Y más allá de los tests unitarios, la verificación de esta versión se hizo en **navegador de verdad** contra el servidor real: los comandos de la época (los 9 originales) tecleados en la caja (incluido `/limpiar` con sus 6 mensajes borrados y `/salir` volviendo al panel) y la carrera del nick duplicado con dos pestañas. La misma filosofía que en la terminal: **probar la app como la usaría el alumno**.
+Y más allá de los tests unitarios, la verificación de esta versión se hizo en **navegador de verdad** contra el servidor real: se teclearon los comandos de la época (los 9 originales) en la caja (incluido `/limpiar` con sus 6 mensajes borrados y `/salir` volviendo al panel) y también se probó la carrera del nick duplicado con dos pestañas. La misma filosofía que en la terminal: **probar la app como la usaría el alumno**.
 
 > 📝 **Nota (evolución):** con los dos clientes listos sobre el mismo hub, abrió el siguiente capítulo la persistencia: sacar el historial de las `ConcurrentDictionary` a una base de datos real (SQLite + EF Core, Entity Framework Core) **sin tocar el hub ni la lógica de los clientes**. Y así salió: el contrato ya estaba hecho y no hubo que moverlo — la web sigue suscribiéndose a `MensajeNuevo` y pidiendo el historial exactamente igual que cuando todo vivía en memoria, solo que ahora ese historial procede de SQLite. El detalle de las decisiones y de sus trampas, en [4. La persistencia con SQLite](04-persistencia.md).
 
