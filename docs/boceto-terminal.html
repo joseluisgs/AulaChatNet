@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Boceto del cliente de terminal — AulaChatNet</title>
+
+    <!-- Mismo CSS de la app que boceto-vistas.html: el marco del documento
+         comparte estilo con el boceto de la web (van juntos en la doc). -->
+    <link rel="stylesheet" href="../AulaChatNet.Client.Blazor.Components/wwwroot/css/app.css">
+
+    <style>
+        /* ==========================================================================
+           Solo del boceto (la app no usa estas reglas): marco del documento.
+           IDÉNTICO al de boceto-vistas.html — se coloca DESPUÉS del app.css
+           para poder sobrescribir lo que la app fija a pantalla completa
+           (body overflow, height:100vh...).
+           ========================================================================== */
+        html, body {
+            height: auto;
+        }
+
+        body {
+            overflow: auto; /* la app bloquea el scroll: el documento sí lo necesita */
+            background: var(--dc-oscuro);
+            scroll-behavior: smooth;
+        }
+
+        .doc {
+            max-width: 1120px;
+            margin: 0 auto;
+            padding: 28px 20px 60px;
+        }
+
+        .doc-cabecera h1 {
+            font-size: 26px;
+            color: var(--dc-texto);
+            margin-bottom: 8px;
+        }
+
+        .doc-cabecera h1 b {
+            color: var(--dc-blurple);
+        }
+
+        .doc-cabecera p {
+            color: var(--dc-suave);
+            max-width: 820px;
+            line-height: 1.6;
+            margin-bottom: 14px;
+        }
+
+        .doc-cabecera p code,
+        .doc-nota code {
+            background: var(--dc-input);
+            padding: 1px 6px;
+            border-radius: 4px;
+            font-size: 13px;
+            color: var(--dc-texto);
+        }
+
+        .doc-nav a {
+            display: inline-block;
+            margin-right: 10px;
+            padding: 6px 14px;
+            background: var(--dc-input);
+            color: var(--dc-texto);
+            border-radius: 14px;
+            text-decoration: none;
+            font-size: 14px;
+        }
+
+        .doc-nav a:hover {
+            background: var(--dc-hover);
+            color: #fff;
+        }
+
+        .doc-seccion {
+            margin-top: 36px;
+        }
+
+        .doc-titulo {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--dc-texto);
+            margin-bottom: 8px;
+        }
+
+        .doc-titulo span {
+            color: var(--dc-suave);
+            font-weight: 400;
+            font-size: 14px;
+            margin-left: 8px;
+        }
+
+        /* El marco redondeado que simula "la ventana de la terminal" */
+        .doc-marco {
+            border: 1px solid var(--dc-borde);
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+        }
+
+        .doc-nota {
+            color: var(--dc-suave);
+            font-size: 13.5px;
+            line-height: 1.65;
+            margin-top: 12px;
+            max-width: 900px;
+        }
+
+        .doc-nota b {
+            color: var(--dc-texto);
+        }
+
+        .doc-pie {
+            margin-top: 44px;
+            border-top: 1px solid var(--dc-borde);
+            padding-top: 16px;
+            color: var(--dc-suave);
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        /* ==========================================================================
+           La terminal DENTRO del marco: el cliente no usa CSS — pinta con
+           Spectre.Console y la paleta de TemaDiscord.cs, estos son sus hex.
+           El fondo es el de una ventana de consola (Windows Terminal).
+           El texto usa UNA SOLA métrica (misma fuente y misma altura de fila
+           para el banner FIGlet y para el resto), como en la consola real.
+           ========================================================================== */
+        .terminal {
+            background: #0c0c0c;
+            color: #dcddde;                      /* TemaDiscord.Texto */
+            font-family: 'Cascadia Mono', Consolas, 'Courier New', monospace;
+            font-size: 15px;
+            line-height: 1.45;
+            padding: 20px 24px;
+            white-space: pre;
+        }
+
+        /* En la app, la consola ocupa toda la ventana; dentro del boceto se
+           le da una altura mínima para convivir en la misma página */
+        #vista-1 .terminal { min-height: 430px; }
+        #vista-2 .terminal { min-height: 480px; }
+
+        /* Utilidades con los colores EXACTOS de TemaDiscord.cs y de los
+           nombres de color que Spectre usa en el markup ([green], [white]...) */
+        .grey    { color: #8e9297; }  /* TemaDiscord.Grises / [grey] */
+        .italic  { font-style: italic; }
+        .verde   { color: #13a10e; }  /* [green] de Spectre en Windows Terminal */
+        .white   { color: #ffffff; }  /* [white] de Spectre */
+        .blurple { color: #5865f2; }  /* TemaDiscord.Blurple */
+        .fucsia  { color: #eb459e; }  /* TemaDiscord.Fucsia (privados) */
+        .amarillo{ color: #faa61a; }  /* TemaDiscord.Amarillo (menciones) */
+
+        /* El color de cada nick NO está elegido: sale del hash del nombre
+           (TemaDiscord.ColorDe), igual que en la app real */
+        .PR { color: #ffeb3b; }  /* Profesor */
+        .AN { color: #00bcd4; }  /* Ana */
+        .LU { color: #9c27b0; }  /* Lucía */
+        .MA { color: #ff9800; }  /* Marcos */
+        .SA { color: #2196f3; }  /* Sara */
+
+        /* El cursor del EditorLinea: bloque invertido sobre el carácter */
+        .cursor {
+            background: #ffffff;
+            color: #000000;
+        }
+    </style>
+</head>
+<body>
+<div class="doc">
+
+    <header class="doc-cabecera">
+        <h1><b>#</b> AulaChatNet — Boceto del cliente de terminal</h1>
+        <p>
+            Maqueta <b>estática</b> de las dos pantallas del cliente de terminal: el <b>arranque guiado</b>
+            (banner, cuánta gente hay, elección de nick y canal) y la <b>vista en vivo</b> del canal con el
+            lienzo de <code>AnsiConsole.Live</code>. No es una captura: los textos, los colores y el orden de
+            cada fila replican el pintado real —<code>Banner</code>, <code>Conectados</code>,
+            <code>VistaChat</code> y <code>TemaDiscord</code>—, el banner es el <b>FigletText real de
+            Spectre.Console</b> (font <code>Standard</code>) y el color de cada nick está calculado con el
+            <b>mismo hash</b> de <code>TemaDiscord.ColorDe</code> (mismo nombre → mismo color, como en la app).
+            Las personas, los mensajes y las horas están simulados: aquí no hay SignalR ni Rx.NET, solo la
+            maqueta visual. Comparte marco y estilo de documento con el
+            <a href="boceto-vistas.html">boceto de la aplicación web</a>.
+        </p>
+        <nav class="doc-nav">
+            <a href="#vista-1">1 · Arranque guiado</a>
+            <a href="#vista-2">2 · Vista en vivo</a>
+        </nav>
+    </header>
+
+    <!-- ======================================================================
+         VISTA 1 — Arranque guiado (Banner.cs + Conectados + prompts de Program.cs)
+         ====================================================================== -->
+    <section class="doc-seccion" id="vista-1">
+        <h2 class="doc-titulo">Vista 1 — Arranque guiado <span>lo que se ve antes de entrar al canal</span></h2>
+
+        <div class="doc-marco">
+            <div class="terminal"><span class="blurple">     _              _            ____   _               _   
+    / \     _   _  | |   __ _   / ___| | |__     __ _  | |_ 
+   / _ \   | | | | | |  / _` | | |     | '_ \   / _` | | __|
+  / ___ \  | |_| | | | | (_| | | |___  | | | | | (_| | | |_ 
+ /_/   \_\  \__,_| |_|  \__,_|  \____| |_| |_|  \__,_|  \__|
+                                                             </span>
+<span class="grey">Chat en tiempo real para el aula · .NET 10 + SignalR + Rx</span>
+
+<span class="grey">📌 Actualmente hay</span> <b>6 personas conectadas</b><span class="grey">:</span> #general <span class="white">5</span> <span class="grey">·</span> #daw <span class="white">1</span> <span class="grey">·</span> #dam <span class="white">0</span> <span class="grey">·</span> #asir <span class="white">0</span> <span class="grey">·</span> #smr <span class="white">0</span>
+
+<span class="grey">🙂 Primera vez por aquí: ¿con qué nick entras?</span>
+
+<span class="grey">Introduce tu nick</span> Ana<span class="cursor"> </span>
+
+<span class="grey">Elige dónde entrar. Enter =</span> <b>#general</b> <span class="grey">(el canal por defecto)</span>
+<span class="grey">  <span class="blurple">#general</span> ←   #daw   #dam   #asir   #smr</span>
+<span class="grey">Canal</span> #general<span class="cursor"> </span></div>
+        </div>
+
+        <p class="doc-nota">
+            <b>Convenciones visibles en esta pantalla:</b> el banner es un <code>FigletText("AulaChat")</code>
+            en <i>blurple</i> —el nombre corto a propósito: el font FIGlet no cabría en una terminal de 80
+            columnas con "AulaChatNet"—; el contador de gente sale de <code>GET /estadisticas</code>
+            <b>antes de registrarse</b> (el servidor todavía no sabe que existes); y la lista de canales marca
+            con <code>←</code> el canal que Enter elige por defecto — nunca se elige a ciegas.
+        </p>
+    </section>
+
+    <!-- ======================================================================
+         VISTA 2 — Vista en vivo del canal (Layout Cabecera/Mensajes/Pie)
+         ====================================================================== -->
+    <section class="doc-seccion" id="vista-2">
+        <h2 class="doc-titulo">Vista 2 — Vista en vivo <span>ya dentro: cabecera, cronología y pie fijos</span></h2>
+
+        <div class="doc-marco">
+            <div class="terminal"><span class="blurple">AulaChatNet</span> <span class="grey">·</span> Ana <span class="grey">·</span> #general <span class="verde">● conectado</span>
+
+<span class="grey">10:15</span> <span class="grey italic">· Profesor se ha unido al canal</span>
+<span class="grey">10:16</span> <span class="PR">[PR]Profesor</span>: Bienvenidos a clase. Hoy: SignalR y Rx.NET.
+<span class="grey">10:16</span> <span class="grey italic">· Lucía se ha unido al canal</span>
+<span class="grey">10:17</span> <span class="LU">[LU]Lucía</span>: ¿Los mensajes llegan a todo el mundo al instante?
+<span class="grey">10:17</span> <span class="grey italic">· Ana se ha unido al canal</span>
+<span class="grey">10:17</span> <span class="AN">[AN]Ana</span>: ¡Hola a todos! 👋
+<span class="grey">10:18</span> <span class="PR">[PR]Profesor</span>: Sí — mismo flujo de la store, y repinta solo. <span class="grey">👍 2 (Ana, Lucía)</span>
+<span class="grey">10:19</span> <span class="AN">[AN]Ana</span>: <span class="amarillo">@Profesor</span>, ¿repasamos las opciones del HubConnectionBuilder?
+<span class="grey">10:20</span> <span class="fucsia">🔒 para Lucía</span> <span class="AN">[AN]Ana</span>: ¿Nos vemos al recreo?
+<span class="grey">Marcos está escribiendo...</span>
+
+
+<span class="verde">● conectado</span> <span class="grey">·</span> <span class="grey">📌 6 conectados:</span> <span class="verde">#general 5 ●</span> <span class="grey">·</span> #daw <span class="white">1</span> <span class="grey">·</span> #dam <span class="white">0</span> <span class="grey">·</span> #asir <span class="white">0</span> <span class="grey">·</span> #smr <span class="white">0</span>
+<span class="grey">></span> <span class="cursor"> </span></div>
+        </div>
+
+        <p class="doc-nota">
+            <b>Convenciones visibles en esta vista:</b> el lienzo es un <code>Layout</code> de tres zonas
+            —cabecera, mensajes y pie— que <b>no se reimprime</b> en bloque: solo cambian los números. Cada fila del canal
+            es <code>hora + [iniciales] + nombre en color + texto</code>, con los avisos de sistema en
+            <i>gris cursiva</i>, las menciones en amarillo, los chips de reacción en gris y los privados con el
+            <code>🔒</code> en rosa. El color de cada nick no está elegido: sale del <b>hash del nombre</b>
+            (<code>TemaDiscord.ColorDe</code>), igual que los avatares de DiceBear en la web. Y abajo, el pie
+            fijo con el reparto por canales y el prompt <code>&gt;</code> con su cursor de bloque.
+        </p>
+    </section>
+
+    <footer class="doc-pie">
+        AulaChatNet — boceto didáctico del cliente de terminal. Reproduce el pintado de
+        <code>AulaChatNet.Client.Terminal</code> (Spectre.Console) con datos simulados; no es una captura
+        de la aplicación en marcha.
+    </footer>
+</div>
+</body>
+</html>

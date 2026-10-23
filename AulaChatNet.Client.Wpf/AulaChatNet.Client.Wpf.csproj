@@ -1,0 +1,77 @@
+<!--
+  OJO al SDK: Microsoft.NET.Sdk.Razor, NO el plano Microsoft.NET.Sdk. El
+  BlazorWebView sirve wwwroot/index.html y los estáticos _content/... de la
+  librería por el pipeline de STATIC WEB ASSETS, que solo existe con el SDK
+  Razor (los propios targets del paquete WebView.Wpf fijan
+  StaticWebAssetBasePath=/ y StaticWebAssetProjectMode=Root). Con el SDK
+  plano no hay manifiesto y la ventana sale EN BLANCO.
+-->
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <!--
+      Windows ONLY: WPF y WebView2 son de escritorio Windows. Se fija la
+      versión de PLATAFORMA (10.0.19041 = Windows 10 2004, el mínimo que
+      usan las muestras de Microsoft) y no solo net10.0-windows: la versión
+      actual de WebView2 renderiza en modo composición con WinRT, que exige
+      el ensamblado Microsoft.Windows.SDK.NET — un TFM plano no lo incluye
+      y la ventana crashea al aplicar la plantilla del navegador.
+    -->
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>AulaChatNet.Client.Wpf</RootNamespace>
+    <!-- Icono del .exe (mismo maestro que la terminal: resources/icon-app.ico) -->
+    <ApplicationIcon>resources\icon-app.ico</ApplicationIcon>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- Sin NoWarn de CS1591: todo el API público va documentado -->
+  </PropertyGroup>
+
+  <!--
+    Cliente de escritorio con Blazor Hybrid: la UI NO se escribe otra vez —
+    es la MISMA librería AulaChatNet.Client.Blazor.Components que usa la web, montada
+    dentro de un BlazorWebView (WebView2 embebido en la ventana).
+  -->
+
+  <ItemGroup>
+    <!-- BlazorWebView: el control WPF que aloja componentes Razor; trae el
+         runtime embebido (blazor.webview.js) y el puente JSInterop -->
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebView.Wpf" />
+
+    <!-- Bandeja del sistema: TaskbarIcon con menú contextual para minimizar
+         la ventana sin matar la app (y salir SOLO desde ahí) -->
+    <PackageReference Include="H.NotifyIcon.Wpf" />
+
+    <!-- Configuración: lee appsettings.json del DISCO junto al .exe -->
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" />
+
+    <!-- Logging: Serilog a fichero (mismo criterio que la terminal: la app de
+         escritorio no tiene consola que leer) -->
+    <PackageReference Include="Serilog" />
+    <PackageReference Include="Serilog.Sinks.File" />
+    <PackageReference Include="Serilog.Extensions.Logging" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- La UI compartida (componentes, stores, CSS y JS) y los contratos -->
+    <ProjectReference Include="..\AulaChatNet.Client.Blazor.Components\AulaChatNet.Client.Blazor.Components.csproj" />
+    <ProjectReference Include="..\AulaChatNet.Shared\AulaChatNet.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Icono de la VENTANA (el del .exe ya lo pone ApplicationIcon de arriba);
+         como Resource se embebe en el ensamblado y el XAML lo lee por URI
+         relativa "resources/icon-app.ico" -->
+    <Resource Include="resources\icon-app.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- appsettings.json viaja al lado del .exe (en producción la app lee del
+         disco, no de wwwroot: no hay servidor que lo sirva) -->
+    <None Update="appsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

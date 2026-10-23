@@ -1,0 +1,99 @@
+<Window x:Class="AulaChatNet.Client.Wpf.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:blazor="clr-namespace:Microsoft.AspNetCore.Components.WebView.Wpf;assembly=Microsoft.AspNetCore.Components.WebView.Wpf"
+        xmlns:componentes="clr-namespace:AulaChatNet.Client.Blazor.Components;assembly=AulaChatNet.Client.Blazor.Components"
+        Title="AulaChatNet"
+        Icon="resources/icon-app.ico"
+        Width="1150" Height="720"
+        MinWidth="900" MinHeight="600"
+        WindowStartupLocation="CenterScreen"
+        Background="#36393f"
+        Closing="AlCerrarVentana">
+
+    <!--
+      Barra de título PROPIA (oscura, estilo Discord) en lugar de la de
+      Windows: WindowChrome tapa la nativa pero conserva el arrastre, el
+      borde de redimensionado y los atajos. Ojo: la X de esta ventana NO
+      sale — la app pasa a la bandeja y se queda viva (ver MainWindow.xaml.cs).
+    -->
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="38"
+                      ResizeBorderThickness="6"
+                      GlassFrameThickness="0"
+                      CornerRadius="0"
+                      UseAeroCaptionButtons="False" />
+    </WindowChrome.WindowChrome>
+
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Recursos/EstilosDiscord.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="38" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!--
+          Barra de título Discord: fondo casi negro, icono + nombre y a la
+          derecha minimizar y cerrar (la X se pone roja al pasar el ratón).
+
+          OJO con WindowChrome: los 38 px de CaptionHeight son zona NO
+          cliente de Windows y los elementos de encima NO reciben el ratón
+          por defecto. Los botones necesitan
+          WindowChrome.IsHitTestVisibleInChrome="True"; el resto de la barra
+          (fondo, icono y título) queda en manos del sistema, que así la
+          hace arrastrable de serie — y a doble clic, maximiza y restaura.
+        -->
+        <Grid Grid.Row="0" Background="#202225">
+            <StackPanel Orientation="Horizontal"
+                        VerticalAlignment="Center"
+                        Margin="12,0,0,0">
+                <Image Source="resources/icon-app.ico" Width="16" Height="16" />
+                <TextBlock Text="AulaChatNet"
+                           Foreground="#dcddde"
+                           FontSize="13"
+                           FontWeight="SemiBold"
+                           Margin="8,0,0,0"
+                           VerticalAlignment="Center" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal"
+                        HorizontalAlignment="Right"
+                        WindowChrome.IsHitTestVisibleInChrome="True">
+                <Button Style="{StaticResource BotonTitulo}"
+                        Click="BotonMinimizar_Click"
+                        Content="&#xE921;"
+                        FontFamily="Segoe MDL2 Assets" />
+                <Button Style="{StaticResource BotonTituloCerrar}"
+                        Click="BotonCerrar_Click"
+                        Content="&#xE8BB;"
+                        FontFamily="Segoe MDL2 Assets" />
+            </StackPanel>
+        </Grid>
+
+        <!--
+          Blazor Hybrid: la MISMA UI Razor de la web corriendo DENTRO del
+          proceso WPF (.NET nativo de verdad). WebView2 solo pinta el DOM que
+          Blazor actualiza; NO es un navegador apuntando a la URL del servidor
+          — la librería Client.Web se compila con este .exe, y la conexión a
+          SignalR la hace el runtime .NET del proceso, sin CORS de por medio.
+
+          HostPage apunta al index.html de ESTE proyecto (el marco de la
+          página); el selector #app es el App.razor de la librería. Cero UI
+          duplicada.
+        -->
+        <blazor:BlazorWebView Grid.Row="1"
+                              x:Name="Navegador"
+                              HostPage="wwwroot/index.html">
+            <blazor:BlazorWebView.RootComponents>
+                <blazor:RootComponent Selector="#app"
+                                      ComponentType="{x:Type componentes:App}" />
+            </blazor:BlazorWebView.RootComponents>
+        </blazor:BlazorWebView>
+    </Grid>
+</Window>

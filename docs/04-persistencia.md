@@ -2,22 +2,32 @@
   - [4.1. Por qué SQLite y no un servidor de bases de datos](#41-por-qué-sqlite-y-no-un-servidor-de-bases-de-datos)
   - [4.2. Qué se guarda en disco y qué no](#42-qué-se-guarda-en-disco-y-qué-no)
   - [4.3. El modelo: entidad, contexto e índices](#43-el-modelo-entidad-contexto-e-índices)
+    - [Los índices, diseñados mirando las consultas](#los-índices-diseñados-mirando-las-consultas)
+    - [Por qué una fábrica de contextos y no un contexto compartido](#por-qué-una-fábrica-de-contextos-y-no-un-contexto-compartido)
   - [4.4. Migraciones: aplicar cambios sin perder datos](#44-migraciones-aplicar-cambios-sin-perder-datos)
+    - [Migrate() y no EnsureCreated()](#migrate-y-no-ensurecreated)
   - [4.5. Escribir sin frenar el chat](#45-escribir-sin-frenar-el-chat)
+    - [Por qué un Channel y no otra cosa](#por-qué-un-channel-y-no-otra-cosa)
+    - [La asimetría que confunde a todo el mundo](#la-asimetría-que-confunde-a-todo-el-mundo)
+    - [Cuando algo falla, o cuando se apaga](#cuando-algo-falla-o-cuando-se-apaga)
   - [4.6. Leer: el historial ya está cargado](#46-leer-el-historial-ya-está-cargado)
   - [4.7. Mantener el fichero: retención y VACUUM](#47-mantener-el-fichero-retención-y-vacuum)
+    - [La trampa de medir el tamaño del fichero](#la-trampa-de-medir-el-tamaño-del-fichero)
   - [4.8. Arrancar vacío en desarrollo](#48-arrancar-vacío-en-desarrollo)
   - [4.9. Las claves de configuración](#49-las-claves-de-configuración)
   - [4.10. Tres trampas que solo salen al ejecutar](#410-tres-trampas-que-solo-salen-al-ejecutar)
+    - [1. `:memory:` no es "una base de datos en memoria", es "una por conexión"](#1-memory-no-es-una-base-de-datos-en-memoria-es-una-por-conexión)
+    - [2. EF Core no deja pasar el `PRAGMA` a secas](#2-ef-core-no-deja-pasar-el-pragma-a-secas)
+    - [3. `StartAsync` no espera a `ExecuteAsync`](#3-startasync-no-espera-a-executeasync)
   - [4.11. Cómo se prueba](#411-cómo-se-prueba)
-  - [4.12. Resumen del punto](#412-resumen-del-punto)
+  - [4.12. Decisiones, patrones y técnicas del punto](#412-decisiones-patrones-y-técnicas-del-punto)
 
 
 # 4. La persistencia con SQLite
 
-> 💡 **Punto de partida:** cierras clase con 40 mensajes escritos en #general, apagas el ordenador del profesor y al día siguiente vuelves a entrar. En WhatsApp tus mensajes siguen ahí. En el chat de la Fase 1, no: todo vivía en memoria y murió con el proceso. ¿Cómo se consigue que el historial **sobreviva a cualquier reinicio** sin reescribir ni el hub ni los clientes?
+> 💡 **Punto de partida:** cierras clase con 40 mensajes escritos en #general, apagas el ordenador del profesor y al día siguiente vuelves a entrar. En WhatsApp tus mensajes siguen ahí. En la versión inicial del chat, no: todo vivía en memoria y murió con el proceso. ¿Cómo se consigue que el historial **sobreviva a cualquier reinicio** sin reescribir ni el hub ni los clientes?
 
-En este punto montamos la persistencia de AulaChatNet: SQLite embebido en un fichero, EF Core como ORM, un servicio en segundo plano que escribe sin frenar al chat y otro que mantiene el fichero por dentro. Lo interesante no es el "qué", sino el "por qué": qué estado merece ir a disco, cuándo se escribe, cuándo se borra y qué decisiones se tomaron y por qué, con sus trampas reales.
+En este punto montamos la persistencia de AulaChatNet: SQLite embebido en un fichero, EF Core (Entity Framework Core) como ORM —mapeador objeto-relacional, que traduce objetos a tablas y consultas—, un servicio en segundo plano que escribe sin frenar al chat y otro que mantiene el fichero por dentro. Lo interesante no es el "qué", sino el "por qué": qué estado merece ir a disco, cuándo se escribe, cuándo se borra y qué decisiones se tomaron y por qué, con sus trampas reales.
 
 **Objetivos de aprendizaje:**
 
@@ -33,7 +43,7 @@ En este punto montamos la persistencia de AulaChatNet: SQLite embebido en un fic
 
 ## 4.1. Por qué SQLite y no un servidor de bases de datos
 
-El requisito de la Fase 2 es modesto y hay que decirlo en voz alta: **que el historial no se pierda**. No hace falta replicación, ni clúster, ni atender a 500 escrituras por segundo. Un aula con 30 personas escribiendo genera un puñado de mensajes por minuto.
+El requisito de la persistencia es modesto y hay que decirlo en voz alta: **que el historial no se pierda**. No hace falta replicación, ni clúster, ni atender a 500 escrituras por segundo. Un aula con 30 personas escribiendo genera un puñado de mensajes por minuto.
 
 Con ese panorama, montar un contenedor de PostgreSQL es montar una infraestructura para resolver un problema que no tenemos. SQLite es justo lo contrario: **una librería dentro de tu proceso** que gestiona un único fichero.
 
@@ -48,13 +58,13 @@ Con ese panorama, montar un contenedor de PostgreSQL es montar una infraestructu
 
 📌 **Ejemplo real:** es la base de datos más extendida del planeta y casi seguro la usas a diario sin saberlo: Chrome y Firefox guardan tu historial de navegación en SQLite, Android la lleva de fábrica, y Windows y macOS la traen integrada en el sistema. No es "la base de datos de los pequeños": es la de los que necesitan datos fiables en un fichero.
 
-> ⚠️ **Advertencia:** SQLite tiene límites reales y conviene conocerlos. Un solo escritor a la vez (los demás esperan), todo el mundo en el mismo fichero (no sirve para varios servidores escribiendo a la vez en red), y el crecimiento de un fichero enorme cuesta más que una tabla partida. Cuando el proyecto crezca hasta ahí, toca migrar a un servidor de verdad. Elegir SQLite aquí no es ignorar sus límites: es conocerlos y decidir que no nos afectan todavía.
+> ⚠️ **Advertencia:** SQLite tiene límites reales y conviene conocerlos. Un solo escritor a la vez (los demás esperan), todo el mundo en el mismo fichero (no sirve para varios servidores escribiendo a la vez en red), y un fichero que crece sin parar acaba costando más que partir la tabla desde el principio. Cuando el proyecto crezca hasta ahí, toca migrar a un servidor de verdad. Elegir SQLite aquí no es ignorar sus límites: es conocerlos y decidir que no nos afectan todavía.
 
 > 💡 **Consejo:** elige tecnología respondiendo a "¿qué problema tengo y cuál es la solución más pequeña que lo resuelve bien?". La respuesta a menudo no es la más reluciente del anuncio.
 
 ## 4.2. Qué se guarda en disco y qué no
 
-Este es el **corazón de la Fase 2**, y el criterio es sencillo de enunciar pero fácil de aplicar mal: **se separa por longevidad, no por entidad**. No se trata de "esta tabla va a la base de datos y esta otra no", sino de preguntar a cada dato: *¿qué pasa si apago el servidor?*
+Este es el **corazón de la persistencia**, y el criterio es sencillo de enunciar pero fácil de aplicar mal: **se separa por longevidad, no por entidad**. No se trata de "esta tabla va a la base de datos y esta otra no", sino de preguntar a cada dato: *¿qué pasa si apago el servidor?*
 
 ```mermaid
 flowchart TD
@@ -89,7 +99,7 @@ flowchart TD
 
 > 📝 **Nota:** la consecuencia honesta de esta decisión es que, tras un reinicio, la lista de conectados empieza vacía (los clientes vuelven a dar de alta al reconectar) y un nick que usaba alguien se libera. En un aula es exactamente lo que quieres: no quedan fantasmas de sesiones que ya no existen.
 
-> 💡 **Consejo:** si te aprendes una sola frase de este punto, que sea esta: **si moriría al apagar el proceso y eso no es un problema, no va a disco.** Aplicado con rigor, la respuesta sale sola casi siempre.
+> 💡 **Consejo:** si te aprendes una sola frase de este punto, que sea esta: **si muere al apagar el proceso y eso no es un problema, no va a disco.** Aplicado con rigor, la respuesta sale sola casi siempre.
 
 📌 **Ejemplo real:** es el mismo criterio que usan Discord o Slack. Tu lista de amigos "en línea" se recalcula con las conexiones vivas, mientras que el historial de un canal es lo que buscas cuando vuelves tres días después. Nadie persiste a los usuarios conectados en una tabla: se hubieran muerto con cada caída de red.
 
@@ -163,6 +173,8 @@ Migrations/
 
 ### Migrate() y no EnsureCreated()
 
+Crear las tablas es fácil; mantenerlas vivas meses después, no. EF Core da dos formas de crear el esquema, y solo una lleva historial de cambios:
+
 | | `EnsureCreated()` | `Migrate()` |
 |---|---|---|
 | Crea las tablas | Sí, si no existen | Sí |
@@ -193,7 +205,7 @@ dotnet ef migrations add DescripcionDelCambio
 dotnet ef database update     # opcional: en arranque lo hace MigrateAsync()
 ```
 
-> 📝 **Nota:** el comando `dotnet ef` está instalado a nivel de SDK en la versión 10.0.12 mientras el runtime es el 10.0.13. Aparece un aviso de versión menor, pero no bloquea nada: funciona correctamente.
+> 📝 **Nota:** el comando `dotnet ef` pertenece al SDK en su versión 10.0.12, mientras el runtime es el 10.0.13. Aparece un aviso de versión menor, pero no bloquea nada: funciona correctamente.
 
 > ⚠️ **Advertencia:** si pones `MigrarAutomaticamente` a `false`, no se aplican migraciones y **no hay tablas nuevas**. Y si además `LimpiarAlArrancar` está en `true`, habrás borrado la base sin recrear el esquema: la aplicación fallará al arrancar. `Program.cs` lo detecta y lo avisa alto y claro en el log, pero es una combinación que solo tiene sentido si vas a aplicar las migraciones tú a mano.
 
@@ -234,7 +246,7 @@ public void AddMensaje(string canal, MensajeDto mensaje)
 {
     // ... se poda la cola circular y se añade a la caché del canal ...
 
-    // Persistencia (Fase 2): si hay repositorio, se encola para guardarla
+    // Persistencia: si hay repositorio, se encola para guardarla
     // en segundo plano. NO se escribe aquí: AddMensaje es síncrono y no
     // debe bloquear esperando disco.
     if (_repository is not null)
@@ -244,7 +256,7 @@ public void AddMensaje(string canal, MensajeDto mensaje)
 
 ### Por qué un Channel y no otra cosa
 
-La cola del esquema es un `Channel` de `System.Threading.Channels`. **Qué es, por qué hace falta y en qué se diferencia de Rx** está explicado con diagramas en el punto 3.6 de la arquitectura del servidor: [3.6 Productor/consumidor: la cola de escritura con Channel](01-arquitectura-del-servidor.md#36-productorconsumidor-la-cola-de-escritura-con-channel).
+La cola del esquema es un `Channel` de `System.Threading.Channels`. **Qué es, por qué hace falta y en qué se diferencia de Rx** está explicado con diagramas en el punto 3.6 de la arquitectura del servidor: [3.6. Productor/consumidor: la cola de escritura con Channel](01-arquitectura-del-servidor.md#36-productorconsumidor-la-cola-de-escritura-con-channel).
 
 Aquí nos quedamos solo con lo que toca a la persistencia —quién produce, quién consume y qué se descartó:
 
@@ -265,7 +277,7 @@ Las alternativas que se descartaron, mirando desde la persistencia:
 
 > 💡 **Consejo:** cuando necesites desacopar "quien produce" de "quien consume" en .NET —una cola de trabajos, un envío de correos, un logger con cola—, `System.Threading.Channels` es la respuesta por defecto. Lo que conviene retener aquí es sencillo: si un día toque añadir persistencia a otro sitio del servidor, el `Channel` es la pieza por defecto — no construyas colas propias con `ConcurrentQueue` y semáforos.
 
-📖 **Para seguir:** el lado lector de la misma historia —cómo el historial se precarga al arrancar y por qué los clientes no notan nada—, en [§4.6 Leer: el historial ya está cargado](#46-leer-el-historial-ya-esta-cargado); y la trampa real de arrancar un servicio de fondo, en [§4.10 Tres trampas que solo salen al ejecutar](#410-tres-trampas-que-solo-salen-al-ejecutar).
+📖 **Para seguir:** el lado lector de la misma historia —cómo el historial se precarga al arrancar y por qué los clientes no notan nada—, en [§4.6 Leer: el historial ya está cargado](#46-leer-el-historial-ya-está-cargado); y la trampa real de arrancar un servicio de fondo, en [§4.10 Tres trampas que solo salen al ejecutar](#410-tres-trampas-que-solo-salen-al-ejecutar).
 
 ### La asimetría que confunde a todo el mundo
 
@@ -279,6 +291,8 @@ La regla es: **`async` va donde hay E/S**, no por convención.
 > 💡 **Consejo:** la cola es **sin límite** (*unbounded*) a propósito. En un aula el volumen es bajo, y no se debe perder ni un mensaje por un atasco de disco. En un sistema con presión real, ahí sí que pondrías un tope y una estrategia de descarte consciente.
 
 ### Cuando algo falla, o cuando se apaga
+
+Un servicio de fondo tiene dos momentos delicados: cuando algo falla y cuando se apaga el servidor. Así se comporta este en ambos:
 
 - Un fallo al guardar **nunca rompe la cola**: se registra el error y se sigue con el siguiente mensaje. Un disco malo no debe tumbar el servidor.
 - Al apagar, queda un **margen de 5 segundos** con un token propio para escribir lo que quede encolado, sin que un disco lento retenga el apagado.
@@ -377,7 +391,7 @@ Con ese porcentaje no se mide "cuánto pesa", sino **cuánto espacio se está de
 
 ## 4.8. Arrancar vacío en desarrollo
 
-La Fase 2 existe para que el historial **sobreviva** a un reinicio. Pero en desarrollo a menudo quieres empezar de cero sin borrar ficheros a mano. La respuesta es la clave `LimpiarAlArrancar`.
+La persistencia existe para que el historial **sobreviva** a un reinicio. Pero en desarrollo a menudo quieres empezar de cero sin borrar ficheros a mano. La respuesta es la clave `LimpiarAlArrancar`.
 
 El orden completo del arranque es este:
 
@@ -387,9 +401,9 @@ El orden completo del arranque es este:
 4. **Precargar** el historial en la caché.
 5. **`app.Run()`**: solo entonces empiezan a aceptarse conexiones.
 
-> 📝 **Nota:** `LimpiarAlArrancar` es una **clave de configuración y no una regla por entorno** (Development/Production), y es a propósito. Si el entorno de desarrollo limpiase siempre la base de datos, **nunca podrías comprobar en tu entorno de trabajo que el historial sobrevive**, que es exactamente el objetivo de esta fase. Además, el borrado silencioso por entorno engaña: crees que tu código persiste y no es así. Con una clave explícita la decisión es tuya y visible: está en `appsettings.Development.json`, en `true`, como elección consciente.
+> 📝 **Nota:** `LimpiarAlArrancar` es una **clave de configuración y no una regla por entorno** (Development/Production), y es a propósito. Si el entorno de desarrollo limpiase siempre la base de datos, **nunca podrías comprobar en tu entorno de trabajo que el historial sobrevive**, que es exactamente el objetivo de la persistencia. Además, el borrado silencioso por entorno engaña: crees que tu código persiste y no es así. Con una clave explícita la decisión es tuya y visible: está en `appsettings.Development.json`, en `true`, como elección consciente.
 
-Para verificar la supervivencia del historial, ponla en `false`, manda tres mensajes, reinicia el servidor y reconecta: siguen ahí. Es la prueba que da sentido a la fase entera.
+Para verificar la supervivencia del historial, ponla en `false`, manda tres mensajes, reinicia el servidor y reconecta: siguen ahí. Es la prueba que da sentido a la persistencia entera.
 
 > ⚠️ **Advertencia:** en producción, `LimpiarAlArrancar` es `false`. Borrar la base de datos en cada arranque de un servicio público no tiene ningún caso de uso legítimo.
 
@@ -483,11 +497,28 @@ La persistencia se prueba en capas, y cada capa usa la base de datos que le corr
 | Orquestación de la limpieza | Repositorio **mockeado** | Qué decide el servicio: cuándo borra, cuándo compacta, qué hace si falla |
 | Hub y store | Mocks, sin base de datos | Que el contrato de SignalR sigue intacto |
 
-La prueba que justifica la fase entera es la de integración: se escribe un mensaje, se crea un `ChatStore` **nuevo** sobre el mismo fichero —que es exactamente lo que ocurre al parar y arrancar el servidor— y se comprueba que el mensaje sigue ahí. Con memoria en proceso ese test sería imposible: la base de datos muere al cerrar la conexión.
+La prueba que justifica la persistencia entera es la de integración: se escribe un mensaje, se crea un `ChatStore` **nuevo** sobre el mismo fichero —que es exactamente lo que ocurre al parar y arrancar el servidor— y se comprueba que el mensaje sigue ahí. Con memoria en proceso ese test sería imposible: la base de datos muere al cerrar la conexión.
 
 > 💡 **Consejo:** no se usa el proveedor **InMemory** de EF Core. No emula índices ni SQL real: una consulta que funcionaría en InMemory puede reventar en SQLite justo por un ordenamiento o por un tipo de columna. Para probar el esquema, mejor SQLite de verdad —que además es el motor de producción, así que no estás probando algo distinto de lo que se despliega.
 
-## 4.12. Resumen del punto
+## 4.12. Decisiones, patrones y técnicas del punto
+
+La persistencia es donde la arquitectura se pone seria: un fallo allí no es una pantalla rara, son mensajes perdidos. Estas son las decisiones que defienden ese fallo:
+
+| Patrón o técnica | Dónde vive en AulaChatNet | La lección transferible |
+|------------------|---------------------------|-------------------------|
+| SQLite embebido | Un fichero `*.db` al lado del servidor | Cero instalación y cero administración: la base de datos del aula cabe en un fichero |
+| Criterio de longevidad | Presencia y nicks en memoria; solo los mensajes van a disco | Pregunta "¿qué pasa si apago el proceso?": esa es la frontera entre caché y persistencia |
+| Índices desde las consultas | Índices diseñados mirando qué se pregunta | Un índice que nadie consulta es coste puro: diseña desde el SELECT, no desde el miedo |
+| Fábrica de contextos | `AddDbContextFactory`, un `AulaChatContexto` por operación | El `DbContext` es de corta vida y no resiste varios hilos: nadie lo comparte |
+| Migraciones, no recreación | `Migrate()` con su tabla `__EFMigrationsHistory` | El esquema se versiona como el código; `EnsureCreated` te deja sin datos al cambiar |
+| Escritura *write-behind* | Cola `Channel` + `BackgroundService` con `SemaphoreSlim` | El usuario confirma en memoria y el disco se pone al día después: nadie espera a E/S |
+| Mantenimiento programado | `RetencionDias` y `VACUUM` medido con `PRAGMA` | Los datos muertos hay que retirarlos; y mide el indicador real, no el tamaño del fichero |
+| Pruebas con SQLite real | En memoria compartida, en vez del proveedor InMemory | Prueba con el motor de producción: los proveedores de mentira esconden diferencias |
+
+---
+
+**Resumen del punto:**
 
 | Concepto | Qué retener |
 |----------|-------------|
@@ -503,8 +534,10 @@ La prueba que justifica la fase entera es la de integración: se escribe un mens
 | `async` | Va donde hay E/S de disco: el repositorio sí, el store no |
 | Lectura | Precarga antes de `app.Run()`; `GetHistorial` sigue leyendo la caché, así que el hub no cambió |
 | Limpieza | Retención por tiempo + `VACUUM` opcional, decidido por `freelist_count / page_count` |
-| WAL | El tamaño del `.db` mide mentira: los datos viven en `-.db-wal` |
+| WAL | El tamaño del `.db` mide mentira: los datos viven en el `.db-wal` |
 | Desarrollo | `LimpiarAlArrancar` es clave explícita, no regla de entorno, para poder comprobar la supervivencia |
 | Trampas | `:memory:` por conexión, el `PRAGMA` que EF no compone, y `StartAsync` que no espera |
 
-La persistencia cierra el ciclo de la Fase 2: el historial sobrevive a cualquier apagón, el fichero se mantiene solo y **ni el hub ni la lógica de los clientes se tocó** — el contrato hecho en la [arquitectura del servidor](01-arquitectura-del-servidor.md), la [terminal](02-cliente-terminal.md) y la [web](03-cliente-blazor.md) seguía valiendo.
+La persistencia cierra el ciclo del servidor con datos: el historial sobrevive a cualquier apagón, el fichero se mantiene solo y **ni el hub ni la lógica de los clientes se tocó** — el contrato hecho en la [arquitectura del servidor](01-arquitectura-del-servidor.md), la [terminal](02-cliente-terminal.md) y la [web](03-cliente-blazor.md) seguía valiendo.
+
+**Anterior:** [3. El cliente web (Blazor WebAssembly)](03-cliente-blazor.md) · **Índice:** [README](../README.md)

@@ -1,0 +1,124 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+      Paleta y estilos de TODA la app de escritorio: los comparten la ventana
+      principal y los diálogos, así el aspecto de Discord no se rompe en
+      ninguna ventana. OJO: los <Button> por defecto NO usan nuestro
+      Background al pasar el ratón (la plantilla nativa aplica los pinceles
+      claros del tema del sistema), por eso aquí cada estilo trae SU plantilla
+      plana, sin bordes ni relieve.
+    -->
+
+    <!-- Pinceles con la paleta clásica de Discord (tema oscuro) -->
+    <SolidColorBrush x:Key="PincelFondo" Color="#36393f" />
+    <SolidColorBrush x:Key="PincelBarra" Color="#202225" />
+    <SolidColorBrush x:Key="PincelTexto" Color="#dcddde" />
+    <SolidColorBrush x:Key="PincelTextoSecundario" Color="#8e9297" />
+    <SolidColorBrush x:Key="PincelEntrada" Color="#40444b" />
+    <SolidColorBrush x:Key="PincelPeligro" Color="#da373c" />
+
+    <!-- Botón plano de la barra de título (minimizar) -->
+    <Style x:Key="BotonTitulo" TargetType="Button">
+        <Setter Property="Width" Value="46" />
+        <Setter Property="Height" Value="38" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="#dcddde" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Focusable" Value="False" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Fondo" Background="{TemplateBinding Background}">
+                        <ContentPresenter HorizontalAlignment="Center"
+                                          VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Fondo" Property="Background" Value="#40444b" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Fondo" Property="Background" Value="#4e5058" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Botón de cerrar de la barra de título: se pone rojo al pasar el
+         ratón, igual que Discord (aunque aquí "cerrar" oculta la ventana,
+         no mata la app) -->
+    <Style x:Key="BotonTituloCerrar" TargetType="Button"
+           BasedOn="{StaticResource BotonTitulo}">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Fondo" Background="Transparent">
+                        <ContentPresenter HorizontalAlignment="Center"
+                                          VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Fondo" Property="Background" Value="#da373c" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Fondo" Property="Background" Value="#b5272c" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Plantilla COMPLETA del menú de la bandeja: si se heredara la
+         nativa, su ScrollViewer y su marco del sistema dejan recortes
+         blancos en Windows 11 al teñir el menú de oscuro. Aquí el menú es
+         un borde redondeado con los items dentro, y nada más -->
+    <Style x:Key="MenuBandeja" TargetType="ContextMenu">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ContextMenu">
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="4"
+                            Padding="4">
+                        <ItemsPresenter />
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Item del menú de la bandeja: la plantilla NATIVA resalta con los
+         pinceles claros del tema del sistema, así que se redefine entera
+         (el menú de la bandeja solo lleva texto: sin submenús ni iconos) -->
+    <Style x:Key="ItemMenuBandeja" TargetType="MenuItem">
+        <Setter Property="Foreground" Value="#dcddde" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="MenuItem">
+                    <Border x:Name="Fondo"
+                            Background="Transparent"
+                            CornerRadius="3"
+                            Margin="4,2"
+                            Padding="12,8">
+                        <ContentPresenter ContentSource="Header"
+                                          HorizontalAlignment="Left"
+                                          VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsHighlighted" Value="True">
+                            <Setter TargetName="Fondo" Property="Background" Value="#40444b" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground" Value="#8e9297" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+</ResourceDictionary>
