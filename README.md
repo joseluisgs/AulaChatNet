@@ -13,21 +13,25 @@
 
 ## 📑 Tabla de Contenidos
 
-- [🎯 Descripción](#-descripción)
-- [🖼️ Capturas](#️-capturas)
-- [✨ Características](#-características)
-- [🚀 Tecnologías](#-tecnologías)
-- [📂 Estructura del Proyecto](#-estructura-del-proyecto)
-- [🧩 Proyectos de la solución](#-proyectos-de-la-solución)
-- [🏗️ Arquitectura](#️-arquitectura)
-- [🏃‍♂️ Inicio rápido](#️-inicio-rápido)
-- [📡 Hub del chat](#-hub-del-chat)
-- [🌐 Endpoints REST](#-endpoints-rest)
-- [⚙️ Configuración](#️-configuración)
-- [✅ Fases de Desarrollo](#-fases-de-desarrollo)
-- [📚 Documentación](#-documentación)
-- [📝 Licencia](#-licencia)
-- [👨‍💻 Autor](#-autor)
+- [AulaChatNet 💬](#aulachatnet-)
+  - [📑 Tabla de Contenidos](#-tabla-de-contenidos)
+  - [🎯 Descripción](#-descripción)
+  - [🖼️ Capturas](#️-capturas)
+  - [✨ Características](#-características)
+  - [🚀 Tecnologías](#-tecnologías)
+  - [📂 Estructura del Proyecto](#-estructura-del-proyecto)
+  - [🧩 Proyectos de la solución](#-proyectos-de-la-solución)
+  - [🏗️ Arquitectura](#️-arquitectura)
+  - [🏃‍♂️ Inicio rápido](#️-inicio-rápido)
+  - [📡 Hub del chat](#-hub-del-chat)
+  - [🌐 Endpoints REST](#-endpoints-rest)
+  - [⚙️ Configuración](#️-configuración)
+  - [✅ Fases de Desarrollo](#-fases-de-desarrollo)
+  - [📚 Documentación](#-documentación)
+  - [📝 Licencia](#-licencia)
+  - [👨‍💻 Autor](#-autor)
+    - [Contacto](#contacto)
+  - [Licencia de uso](#licencia-de-uso)
 
 ## 🎯 Descripción
 
@@ -42,7 +46,7 @@ AulaChatNet es un proyecto educativo de ejemplo para el módulo **Desarrollo Web
 
 ## 🖼️ Capturas
 
-Las dos vistas de la aplicación web, tomadas de la maqueta de referencia [`docs/boceto-vistas.html`](docs/boceto-vistas.html) (con los mismos estilos y colores que el código real):
+**Aplicación web** — las dos vistas, tomadas de la maqueta de referencia [`docs/boceto-vistas.html`](docs/boceto-vistas.html) (con los mismos estilos y colores que el código real):
 
 **Panel de entrada** — antes de conectar: nombre, canal y sesión recordada:
 
@@ -51,6 +55,16 @@ Las dos vistas de la aplicación web, tomadas de la maqueta de referencia [`docs
 **Vista de canal** — ya dentro: conectados a la izquierda, `#general` a la derecha, sin burbujas:
 
 ![Vista de canal de AulaChatNet](docs/capturas/chat.png)
+
+**Cliente de terminal** — las dos pantallas, tomadas de [`docs/boceto-terminal.html`](docs/boceto-terminal.html) (con el banner FIGlet real de Spectre.Console y los colores de nick calculados como en la app):
+
+**Arranque guiado** — banner, cuánta gente hay conectada y elección de nick y canal:
+
+![Arranque guiado del cliente de terminal](docs/capturas/terminal-arranque.png)
+
+**Vista en vivo** — cabecera, cronología del canal y pie con el prompt `>`:
+
+![Vista en vivo del cliente de terminal](docs/capturas/terminal-chat.png)
 
 ## ✨ Características
 
@@ -298,7 +312,8 @@ Toda la documentación didáctica vive en [`docs/`](docs/):
 | 10 | [Historial paginado](docs/10-historial-paginado.md) | Invocaciones con retorno y cursor temporal sobre SQLite |
 | 11 | [Editar y borrar](docs/11-editar-y-borrar.md) | Mutaciones sincronizadas en todos los clientes y confirmación en línea |
 | 12 | [Cliente de escritorio](docs/12-cliente-escritorio.md) | Blazor Hybrid con WPF: arranque, recursos de cada host y sesión sin navegador |
-| — | [Boceto visual](docs/boceto-vistas.html) | Las dos vistas de la web en HTML con los mismos estilos |
+| — | [Boceto visual de la web](docs/boceto-vistas.html) | Las dos vistas de la web en HTML con los mismos estilos |
+| — | [Boceto del terminal](docs/boceto-terminal.html) | Las dos pantallas del terminal en HTML con los mismos estilos |
 
 > 💡 **Consejo:** si solo vas a leer un documento, empieza por el del servidor: es el mapa sobre el que se apoyan los clientes.
 
