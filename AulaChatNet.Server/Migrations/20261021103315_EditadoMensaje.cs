@@ -1,15 +1,12 @@
-﻿using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace AulaChatNet.Server.Migrations
-{
+namespace AulaChatNet.Server.Migrations {
     /// <inheritdoc />
-    public partial class EditadoMensaje : Migration
-    {
+    public partial class EditadoMensaje : Migration {
         /// <inheritdoc />
-        protected override void Up(MigrationBuilder migrationBuilder)
-        {
+        protected override void Up(MigrationBuilder migrationBuilder) {
             migrationBuilder.AddColumn<bool>(
                 name: "Editado",
                 table: "Mensajes",
@@ -19,8 +16,7 @@ namespace AulaChatNet.Server.Migrations
         }
 
         /// <inheritdoc />
-        protected override void Down(MigrationBuilder migrationBuilder)
-        {
+        protected override void Down(MigrationBuilder migrationBuilder) {
             migrationBuilder.DropColumn(
                 name: "Editado",
                 table: "Mensajes");

@@ -19,24 +19,24 @@
    ========================================================================== */
 
 :root {
-    --dc-fondo: #36393f;        /* fondo principal: zona de mensajes */
-    --dc-sidebar: #2f3136;      /* columna lateral: lista de usuarios */
-    --dc-oscuro: #202225;       /* cabeceras, barra superior */
-    --dc-input: #40444b;        /* cajas de texto */
-    --dc-texto: #dcddde;        /* texto principal */
-    --dc-suave: #8e9297;        /* texto secundario */
-    --dc-blurple: #5865f2;      /* acento (blurple) */
-    --dc-verde: #43b581;        /* en línea */
-    --dc-naranja: #faa61a;      /* reconectando / avisos */
-    --dc-rojo: #f04747;         /* errores / caído */
-    --dc-fucsia: #eb459e;       /* marca de privado (🔒 y "para/de quien") */
-    --dc-hora: #72767d;         /* timestamps */
+    --dc-fondo: #36393f; /* fondo principal: zona de mensajes */
+    --dc-sidebar: #2f3136; /* columna lateral: lista de usuarios */
+    --dc-oscuro: #202225; /* cabeceras, barra superior */
+    --dc-input: #40444b; /* cajas de texto */
+    --dc-texto: #dcddde; /* texto principal */
+    --dc-suave: #8e9297; /* texto secundario */
+    --dc-blurple: #5865f2; /* acento (blurple) */
+    --dc-verde: #43b581; /* en línea */
+    --dc-naranja: #faa61a; /* reconectando / avisos */
+    --dc-rojo: #f04747; /* errores / caído */
+    --dc-fucsia: #eb459e; /* marca de privado (🔒 y "para/de quien") */
+    --dc-hora: #72767d; /* timestamps */
     --dc-hover: rgba(79, 84, 92, 0.3);
     --dc-borde: #202225;
-    --dc-gris-medio: #4f545c;        /* grises medios: separador, bordes de boton */
-    --dc-gris: #b9bbbe;              /* gris claro: punto "conectando" */
-    --dc-blurple-oscuro: #4752c4;    /* blurple al pasar el raton */
-    --dc-opacidad-inactiva: 0.55;    /* opacidad comun de los botones desactivados */
+    --dc-gris-medio: #4f545c; /* grises medios: separador, bordes de boton */
+    --dc-gris: #b9bbbe; /* gris claro: punto "conectando" */
+    --dc-blurple-oscuro: #4752c4; /* blurple al pasar el raton */
+    --dc-opacidad-inactiva: 0.55; /* opacidad comun de los botones desactivados */
 }
 
 * {
@@ -115,8 +115,12 @@ body {
 }
 
 @keyframes carga-avance {
-    0% { margin-left: -40%; }
-    100% { margin-left: 100%; }
+    0% {
+        margin-left: -40%;
+    }
+    100% {
+        margin-left: 100%;
+    }
 }
 
 #blazor-error-ui {
@@ -154,9 +158,8 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    background:
-        radial-gradient(circle at 20% 20%, rgba(88, 101, 242, 0.18), transparent 45%),
-        var(--dc-oscuro);
+    background: radial-gradient(circle at 20% 20%, rgba(88, 101, 242, 0.18), transparent 45%),
+    var(--dc-oscuro);
     padding: 16px;
 }
 
@@ -908,10 +911,21 @@ body {
     background: transparent;
 }
 
-.punto.conectado { color: var(--dc-verde); }
-.punto.conectando { color: var(--dc-gris); }
-.punto.reconectando { color: var(--dc-naranja); }
-.punto.desconectado { color: var(--dc-rojo); }
+.punto.conectado {
+    color: var(--dc-verde);
+}
+
+.punto.conectando {
+    color: var(--dc-gris);
+}
+
+.punto.reconectando {
+    color: var(--dc-naranja);
+}
+
+.punto.desconectado {
+    color: var(--dc-rojo);
+}
 
 .avatar {
     border-radius: 50%;

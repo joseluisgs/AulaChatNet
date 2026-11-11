@@ -7,22 +7,20 @@
    cuanto ConectarAsync triunfa, la store pone EnSesion a true y aquí solta
    la vista de canal. Un solo sitio manda: la store central. *@
 
-@if (!_enSesion)
-{
-    <PanelEntrada />
+@if (!_enSesion) {
+    <PanelEntrada/>
 }
-else
-{
-    <BarraConexion />
-    <AvisoMenciones />
+else {
+    <BarraConexion/>
+    <AvisoMenciones/>
 
     <div class="contenido">
-        <ListaUsuarios />
+        <ListaUsuarios/>
 
         <section class="zona-canal">
-            <ListaCanales />
-            <ListaMensajes />
-            <CajaMensaje />
+            <ListaCanales/>
+            <ListaMensajes/>
+            <CajaMensaje/>
         </section>
     </div>
 }
@@ -32,19 +30,20 @@ else
     private IDisposable? _suscripcion;
 
     /// <summary>
-    /// Se suscribe al estado de sesión: la store avisa (reactivamente) y la
-    /// página repinta. Al init, BehaviorSubject entrega el valor actual
-    /// (false) y se queda esperando cambios.
+    ///     Se suscribe al estado de sesión: la store avisa (reactivamente) y la
+    ///     página repinta. Al init, BehaviorSubject entrega el valor actual
+    ///     (false) y se queda esperando cambios.
     /// </summary>
-    protected override void OnInitialized()
-    {
-        _suscripcion = Store.EnSesion.Subscribe(valor =>
-        {
+    protected override void OnInitialized() {
+        _suscripcion = Store.EnSesion.Subscribe(valor => {
             _enSesion = valor;
             _ = InvokeAsync(StateHasChanged);
         });
     }
 
     /// <summary>Libera la suscripción cuando la página se destruye.</summary>
-    public void Dispose() => _suscripcion?.Dispose();
+    public void Dispose() {
+        _suscripcion?.Dispose();
+    }
+
 }

@@ -11,8 +11,7 @@
 <aside class="lista-usuarios">
     <div class="lista-titulo">Conectados — @_usuarios.Count</div>
 
-    @foreach (var usuario in _usuarios)
-    {
+    @foreach (var usuario in _usuarios) {
         var nombre = usuario.Usuario;
         var esYo = EsYo(nombre);
 
@@ -20,14 +19,13 @@
              @key="nombre"
              title="@(esYo ? "ese eres tú" : "clic para escribirle un mensaje privado")"
              @onclick="() => AbrirPrivado(nombre)">
-            <Avatar Usuario="@nombre" Tamano="24" />
+            <Avatar Usuario="@nombre" Tamano="24"/>
             <span class="usuario-nombre">@nombre</span>
             <span class="punto conectado" title="en línea"></span>
         </div>
     }
 
-    @if (_usuarios.Count == 0)
-    {
+    @if (_usuarios.Count == 0) {
         <p class="lista-vacio">Solo estás tú por ahora (de momento).</p>
     }
 </aside>
@@ -40,43 +38,40 @@
     private IDisposable? _suscripcionNick;
 
     /// <summary>Dos suscripciones: los conectados de la sala y mi propio nombre.</summary>
-    protected override void OnInitialized()
-    {
-        _suscripcion = Store.Usuarios.Subscribe(lista =>
-        {
+    protected override void OnInitialized() {
+        _suscripcion = Store.Usuarios.Subscribe(lista => {
             _usuarios = lista;
             _ = InvokeAsync(StateHasChanged);
         });
 
         // Mi nombre hace falta para dos cosas: no ofrecerme un privado a mí
         // mismo (el servidor lo rechazaría) y no marcarme como "clicable"
-        _suscripcionNick = Store.Nick.Subscribe(nick =>
-        {
+        _suscripcionNick = Store.Nick.Subscribe(nick => {
             _yo = nick;
             _ = InvokeAsync(StateHasChanged);
         });
     }
 
     /// <summary>true si ese nombre es el mío (sin distinguir mayúsculas).</summary>
-    private bool EsYo(string nombre) =>
-        string.Equals(nombre, _yo, StringComparison.OrdinalIgnoreCase);
+    private bool EsYo(string nombre) {
+        return string.Equals(nombre, _yo, StringComparison.OrdinalIgnoreCase);
+    }
 
     /// <summary>
-    /// Abre un privado a esa persona: solo se pide a la store que prepare el
-    /// destinatario, y la caja de texto se encarga del resto. Un privado a ti
-    /// mismo ni se pide: no tiene sentido, y el servidor lo rechazaría.
+    ///     Abre un privado a esa persona: solo se pide a la store que prepare el
+    ///     destinatario, y la caja de texto se encarga del resto. Un privado a ti
+    ///     mismo ni se pide: no tiene sentido, y el servidor lo rechazaría.
     /// </summary>
     /// <param name="nombre">Persona elegida.</param>
-    private void AbrirPrivado(string nombre)
-    {
+    private void AbrirPrivado(string nombre) {
         if (!EsYo(nombre))
             Store.PrepararPrivado(nombre);
     }
 
     /// <summary>Libera las dos suscripciones cuando el componente se destruye.</summary>
-    public void Dispose()
-    {
+    public void Dispose() {
         _suscripcion?.Dispose();
         _suscripcionNick?.Dispose();
     }
+
 }

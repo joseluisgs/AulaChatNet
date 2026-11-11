@@ -1,24 +1,23 @@
+using AngleSharp.Dom;
 using AulaChatNet.Client.Blazor.Components.Shared;
 using AulaChatNet.Shared.Configuracion;
 using AulaChatNet.Shared.Dtos;
 using AulaChatNet.Shared.Helpers;
 using Bunit;
-using Microsoft.Extensions.DependencyInjection;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Moq;
 
 namespace AulaChatNet.Client.Blazor.Components.Tests.Components;
 
 /// <summary>
-/// Pruebas de una fila de mensaje: nombre en su color, hora LOCAL (el
-/// servidor guarda UTC) y el formato de sistema (gris cursiva, sin avatar).
+///     Pruebas de una fila de mensaje: nombre en su color, hora LOCAL (el
+///     servidor guarda UTC) y el formato de sistema (gris cursiva, sin avatar).
 /// </summary>
 [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
-public class MensajeItemTests : BunitContext
-{
+public class MensajeItemTests : BunitContext {
     [SetUp]
-    public void SetUp()
-    {
+    public void SetUp() {
         // ChatConfig para el avatar y la store falsa porque la fila pinta
         // ahora el componente de reacciones, que habla con la store
         Services.AddSingleton(new ChatConfig());
@@ -31,14 +30,13 @@ public class MensajeItemTests : BunitContext
     }
 
     [Test]
-    public void MensajeNormal_PintaNombreColorHoraYTexto()
-    {
+    public void MensajeNormal_PintaNombreColorHoraYTexto() {
         // Arrange: 10:11 UTC — la conversión a hora local la hace el componente
         var momento = new DateTime(2026, 10, 15, 10, 11, 0, DateTimeKind.Utc);
         var mensaje = new MensajeDto(Guid.NewGuid(), "Ana", "Hola a todos", momento, TipoMensaje.Normal);
 
         // Act
-        var cut = Render<MensajeItem>(p => p.Add(m => m.Mensaje, mensaje));
+        IRenderedComponent<MensajeItem> cut = Render<MensajeItem>(p => p.Add(m => m.Mensaje, mensaje));
 
         // Assert
         cut.Find(".mensaje-nombre").TextContent.Should().Be("Ana");
@@ -48,28 +46,26 @@ public class MensajeItemTests : BunitContext
     }
 
     [Test]
-    public void MensajeNormal_LlevaSuAvatar()
-    {
+    public void MensajeNormal_LlevaSuAvatar() {
         // Arrange
         var mensaje = new MensajeDto(Guid.NewGuid(), "Ana", "Hola", DateTime.UtcNow, TipoMensaje.Normal);
 
         // Act
-        var cut = Render<MensajeItem>(p => p.Add(m => m.Mensaje, mensaje));
+        IRenderedComponent<MensajeItem> cut = Render<MensajeItem>(p => p.Add(m => m.Mensaje, mensaje));
 
         // Assert
         cut.FindAll("img.avatar").Should().HaveCount(1);
     }
 
     [Test]
-    public void MensajeDeSistema_SinAvatar_yConPuntoDelanteDelTexto()
-    {
+    public void MensajeDeSistema_SinAvatar_yConPuntoDelanteDelTexto() {
         // Arrange
         var mensaje = new MensajeDto(
             Guid.NewGuid(), MensajesSistema.Autor, "Luis se ha unido al canal.",
             DateTime.UtcNow, TipoMensaje.Sistema);
 
         // Act
-        var cut = Render<MensajeItem>(p => p.Add(m => m.Mensaje, mensaje));
+        IRenderedComponent<MensajeItem> cut = Render<MensajeItem>(p => p.Add(m => m.Mensaje, mensaje));
 
         // Assert: mismo formato que la terminal: "HH:mm · texto"
         cut.Find(".mensaje").ClassList.Should().Contain("sistema");
@@ -78,50 +74,67 @@ public class MensajeItemTests : BunitContext
     }
 
     [Test]
-    public void MensajeDeSistema_TambienLlevaHora()
-    {
+    public void MensajeDeSistema_TambienLlevaHora() {
         // Arrange: en un aula se quiere saber CUÁNDO se fue alguien
         var momento = new DateTime(2026, 10, 15, 12, 0, 0, DateTimeKind.Utc);
         var mensaje = new MensajeDto(Guid.NewGuid(), MensajesSistema.Autor, "adiós", momento, TipoMensaje.Sistema);
 
         // Act
-        var cut = Render<MensajeItem>(p => p.Add(m => m.Mensaje, mensaje));
+        IRenderedComponent<MensajeItem> cut = Render<MensajeItem>(p => p.Add(m => m.Mensaje, mensaje));
 
         // Assert
         cut.Find(".mensaje-hora").TextContent.Should().Be(momento.ToLocalTime().ToString("HH:mm"));
     }
 
+    /// <summary>Crea un mensaje de prueba del canal.</summary>
+    private static MensajeDto Mensaje(string usuario, string texto) {
+        return new MensajeDto(Guid.NewGuid(), usuario, texto, DateTime.UtcNow, TipoMensaje.Normal);
+    }
+
+    /// <summary>
+    ///     Renderiza la fila con SU store falsa, para poder verificar las
+    ///     llamadas de los botones ✏️/🗑️ y del editor inline.
+    /// </summary>
+    /// <param name="store">Store a registrar (sustuye a la del SetUp).</param>
+    /// <param name="mensaje">Mensaje a pintar.</param>
+    /// <returns>El componente renderizado, viendo como "Ana".</returns>
+    private IRenderedComponent<MensajeItem> RenderizarConStore(
+        StoreFalsa store, MensajeDto mensaje) {
+        Services.AddSingleton(store.Objeto);
+
+        return Render<MensajeItem>(p => {
+            p.Add(m => m.Mensaje, mensaje);
+            p.Add(m => m.Nick, "Ana");
+        });
+    }
+
     #region Editar y borrar Tests
 
     [Test]
-    public void MensajePropio_AsaleLosBotonesDeEditarYBorrar()
-    {
+    public void MensajePropio_AsaleLosBotonesDeEditarYBorrar() {
         // Arrange: el mensaje es de Ana y ella es quien lo mira
-        var mensaje = Mensaje("Ana", "Hola a todos");
+        MensajeDto mensaje = Mensaje("Ana", "Hola a todos");
 
         // Act
-        var cut = Render<MensajeItem>(p =>
-        {
+        IRenderedComponent<MensajeItem> cut = Render<MensajeItem>(p => {
             p.Add(m => m.Mensaje, mensaje);
             p.Add(m => m.Nick, "Ana");
         });
 
         // Assert: ✏️ y 🗑️, en ese mismo orden
-        var botones = cut.FindAll(".boton-edicion");
+        IReadOnlyList<IElement> botones = cut.FindAll(".boton-edicion");
         botones.Should().HaveCount(2);
         botones[0].TextContent.Should().Be("✏️");
         botones[1].TextContent.Should().Be("🗑️");
     }
 
     [Test]
-    public void MensajeAjeno_NoTieneBotonesDeEdicion()
-    {
+    public void MensajeAjeno_NoTieneBotonesDeEdicion() {
         // Arrange: el mensaje es de Luis y quien mira es Ana
-        var mensaje = Mensaje("Luis", "Hola a todos");
+        MensajeDto mensaje = Mensaje("Luis", "Hola a todos");
 
         // Act
-        var cut = Render<MensajeItem>(p =>
-        {
+        IRenderedComponent<MensajeItem> cut = Render<MensajeItem>(p => {
             p.Add(m => m.Mensaje, mensaje);
             p.Add(m => m.Nick, "Ana");
         });
@@ -132,16 +145,14 @@ public class MensajeItemTests : BunitContext
     }
 
     [Test]
-    public void MensajeDeSistema_NoTieneBotonesDeEdicion()
-    {
+    public void MensajeDeSistema_NoTieneBotonesDeEdicion() {
         // Arrange: los avisos de sistema no los edita nadie
         var mensaje = new MensajeDto(
             Guid.NewGuid(), MensajesSistema.Autor, "Luis se ha unido al canal.",
             DateTime.UtcNow, TipoMensaje.Sistema);
 
         // Act
-        var cut = Render<MensajeItem>(p =>
-        {
+        IRenderedComponent<MensajeItem> cut = Render<MensajeItem>(p => {
             p.Add(m => m.Mensaje, mensaje);
             p.Add(m => m.Nick, "Ana");
         });
@@ -151,40 +162,36 @@ public class MensajeItemTests : BunitContext
     }
 
     [Test]
-    public void MensajeEditado_LaMarcaVaGrisTrasElTexto()
-    {
+    public void MensajeEditado_LaMarcaVaGrisTrasElTexto() {
         // Arrange: el DTO es inmutable; editar es una COPIA con la marca
-        var mensaje = Mensaje("Ana", "Hola a todos") with { Editado = true };
+        MensajeDto mensaje = Mensaje("Ana", "Hola a todos") with { Editado = true };
 
         // Act
-        var cut = Render<MensajeItem>(p => p.Add(m => m.Mensaje, mensaje));
+        IRenderedComponent<MensajeItem> cut = Render<MensajeItem>(p => p.Add(m => m.Mensaje, mensaje));
 
         // Assert: el MISMO "(editado)" que pinta la terminal (Shared)
         cut.Find(".mensaje-editado").TextContent.Should().Be("(editado)");
     }
 
     [Test]
-    public void MensajeSinEditar_NoTieneMarca()
-    {
+    public void MensajeSinEditar_NoTieneMarca() {
         // Arrange
-        var mensaje = Mensaje("Ana", "Hola a todos");
+        MensajeDto mensaje = Mensaje("Ana", "Hola a todos");
 
         // Act
-        var cut = Render<MensajeItem>(p => p.Add(m => m.Mensaje, mensaje));
+        IRenderedComponent<MensajeItem> cut = Render<MensajeItem>(p => p.Add(m => m.Mensaje, mensaje));
 
         // Assert
         cut.FindAll(".mensaje-editado").Should().BeEmpty();
     }
 
     [Test]
-    public void Editar_AbreElEditorInlineConElTextoActual()
-    {
+    public void Editar_AbreElEditorInlineConElTextoActual() {
         // Arrange
-        var mensaje = Mensaje("Ana", "Hola a todos");
+        MensajeDto mensaje = Mensaje("Ana", "Hola a todos");
 
         // Act: clic en ✏️ (el primer botón)
-        var cut = Render<MensajeItem>(p =>
-        {
+        IRenderedComponent<MensajeItem> cut = Render<MensajeItem>(p => {
             p.Add(m => m.Mensaje, mensaje);
             p.Add(m => m.Nick, "Ana");
         });
@@ -192,18 +199,17 @@ public class MensajeItemTests : BunitContext
         cut.Find(".boton-edicion").Click();
 
         // Assert: el texto se PRELLENA, para corregir en vez de reescribir
-        var editor = cut.Find(".editor-inline");
+        IElement editor = cut.Find(".editor-inline");
         editor.GetAttribute("value").Should().Be("Hola a todos");
         cut.FindAll(".mensaje-texto").Should().BeEmpty("el editor sustituye al texto");
     }
 
     [Test]
-    public void Editar_EnterGuardaElTextoNuevo()
-    {
+    public void Editar_EnterGuardaElTextoNuevo() {
         // Arrange
         var store = StoreFalsa.Crear();
-        var mensaje = Mensaje("Ana", "Hola a todos");
-        var cut = RenderizarConStore(store, mensaje);
+        MensajeDto mensaje = Mensaje("Ana", "Hola a todos");
+        IRenderedComponent<MensajeItem> cut = RenderizarConStore(store, mensaje);
 
         cut.Find(".boton-edicion").Click();
 
@@ -218,12 +224,11 @@ public class MensajeItemTests : BunitContext
     }
 
     [Test]
-    public void Editar_EscapeCancelaSinTocarAlServidor()
-    {
+    public void Editar_EscapeCancelaSinTocarAlServidor() {
         // Arrange
         var store = StoreFalsa.Crear();
-        var mensaje = Mensaje("Ana", "Hola a todos");
-        var cut = RenderizarConStore(store, mensaje);
+        MensajeDto mensaje = Mensaje("Ana", "Hola a todos");
+        IRenderedComponent<MensajeItem> cut = RenderizarConStore(store, mensaje);
 
         cut.Find(".boton-edicion").Click();
         cut.Find(".editor-inline").Input("Texto que se arrepiente");
@@ -238,19 +243,18 @@ public class MensajeItemTests : BunitContext
     }
 
     [Test]
-    public void Borrar_PideLaConfirmacionEnLaFilaSinTocarAlServidor()
-    {
+    public void Borrar_PideLaConfirmacionEnLaFilaSinTocarAlServidor() {
         // Arrange: 🗑️ no borra al vuelo, primero la fila pregunta
         var store = StoreFalsa.Crear();
-        var mensaje = Mensaje("Ana", "Hola a todos");
-        var cut = RenderizarConStore(store, mensaje);
+        MensajeDto mensaje = Mensaje("Ana", "Hola a todos");
+        IRenderedComponent<MensajeItem> cut = RenderizarConStore(store, mensaje);
 
         // Act: 🗑️ es el SEGUNDO botón
         cut.FindAll(".boton-edicion")[1].Click();
 
         // Assert: la ✏️ y 🗑️ se apartan y asoman ✔ y ✕ — nada de diálogos
         // del navegador, la confirmación vive en la propia fila
-        var botones = cut.FindAll(".boton-edicion");
+        IReadOnlyList<IElement> botones = cut.FindAll(".boton-edicion");
         botones.Should().HaveCount(2);
         botones[0].GetAttribute("title").Should().Be("Confirmar el borrado");
         botones[1].GetAttribute("title").Should().Be("Cancelar el borrado");
@@ -258,12 +262,11 @@ public class MensajeItemTests : BunitContext
     }
 
     [Test]
-    public void Borrar_ConLaConfirmacionAceptada_LlamaAlStore()
-    {
+    public void Borrar_ConLaConfirmacionAceptada_LlamaAlStore() {
         // Arrange: la fila pregunta y este test acepta con ✔
         var store = StoreFalsa.Crear();
-        var mensaje = Mensaje("Ana", "Hola a todos");
-        var cut = RenderizarConStore(store, mensaje);
+        MensajeDto mensaje = Mensaje("Ana", "Hola a todos");
+        IRenderedComponent<MensajeItem> cut = RenderizarConStore(store, mensaje);
         cut.FindAll(".boton-edicion")[1].Click();
 
         // Act
@@ -274,20 +277,19 @@ public class MensajeItemTests : BunitContext
     }
 
     [Test]
-    public void Borrar_ConLaConfirmacionCancelada_NoTocaAlServidor()
-    {
+    public void Borrar_ConLaConfirmacionCancelada_NoTocaAlServidor() {
         // Arrange: el ✕ debe dejar la fila como estaba — el borrado es
         // definitivo, y un "no" a medias no debe pasar de largo
         var store = StoreFalsa.Crear();
-        var mensaje = Mensaje("Ana", "Hola a todos");
-        var cut = RenderizarConStore(store, mensaje);
+        MensajeDto mensaje = Mensaje("Ana", "Hola a todos");
+        IRenderedComponent<MensajeItem> cut = RenderizarConStore(store, mensaje);
         cut.FindAll(".boton-edicion")[1].Click();
 
         // Act
         cut.Find("button[title=\"Cancelar el borrado\"]").Click();
 
         // Assert: vuelven ✏️ y 🗑️, sin una sola llamada al store
-        var botones = cut.FindAll(".boton-edicion");
+        IReadOnlyList<IElement> botones = cut.FindAll(".boton-edicion");
         botones.Should().HaveCount(2);
         botones[0].GetAttribute("title").Should().Be("Editar este mensaje");
         botones[1].GetAttribute("title").Should().Be("Borrar este mensaje");
@@ -295,27 +297,4 @@ public class MensajeItemTests : BunitContext
     }
 
     #endregion
-
-    /// <summary>Crea un mensaje de prueba del canal.</summary>
-    private static MensajeDto Mensaje(string usuario, string texto) =>
-        new(Guid.NewGuid(), usuario, texto, DateTime.UtcNow, TipoMensaje.Normal);
-
-    /// <summary>
-    /// Renderiza la fila con SU store falsa, para poder verificar las
-    /// llamadas de los botones ✏️/🗑️ y del editor inline.
-    /// </summary>
-    /// <param name="store">Store a registrar (sustuye a la del SetUp).</param>
-    /// <param name="mensaje">Mensaje a pintar.</param>
-    /// <returns>El componente renderizado, viendo como "Ana".</returns>
-    private IRenderedComponent<MensajeItem> RenderizarConStore(
-        StoreFalsa store, MensajeDto mensaje)
-    {
-        Services.AddSingleton(store.Objeto);
-
-        return Render<MensajeItem>(p =>
-        {
-            p.Add(m => m.Mensaje, mensaje);
-            p.Add(m => m.Nick, "Ana");
-        });
-    }
 }

@@ -1,18 +1,17 @@
 namespace AulaChatNet.Shared.Dtos;
 
 /// <summary>
-/// DTO con las estadísticas globales de conexión del chat: cuánta gente hay
-/// conectada EN TOTAL y cuántas hay en cada sala.
-///
-/// <remarks>
-/// El servidor lo emite con el evento <c>EstadisticasActualizadas</c> a TODOS
-/// los clientes cada vez que alguien entra, sale o cambia de sala; así cada
-/// interfaz puede mostrar los contadores en todo momento (línea de estado de
-/// la terminal, cabecera de Blazor...) sin tener que preguntar.
-/// </remarks>
+///     DTO con las estadísticas globales de conexión del chat: cuánta gente hay
+///     conectada EN TOTAL y cuántas hay en cada sala.
+///     <remarks>
+///         El servidor lo emite con el evento <c>EstadisticasActualizadas</c> a TODOS
+///         los clientes cada vez que alguien entra, sale o cambia de sala; así cada
+///         interfaz puede mostrar los contadores en todo momento (línea de estado de
+///         la terminal, cabecera de Blazor...) sin tener que preguntar.
+///     </remarks>
 /// </summary>
 /// <example>
-/// <code>
+///     <code>
 /// {
 ///   "totalConectados": 12,
 ///   "canales": [

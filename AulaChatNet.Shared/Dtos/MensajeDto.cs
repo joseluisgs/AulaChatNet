@@ -1,22 +1,20 @@
 namespace AulaChatNet.Shared.Dtos;
 
 /// <summary>
-/// DTO (Data Transfer Object) de un mensaje del chat.
-/// Este objeto se utiliza para transferir mensajes desde el servidor hacia
-/// todos los clientes conectados (terminal y Blazor).
-///
-/// Es inmutable (record) para garantizar la integridad de los datos en tránsito:
-/// una vez recibido, un mensaje no puede cambiar.
-///
-/// <remarks>
-/// El avatar NO viaja en el DTO: cada cliente lo deriva del nombre de usuario
-/// con <c>AvatarHelper</c> (DiceBear en web, iniciales en terminal).
-/// Así el servidor no conoce detalles de presentación de cada interfaz.
-/// </remarks>
+///     DTO (Data Transfer Object) de un mensaje del chat.
+///     Este objeto se utiliza para transferir mensajes desde el servidor hacia
+///     todos los clientes conectados (terminal y Blazor).
+///     Es inmutable (record) para garantizar la integridad de los datos en tránsito:
+///     una vez recibido, un mensaje no puede cambiar.
+///     <remarks>
+///         El avatar NO viaja en el DTO: cada cliente lo deriva del nombre de usuario
+///         con <c>AvatarHelper</c> (DiceBear en web, iniciales en terminal).
+///         Así el servidor no conoce detalles de presentación de cada interfaz.
+///     </remarks>
 /// </summary>
 /// <example>
-/// Mensaje JSON típico en el cliente:
-/// <code>
+///     Mensaje JSON típico en el cliente:
+///     <code>
 /// {
 ///   "id": "3f8b0c2e-...",
 ///   "usuario": "Ana",

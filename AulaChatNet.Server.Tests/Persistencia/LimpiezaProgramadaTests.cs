@@ -8,20 +8,29 @@ using Moq;
 namespace AulaChatNet.Server.Tests.Persistencia;
 
 /// <summary>
-/// Tests de orquestación de <see cref="LimpiezaProgramada"/> (Fase 2). Verifican
-/// QUÉ decide el servicio —cuándo borra, cuándo compacta, qué pasa si algo
-/// falla— con el repositorio mockeado, sin tocar una base de datos real.
-///
-/// <remarks>
-/// La parte que SÍ toca SQLite (fragmentación real y VACUUM) está cubierta en
-/// <see cref="MensajeRepositoryTests"/> contra SQLite de verdad. Aquí lo que se
-/// prueba es la lógica de decisión, y para eso un mock es mejor: si el
-/// servicio decide mal, se ve aquí aunque la base de datos esté sana.
-/// </remarks>
+///     Tests de orquestación de <see cref="LimpiezaProgramada" /> (Fase 2). Verifican
+///     QUÉ decide el servicio —cuándo borra, cuándo compacta, qué pasa si algo
+///     falla— con el repositorio mockeado, sin tocar una base de datos real.
+///     <remarks>
+///         La parte que SÍ toca SQLite (fragmentación real y VACUUM) está cubierta en
+///         <see cref="MensajeRepositoryTests" /> contra SQLite de verdad. Aquí lo que se
+///         prueba es la lógica de decisión, y para eso un mock es mejor: si el
+///         servicio decide mal, se ve aquí aunque la base de datos esté sana.
+///     </remarks>
 /// </summary>
 [TestFixture]
-public class LimpiezaProgramadaTests
-{
+public class LimpiezaProgramadaTests {
+    [SetUp]
+    public void Setup() {
+        _repo = new Mock<IMensajesRepository>();
+        _config = new PersistenciaConfig();
+    }
+
+    [TearDown]
+    public void TearDown() {
+        _servicio?.Dispose();
+    }
+
     /// <summary>Tiempo máximo de espera en las pruebas de segundo plano.</summary>
     private const int EsperaMaximaMs = 3000;
 
@@ -29,23 +38,12 @@ public class LimpiezaProgramadaTests
     private PersistenciaConfig _config = null!;
     private LimpiezaProgramada? _servicio;
 
-    [SetUp]
-    public void Setup()
-    {
-        _repo = new Mock<IMensajesRepository>();
-        _config = new PersistenciaConfig();
-    }
-
-    [TearDown]
-    public void TearDown() => _servicio?.Dispose();
-
     /// <summary>
-    /// Crea el servicio con la configuración actual y lo deja guardado para
-    /// poder detenerlo/disponerlo en el <c>TearDown</c>.
+    ///     Crea el servicio con la configuración actual y lo deja guardado para
+    ///     poder detenerlo/disponerlo en el <c>TearDown</c>.
     /// </summary>
     /// <param name="logger">Logger a usar; por defecto uno que no dice nada.</param>
-    private LimpiezaProgramada CrearServicio(ILogger<LimpiezaProgramada>? logger = null)
-    {
+    private LimpiezaProgramada CrearServicio(ILogger<LimpiezaProgramada>? logger = null) {
         _servicio = new LimpiezaProgramada(
             _repo.Object,
             Options.Create(_config),
@@ -55,38 +53,35 @@ public class LimpiezaProgramadaTests
     }
 
     /// <summary>Cuántas veces se ha invocado un método del repositorio mockeado.</summary>
-    private int Veces(string metodo) =>
-        _repo.Invocations.Count(i => i.Method.Name == metodo);
+    private int Veces(string metodo) {
+        return _repo.Invocations.Count(i => i.Method.Name == metodo);
+    }
 
     /// <summary>
-    /// Espera a que se cumpla una condición, con tope de tiempo. Devuelve
-    /// <c>false</c> si se agota la espera.
-    ///
-    /// <remarks>
-    /// Hace falta por un detalle de <c>BackgroundService</c> que engaña al
-    /// principio: <c>StartAsync</c> NO espera a <c>ExecuteAsync</c>, la lanza
-    /// con <c>Task.Run</c> y devuelve al instante. Es decir, inmediatamente
-    /// después de <c>StartAsync</c> la primera pasada puede no haber empezado
-    /// ni siquiera. Sin esta espera, los tests serían una carrera.
-    /// </remarks>
+    ///     Espera a que se cumpla una condición, con tope de tiempo. Devuelve
+    ///     <c>false</c> si se agota la espera.
+    ///     <remarks>
+    ///         Hace falta por un detalle de <c>BackgroundService</c> que engaña al
+    ///         principio: <c>StartAsync</c> NO espera a <c>ExecuteAsync</c>, la lanza
+    ///         con <c>Task.Run</c> y devuelve al instante. Es decir, inmediatamente
+    ///         después de <c>StartAsync</c> la primera pasada puede no haber empezado
+    ///         ni siquiera. Sin esta espera, los tests serían una carrera.
+    ///     </remarks>
     /// </summary>
-    private static async Task<bool> EsperarAsync(Func<bool> condicion)
-    {
-        var limite = DateTime.UtcNow.AddMilliseconds(EsperaMaximaMs);
-        while (DateTime.UtcNow < limite && !condicion())
+    private static async Task<bool> EsperarAsync(Func<bool> condicion) {
+        DateTime limite = DateTime.UtcNow.AddMilliseconds(EsperaMaximaMs);
+        while (DateTime.UtcNow < limite && !condicion()) {
             await Task.Delay(15);
+        }
 
         return condicion();
     }
 
-    #region Ejecución en segundo plano (ExecuteAsync)
-
     [Test]
-    public async Task ExecuteAsync_ConLimpiezaCadaHorasCero_NoEjecutaNada()
-    {
+    public async Task ExecuteAsync_ConLimpiezaCadaHorasCero_NoEjecutaNada() {
         // Arrange: 0 horas = desactivada a propósito
         _config.LimpiezaCadaHoras = 0;
-        var servicio = CrearServicio();
+        LimpiezaProgramada servicio = CrearServicio();
 
         // Act
         await servicio.StartAsync(CancellationToken.None);
@@ -94,7 +89,7 @@ public class LimpiezaProgramadaTests
         // Assert: como StartAsync devuelve YA (lanza ExecuteAsync con Task.Run),
         // hay que esperar a que termine. Si el servicio entrara en el bucle de
         // 24 h, esto daría false y el test fallaría.
-        var termino = servicio.ExecuteTask!.Wait(TimeSpan.FromMilliseconds(EsperaMaximaMs));
+        bool termino = servicio.ExecuteTask!.Wait(TimeSpan.FromMilliseconds(EsperaMaximaMs));
 
         termino.Should().BeTrue("con LimpiezaCadaHoras = 0 el servicio no debe entrar en el bucle");
         Veces("LimpiarAsync").Should().Be(0);
@@ -102,18 +97,17 @@ public class LimpiezaProgramadaTests
     }
 
     [Test]
-    public async Task ExecuteAsync_ConRetencionCeroYVacuumDesactivado_NoEjecutaNada()
-    {
+    public async Task ExecuteAsync_ConRetencionCeroYVacuumDesactivado_NoEjecutaNada() {
         // Arrange: no se borra nada (retención ilimitada) y tampoco se compacta
         _config.RetencionDias = 0;
         _config.VacuumSiFragmentado = 0;
-        var servicio = CrearServicio();
+        LimpiezaProgramada servicio = CrearServicio();
 
         // Act
         await servicio.StartAsync(CancellationToken.None);
 
         // Assert
-        var termino = servicio.ExecuteTask!.Wait(TimeSpan.FromMilliseconds(EsperaMaximaMs));
+        bool termino = servicio.ExecuteTask!.Wait(TimeSpan.FromMilliseconds(EsperaMaximaMs));
 
         termino.Should().BeTrue("sin retención y sin VACUUM no hay nada que mantener");
         Veces("LimpiarAsync").Should().Be(0);
@@ -121,13 +115,12 @@ public class LimpiezaProgramadaTests
     }
 
     [Test]
-    public async Task ExecuteAsync_AlArrancar_EjecutaUnaPasadaInmediata()
-    {
+    public async Task ExecuteAsync_AlArrancar_EjecutaUnaPasadaInmediata() {
         // Arrange
         _config.LimpiezaCadaHoras = 24;
         _config.RetencionDias = 30;
         _config.VacuumSiFragmentado = 25;
-        var servicio = CrearServicio();
+        LimpiezaProgramada servicio = CrearServicio();
 
         // Act
         await servicio.StartAsync(CancellationToken.None);
@@ -135,7 +128,7 @@ public class LimpiezaProgramadaTests
         // Assert: se espera a que la PRIMERA pasada se ejecute de verdad (va en
         // otro hilo por culpa del Task.Run de StartAsync). Se espera por el
         // ÚLTIMO paso de la pasada para no leer el estado a medias.
-        var pasoHecho = await EsperarAsync(() => Veces("GetFragmentacionAsync") >= 1);
+        bool pasoHecho = await EsperarAsync(() => Veces("GetFragmentacionAsync") >= 1);
 
         pasoHecho.Should().BeTrue("la primera pasada debe ejecutarse nada más arrancar");
         Veces("LimpiarAsync").Should().Be(1, "la pasada pide borrar exactamente una vez");
@@ -148,17 +141,12 @@ public class LimpiezaProgramadaTests
         await servicio.StopAsync(CancellationToken.None);
     }
 
-    #endregion
-
-    #region Decisión de borrado (LimpiarAsync)
-
     [Test]
-    public async Task LimpiarAsync_ConRetencion_BorraConElCorteDeTreintaDias()
-    {
+    public async Task LimpiarAsync_ConRetencion_BorraConElCorteDeTreintaDias() {
         // Arrange
         _config.RetencionDias = 30;
-        _config.VacuumSiFragmentado = 0;         // aislar: solo se prueba el borrado
-        var servicio = CrearServicio();
+        _config.VacuumSiFragmentado = 0; // aislar: solo se prueba el borrado
+        LimpiezaProgramada servicio = CrearServicio();
 
         // Act
         await servicio.LimpiarAsync();
@@ -171,12 +159,11 @@ public class LimpiezaProgramadaTests
     }
 
     [Test]
-    public async Task LimpiarAsync_SinRetencion_NoBorraNada()
-    {
+    public async Task LimpiarAsync_SinRetencion_NoBorraNada() {
         // Arrange: RetencionDias = 0 significa "conservar TODO"
         _config.RetencionDias = 0;
         _config.VacuumSiFragmentado = 0;
-        var servicio = CrearServicio();
+        LimpiezaProgramada servicio = CrearServicio();
 
         // Act
         await servicio.LimpiarAsync();
@@ -185,18 +172,13 @@ public class LimpiezaProgramadaTests
         _repo.Verify(r => r.LimpiarAsync(It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
-    #endregion
-
-    #region Decisión de compactación (VACUUM)
-
     [Test]
-    public async Task LimpiarAsync_FragmentacionBaja_NoCompacta()
-    {
+    public async Task LimpiarAsync_FragmentacionBaja_NoCompacta() {
         // Arrange: 10% de páginas libres, por debajo del umbral de 25
         _config.VacuumSiFragmentado = 25;
         _repo.Setup(r => r.GetFragmentacionAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(10.0);
-        var servicio = CrearServicio();
+        LimpiezaProgramada servicio = CrearServicio();
 
         // Act
         await servicio.LimpiarAsync();
@@ -207,13 +189,12 @@ public class LimpiezaProgramadaTests
     }
 
     [Test]
-    public async Task LimpiarAsync_FragmentacionAlta_Compacta()
-    {
+    public async Task LimpiarAsync_FragmentacionAlta_Compacta() {
         // Arrange: 40% de páginas libres, por encima del umbral de 25
         _config.VacuumSiFragmentado = 25;
         _repo.Setup(r => r.GetFragmentacionAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(40.0);
-        var servicio = CrearServicio();
+        LimpiezaProgramada servicio = CrearServicio();
 
         // Act
         await servicio.LimpiarAsync();
@@ -223,11 +204,10 @@ public class LimpiezaProgramadaTests
     }
 
     [Test]
-    public async Task LimpiarAsync_ConVacuumDesactivado_NoNiLoMide()
-    {
+    public async Task LimpiarAsync_ConVacuumDesactivado_NoNiLoMide() {
         // Arrange: umbral 0 = "nunca compactes"
         _config.VacuumSiFragmentado = 0;
-        var servicio = CrearServicio();
+        LimpiezaProgramada servicio = CrearServicio();
 
         // Act
         await servicio.LimpiarAsync();
@@ -237,20 +217,15 @@ public class LimpiezaProgramadaTests
         _repo.Verify(r => r.CompactarAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
-    #endregion
-
-    #region Resiliencia (un fallo de mantenimiento no debe caer hacia arriba)
-
     [Test]
-    public async Task LimpiarAsync_SiLaBaseFalla_NoLanzaPeroSiLoRegistra()
-    {
+    public async Task LimpiarAsync_SiLaBaseFalla_NoLanzaPeroSiLoRegistra() {
         // Arrange: el borrado revienta (disco lleno, base bloqueada…)
         _config.RetencionDias = 30;
         _config.VacuumSiFragmentado = 25;
         _repo.Setup(r => r.LimpiarAsync(It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("disco lleno"));
         var log = new LoggerDePrueba();
-        var servicio = CrearServicio(log);
+        LimpiezaProgramada servicio = CrearServicio(log);
 
         // Act: si la excepción se escapara, el propio await haría fallar el test
         await servicio.LimpiarAsync();
@@ -262,28 +237,30 @@ public class LimpiezaProgramadaTests
         Veces("LimpiarAsync").Should().Be(1, "a pesar del fallo, se llegó a pedir el borrado");
     }
 
-    #endregion
-
     /// <summary>
-    /// Logger mínimo que guarda los niveles que recibe, para poder asertar que
-    /// algo se registró. No usa <c>NullLogger</c> porque aquí INTERESA saber
-    /// qué se dijo (que el error se logueara es parte del comportamiento).
+    ///     Logger mínimo que guarda los niveles que recibe, para poder asertar que
+    ///     algo se registró. No usa <c>NullLogger</c> porque aquí INTERESA saber
+    ///     qué se dijo (que el error se logueara es parte del comportamiento).
     /// </summary>
-    private sealed class LoggerDePrueba : ILogger<LimpiezaProgramada>
-    {
+    private sealed class LoggerDePrueba : ILogger<LimpiezaProgramada> {
         /// <summary>Niveles de todos los mensajes registrados.</summary>
         public List<LogLevel> Niveles { get; } = [];
 
         /// <inheritdoc />
-        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull {
+            return null;
+        }
 
         /// <inheritdoc />
-        public bool IsEnabled(LogLevel logLevel) => true;
+        public bool IsEnabled(LogLevel logLevel) {
+            return true;
+        }
 
         /// <inheritdoc />
         public void Log<TState>(
             LogLevel logLevel, EventId eventId, TState state,
-            Exception? exception, Func<TState, Exception?, string> formatter) =>
+            Exception? exception, Func<TState, Exception?, string> formatter) {
             Niveles.Add(logLevel);
+        }
     }
 }

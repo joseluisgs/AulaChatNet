@@ -1,10 +1,10 @@
 using System.Text;
 using System.Text.Json;
-using AulaChatNet.Shared.Comandos;
 using AulaChatNet.Client.Terminal.Configuracion;
 using AulaChatNet.Client.Terminal.Consola;
 using AulaChatNet.Client.Terminal.Servicios;
 using AulaChatNet.Client.Terminal.Sesion;
+using AulaChatNet.Shared.Comandos;
 using AulaChatNet.Shared.Configuracion;
 using AulaChatNet.Shared.Constantes;
 using AulaChatNet.Shared.Dtos;
@@ -23,17 +23,17 @@ Console.Title = "AulaChatNet";
 // 🔧 CONFIGURACIÓN (appsettings.json copiado al binario por el .csproj)
 // ============================================================================
 
-var configuracion = new ConfigurationBuilder()
+IConfigurationRoot configuracion = new ConfigurationBuilder()
     .SetBasePath(AppContext.BaseDirectory)
-    .AddJsonFile("appsettings.json", optional: false)
+    .AddJsonFile("appsettings.json", false)
     .Build();
 
 // Sección Chat: la MISMA que usa el servidor (canales y límites compartidos)
-var chat = configuracion.GetSection(ChatConfig.Seccion).Get<ChatConfig>() ?? new ChatConfig();
+ChatConfig chat = configuracion.GetSection(ChatConfig.Seccion).Get<ChatConfig>() ?? new ChatConfig();
 
 // Sección Terminal: URL del servidor y si se recuerda la sesión
-var terminal = configuracion.GetSection(TerminalConfig.Seccion).Get<TerminalConfig>()
-               ?? new TerminalConfig();
+TerminalConfig terminal = configuracion.GetSection(TerminalConfig.Seccion).Get<TerminalConfig>()
+                          ?? new TerminalConfig();
 
 // 🔍 Logging con Serilog (mismo motor que el servidor): SOLO fichero, porque
 // el sink de consola rompería el lienzo en vivo de Spectre (ver SerilogConfig).
@@ -45,11 +45,11 @@ Log.Information("Terminal arrancada. Servidor: {UrlServidor}; canales: {Canales}
 
 // Última sesión guardada en %APPDATA% (nick, canal y cuándo fue)
 var storeSesion = new SesionStore();
-var sesionGuardada = terminal.RecordarSesion ? storeSesion.Cargar() : null;
+SesionTerminal? sesionGuardada = terminal.RecordarSesion ? storeSesion.Cargar() : null;
 
 // true si el usuario mandó borrarla con /sesion borrar: en ese caso la
 // salida ordenada NO vuelve a guardar nada (se borraría para nada)
-var sesionOlvidada = false;
+bool sesionOlvidada = false;
 
 // ============================================================================
 // 🖼️ PANTALLA DE ENTRADA: banner + ayuda
@@ -80,63 +80,52 @@ AnsiConsole.WriteLine();
 
 // Sesión utilizable SOLO si trae nick Y canal: un fichero a medias o con
 // campos en blanco no sirve como default (se pediría un nick vacío)
-var sesionValida = sesionGuardada is not null
-                   && !string.IsNullOrWhiteSpace(sesionGuardada.Nick)
-                   && !string.IsNullOrWhiteSpace(sesionGuardada.Canal)
+SesionTerminal? sesionValida = sesionGuardada is not null
+                               && !string.IsNullOrWhiteSpace(sesionGuardada.Nick)
+                               && !string.IsNullOrWhiteSpace(sesionGuardada.Canal)
     ? sesionGuardada
     : null;
 
 // Cada caso tiene SU mensaje de bienvenida (jamás todos lo mismo):
-if (sesionValida is not null)
-{
+if (sesionValida is not null) {
     // Con fecha si el fichero la trae; sin ella (ficheros antiguos) se
     // DICE en lugar de ocultarlo en silencio
-    var cuando = sesionValida.UltimaConexion > DateTime.MinValue
+    string cuando = sesionValida.UltimaConexion > DateTime.MinValue
         ? $" [grey]el[/] [bold]{sesionValida.UltimaConexion:dd/MM/yyyy HH:mm}[/]"
         : " [grey](sin fecha guardada)[/]";
 
     AnsiConsole.MarkupLine(
         $"[grey]👋 ¡Hola de nuevo! Tu última sesión fue[/] [bold]{Markup.Escape(sesionValida.Nick)}[/] " +
         $"[grey]en el canal[/] [bold]{Markup.Escape(sesionValida.Canal)}[/]{cuando}");
-}
-else if (storeSesion.SesionCorrupta)
-{
+} else if (storeSesion.SesionCorrupta) {
     // Había sesión pero el fichero no se pudo leer: NO se dice "primera vez"
     AnsiConsole.MarkupLine(
         "[yellow]⚠ No pude leer tu sesión guardada (fichero corrupto): empezamos de cero.[/]");
 
     Log.Warning("Sesión guardada ilegible (fichero corrupto): empezamos de cero");
-}
-else if (sesionGuardada is not null)
-{
+} else if (sesionGuardada is not null) {
     // Fichero legible pero incompleto (sin nick o sin canal)
     AnsiConsole.MarkupLine(
         "[yellow]⚠ Tu sesión guardada está vacía (falta el nick o el canal): empezamos de cero.[/]");
-}
-else if (terminal.RecordarSesion)
-{
+} else if (terminal.RecordarSesion) {
     AnsiConsole.MarkupLine("[grey]🙂 Primera vez por aquí: ¿con qué nick entras?[/]");
-}
-else
-{
+} else {
     AnsiConsole.MarkupLine("[grey]¿Con qué nick entras?[/]");
 }
 
 AnsiConsole.WriteLine();
 
 // Los prompts solo reciben default si la sesión era utilizable
-var nick = PedirNick(chat, sesionValida);
+string? nick = PedirNick(chat, sesionValida);
 
-if (nick is null)
-{
+if (nick is null) {
     AnsiConsole.MarkupLine("[grey]Entrada cerrada (EOF) sin datos. Hasta pronto.[/]");
     return;
 }
 
-var canal = PedirCanal(chat, sesionValida);
+string? canal = PedirCanal(chat, sesionValida);
 
-if (canal is null)
-{
+if (canal is null) {
     AnsiConsole.MarkupLine("[grey]Entrada cerrada (EOF) sin datos. Hasta pronto.[/]");
     return;
 }
@@ -150,24 +139,23 @@ AnsiConsole.WriteLine();
 // 🔌 CONEXIÓN (dos reintentos distintos según QUÉ falle)
 // ============================================================================
 
-var urlHub = $"{terminal.UrlServidor.TrimEnd('/')}{chat.HubRuta}";
+string urlHub = $"{terminal.UrlServidor.TrimEnd('/')}{chat.HubRuta}";
 using var cliente = new ClienteChat(urlHub, chat);
 
 ResultadoConexion resultado;
 
-do
-{
+do {
     resultado = await AnsiConsole.Status()
         .Spinner(Spinner.Known.Dots)
         .StartAsync($"Conectando a {urlHub}...", _ => cliente.ConectarAsync(nick, canal));
 
-    if (resultado.Exitoso)
+    if (resultado.Exitoso) {
         break;
+    }
 
     AnsiConsole.MarkupLine($"[red]✗ {Markup.Escape(resultado.Error!)}[/]");
 
-    if (!resultado.HayServidor)
-    {
+    if (!resultado.HayServidor) {
         // FALLÓ LA RED: el servidor ni se alcanza. El nick y el canal NO
         // tienen la culpa, así que no se vuelve a preguntar nada — se
         // conservan y se ofrece reintentar (causa típica: arrancar el
@@ -183,8 +171,7 @@ do
             $"[grey]Se reintentará como[/] [bold]{Markup.Escape(nick)}[/] " +
             $"[grey]en[/] [bold]{Markup.Escape(canal)}[/][grey]. Pulsa Enter para reintentar.[/]");
 
-        if (Console.ReadLine() is null)
-        {
+        if (Console.ReadLine() is null) {
             // EOF (modo tubería): no queda entrada por la que esperar
             AnsiConsole.MarkupLine("[grey]Entrada cerrada sin servidor. Hasta pronto.[/]");
             return;
@@ -202,20 +189,19 @@ do
     // Es el caso típico de "dos con el mismo nick": aviso, no error de red
     Log.Warning("El servidor rechazó el alta de {Nick} en {Canal}: {Motivo}",
         nick, canal, resultado.Error);
-    nick = PedirNick(chat, sesion: null);
+    nick = PedirNick(chat, null);
 
-    if (nick is null)
-    {
+    if (nick is null) {
         AnsiConsole.MarkupLine("[grey]Entrada cerrada (EOF). Hasta pronto.[/]");
         return;
     }
-}
-while (true);
+} while (true);
 
 // Solo se guarda la sesión si la conexión fue correcta: jamás guardamos
 // un nick que el servidor haya rechazado
-if (terminal.RecordarSesion)
+if (terminal.RecordarSesion) {
     storeSesion.Guardar(new SesionTerminal(nick, canal, DateTime.Now));
+}
 
 AnsiConsole.MarkupLine(
     $"[green]●[/] Conectado a [bold]{Markup.Escape(canal)}[/] como [bold]{Markup.Escape(nick)}[/] · " +
@@ -235,14 +221,14 @@ AnsiConsole.WriteLine();
 //  - CONSOLA INTERACTIVA → vista en vivo (cabecera y pie fijos con Live)
 //  - TUBERÍA redirigida   → consola clásica (pruebas automatizadas: el
 //    Smoke no puede leer teclas, así que ahí no se usa el lienzo)
-var enVivo = !Console.IsInputRedirected;
+bool enVivo = !Console.IsInputRedirected;
 
-var salir = false;
+bool salir = false;
 
 // Estas dos variables se actualizan al cambiar de canal o de nick (las lee
 // la cabecera de la vista en vivo y las guarda la salida ordenada)
-var nickActual = nick;
-var canalActual = canal;
+string nickActual = nick;
+string canalActual = canal;
 
 // Salida del último comando (/ayuda, /usuarios...): en tubería se imprime y
 // se queda en el scroll; en vivo vive en la zona de mensajes hasta el
@@ -254,19 +240,19 @@ var salidas = new List<IRenderable>();
 string? error = null;
 
 // Índice del primer mensaje visible tras /limpiar en la vista en vivo
-var mostrarDesde = 0;
+int mostrarDesde = 0;
 
 // ¿Ya se ha enseñado esta sesión la nota de que los privados son efímeros?
 // Una sola vez a propósito: repetirla con cada envío la convierte en ruido,
 // y en la terminal cada aviso empuja mensajes reales fuera de la pantalla
-var notaPrivadosMostrada = false;
+bool notaPrivadosMostrada = false;
 
-Console.CancelKeyPress += (_, args) =>
-{
+Console.CancelKeyPress += (_, args) => {
     args.Cancel = true; // no matamos el proceso mientras escribe algo
 
-    if (terminal.RecordarSesion && !sesionOlvidada)
+    if (terminal.RecordarSesion && !sesionOlvidada) {
         storeSesion.Guardar(new SesionTerminal(nickActual, canalActual, DateTime.Now));
+    }
 
     AnsiConsole.WriteLine();
     AnsiConsole.MarkupLine("[grey]Saliendo... (Ctrl+C)[/]");
@@ -275,39 +261,36 @@ Console.CancelKeyPress += (_, args) =>
     Environment.Exit(0);
 };
 
-if (enVivo)
-{
+if (enVivo) {
     await BucleEnVivo();
-}
-else
-{
+} else {
     // Modo tubería: Rx entrega la VISTA completa del canal (BehaviorSubject):
     // o se le AÑADEN mensajes (lista anterior + el nuevo) o se REEMPLAZA
     // entera (historial de otro canal). Distinguimos ambos casos para pintar
     // solo lo nuevo: los anteriores siguen al principio por MISMA referencia.
     IReadOnlyList<MensajeDto> pintados = [];
 
-    using var suscripcion = cliente.Mensajes.Subscribe(lista =>
-    {
-        var incremental = EsContinuacion(lista, pintados);
+    using IDisposable suscripcion = cliente.Mensajes.Subscribe(lista => {
+        bool incremental = EsContinuacion(lista, pintados);
 
         // Cambio de canal: pantalla limpia y pintamos la vista entera
-        if (!incremental && pintados.Count > 0)
+        if (!incremental && pintados.Count > 0) {
             AnsiConsole.Clear();
+        }
 
-        for (var i = incremental ? pintados.Count : 0; i < lista.Count; i++)
-        {
+        for (int i = incremental ? pintados.Count : 0; i < lista.Count; i++) {
             PintarMensaje(lista[i]);
 
             // Campanita cuando el mensaje NUEVO te nombra con @ (y no es
             // tuyo): la terminal no tiene badges persistentes, pero SÍ
             // tiene beep — y en un chat de aula se oye desde atrás
-            var teMenciona = lista[i].Tipo == TipoMensaje.Normal
-                && !string.Equals(lista[i].Usuario, nickActual, StringComparison.OrdinalIgnoreCase)
-                && Menciones.Contiene(lista[i].Texto, nickActual);
+            bool teMenciona = lista[i].Tipo == TipoMensaje.Normal
+                              && !string.Equals(lista[i].Usuario, nickActual, StringComparison.OrdinalIgnoreCase)
+                              && Menciones.Contiene(lista[i].Texto, nickActual);
 
-            if (teMenciona)
+            if (teMenciona) {
                 Console.Beep();
+            }
         }
 
         pintados = lista;
@@ -319,14 +302,11 @@ else
     // grupo: es una segunda tubería que solo tiene derecho a ver el dueño.
     IReadOnlyList<MensajePrivadoDto> pintadosPrivados = [];
 
-    using var suscripcionPrivados = cliente.Privados.Subscribe(lista =>
-    {
-        for (var i = pintadosPrivados.Count; i < lista.Count; i++)
-        {
+    using IDisposable suscripcionPrivados = cliente.Privados.Subscribe(lista => {
+        for (int i = pintadosPrivados.Count; i < lista.Count; i++) {
             // El aviso sale con el PRIMERO de la sesión (el que se envía o
             // el que llega: da igual, es el mismo "aquí no se guarda nada")
-            if (!notaPrivadosMostrada)
-            {
+            if (!notaPrivadosMostrada) {
                 notaPrivadosMostrada = true;
                 AnsiConsole.MarkupLine($"[grey]{Markup.Escape(AyudaComandos.NotaPrivados)}[/]");
             }
@@ -337,17 +317,17 @@ else
         pintadosPrivados = lista;
     });
 
-    while (!salir)
-    {
+    while (!salir) {
         // Estado en todo momento: total de conectados y reparto por sala,
         // justo antes de pedir la siguiente línea
         AnsiConsole.MarkupLine(EstadoComoMarkup(cliente));
 
-        var linea = LeerChat();
+        string? linea = LeerChat();
 
         // EOF: la tubería de entrada se cerró → salida ordenada como /salir
-        if (linea is null)
+        if (linea is null) {
             break;
+        }
 
         await ProcesarLinea(linea);
     }
@@ -357,8 +337,9 @@ else
 // 🏁 SALIDA ORDENADA
 // ============================================================================
 
-if (terminal.RecordarSesion && !sesionOlvidada)
+if (terminal.RecordarSesion && !sesionOlvidada) {
     storeSesion.Guardar(new SesionTerminal(nickActual, canalActual, DateTime.Now));
+}
 
 await cliente.CerrarAsync();
 AnsiConsole.MarkupLine("[grey]Hasta pronto![/]");
@@ -378,9 +359,8 @@ return;
 // Las teclas se leen SIN bloquear (KeyAvailable + pausa corta) para que el
 // repintado siga vivo mientras escribes; las teclas muertas/acentos se
 // comportan igual que en los prompts de Spectre (mismo ReadKey por debajo).
-async Task BucleEnVivo()
-{
-    var raiz = new Layout("Raiz")
+async Task BucleEnVivo() {
+    Layout raiz = new Layout("Raiz")
         .SplitRows(
             new Layout("Cabecera").Size(1),
             new Layout("Mensajes"),
@@ -389,19 +369,18 @@ async Task BucleEnVivo()
     // Editor con cursor: la lógica de "dónde estoy escribiendo" vive en
     // EditorLinea (testeable); aquí solo se traducen teclas a sus métodos
     var editor = new EditorLinea();
-    var vistaPrevia = cliente.VistaMensajes;
+    IReadOnlyList<MensajeDto> vistaPrevia = cliente.VistaMensajes;
 
     await AnsiConsole.Live(raiz)
-        .StartAsync(async contexto =>
-        {
-            while (!salir)
-            {
+        .StartAsync(async contexto => {
+            while (!salir) {
                 // El historial REEMPLAZADO (cambio de canal) se ve entero: si
                 // la lista nueva no continúa a la anterior, se repinta desde 0
-                var lista = cliente.VistaMensajes;
+                IReadOnlyList<MensajeDto> lista = cliente.VistaMensajes;
 
-                if (!EsContinuacion(lista, vistaPrevia))
+                if (!EsContinuacion(lista, vistaPrevia)) {
                     mostrarDesde = 0;
+                }
 
                 vistaPrevia = lista;
 
@@ -413,8 +392,7 @@ async Task BucleEnVivo()
                 //      sesión —enviado o recibido, da igual— y solo una vez.
                 //      Se añade a las salidas (abajo de la zona) en lugar de
                 //      imprimirse en el scroll: el lienzo no tiene scroll.
-                if (!notaPrivadosMostrada && cliente.VistaPrivados.Count > 0)
-                {
+                if (!notaPrivadosMostrada && cliente.VistaPrivados.Count > 0) {
                     notaPrivadosMostrada = true;
                     salidas.Add(new Markup($"[grey]{Markup.Escape(AyudaComandos.NotaPrivados)}[/]"));
                 }
@@ -425,7 +403,7 @@ async Task BucleEnVivo()
                 // 3) Pie fijo: contadores + línea de input con cursor.
                 //    Con la conexión caída (reintentos agotados) la fila de
                 //    estado se convierte en instrucción: pulsa R para volver
-                var filaEstado = cliente.EstadoValor == EstadoConexion.Desconectado
+                Markup filaEstado = cliente.EstadoValor == EstadoConexion.Desconectado
                     ? new Markup(
                         $"{PuntoEstadoComoMarkup(cliente)} [grey]·[/] la reconexión automática " +
                         "se agotó: pulsa [bold]R[/] para reconectar, o [bold]/salir[/] para salir")
@@ -438,54 +416,34 @@ async Task BucleEnVivo()
                 contexto.Refresh();
 
                 // Teclas mientras el lienzo está vivo
-                while (Console.KeyAvailable)
-                {
-                    var tecla = Console.ReadKey(intercept: true);
+                while (Console.KeyAvailable) {
+                    ConsoleKeyInfo tecla = Console.ReadKey(true);
 
-                    if (tecla.Key == ConsoleKey.Enter)
-                    {
-                        var linea = editor.Texto;
+                    if (tecla.Key == ConsoleKey.Enter) {
+                        string linea = editor.Texto;
                         editor.Limpiar();
                         await ProcesarLinea(linea); // el bucle repinta el resultado
-                    }
-                    else if (tecla.Key == ConsoleKey.Backspace)
-                    {
+                    } else if (tecla.Key == ConsoleKey.Backspace) {
                         editor.BorrarAtras();
-                    }
-                    else if (tecla.Key == ConsoleKey.Delete)
-                    {
+                    } else if (tecla.Key == ConsoleKey.Delete) {
                         editor.BorrarDelante();
-                    }
-                    else if (tecla.Key == ConsoleKey.LeftArrow)
-                    {
+                    } else if (tecla.Key == ConsoleKey.LeftArrow) {
                         editor.MoverIzquierda();
-                    }
-                    else if (tecla.Key == ConsoleKey.RightArrow)
-                    {
+                    } else if (tecla.Key == ConsoleKey.RightArrow) {
                         editor.MoverDerecha();
-                    }
-                    else if (tecla.Key == ConsoleKey.Home)
-                    {
+                    } else if (tecla.Key == ConsoleKey.Home) {
                         editor.Inicio();
-                    }
-                    else if (tecla.Key == ConsoleKey.End)
-                    {
+                    } else if (tecla.Key == ConsoleKey.End) {
                         editor.Fin();
-                    }
-                    else if (tecla.Key == ConsoleKey.Escape)
-                    {
+                    } else if (tecla.Key == ConsoleKey.Escape) {
                         editor.Limpiar(); // Escape = borrar lo escrito
-                    }
-                    else if (cliente.EstadoValor == EstadoConexion.Desconectado
-                             && tecla.Key == ConsoleKey.R
-                             && editor.Longitud == 0)
-                    {
+                    } else if (cliente.EstadoValor == EstadoConexion.Desconectado
+                               && tecla.Key == ConsoleKey.R
+                               && editor.Longitud == 0) {
                         // Solo con la línea vacía: si no, la "r" es texto.
                         // El camino es el MISMO que /reconectar: una sola ruta
                         await ProcesarLinea("/reconectar");
-                    }
-                    else if (!char.IsControl(tecla.KeyChar))
-                    {
+                    } else if (!char.IsControl(tecla.KeyChar)) {
                         editor.Insertar(tecla.KeyChar);
 
                         // Cada tecla avisa de que se está escribiendo: el
@@ -503,17 +461,16 @@ async Task BucleEnVivo()
 // Procesa una línea escrita por el usuario: un comando o un mensaje. Es el
 // MISMO código para los dos modos de entrada; solo cambia DÓNDE acaba la
 // salida (scroll de la consola clásica o zona de mensajes del lienzo).
-async Task ProcesarLinea(string linea)
-{
-    switch (ParserComandos.Parse(linea))
-    {
+async Task ProcesarLinea(string linea) {
+    switch (ParserComandos.Parse(linea)) {
         case Comando.Enviar { Texto: var texto } when !string.IsNullOrWhiteSpace(texto):
             error = await cliente.EnviarAsync(texto);
 
-            if (error is not null)
+            if (error is not null) {
                 PublicarLinea($"[red]✗ {Markup.Escape(error)}[/]");
-            else if (enVivo)
+            } else if (enVivo) {
                 salidas.Clear(); // escribir un mensaje deja la salida anterior
+            }
 
             break;
 
@@ -532,20 +489,22 @@ async Task ProcesarLinea(string linea)
         case Comando.Canal { Nombre: var nombreCanal }:
             error = await CambiarCanalAsync(cliente, chat, nombreCanal);
 
-            if (error is not null)
+            if (error is not null) {
                 PublicarLinea($"[red]✗ {Markup.Escape(error)}[/]");
-            else
+            } else {
                 canalActual = cliente.Canal ?? canalActual;
+            }
 
             break;
 
         case Comando.Nick { Nombre: var nombreNick }:
             error = await CambiarNickAsync(cliente, chat, nombreNick);
 
-            if (error is not null)
+            if (error is not null) {
                 PublicarLinea($"[red]✗ {Markup.Escape(error)}[/]");
-            else
+            } else {
                 nickActual = nombreNick.Trim();
+            }
 
             break;
 
@@ -559,10 +518,11 @@ async Task ProcesarLinea(string linea)
             // aquí solo importa si fue rechazado
             error = await cliente.EnviarPrivadoAsync(destinatario, textoPrivado);
 
-            if (error is not null)
+            if (error is not null) {
                 PublicarLinea($"[red]✗ {Markup.Escape(error)}[/]");
-            else if (enVivo)
+            } else if (enVivo) {
                 salidas.Clear(); // un privado correcto deja la salida anterior, como un mensaje
+            }
 
             break;
 
@@ -571,10 +531,11 @@ async Task ProcesarLinea(string linea)
             // su chip): aquí solo importa si fue rechazado
             error = await ProcesarReaccionAsync(emojiReaccion);
 
-            if (error is not null)
+            if (error is not null) {
                 PublicarLinea($"[red]✗ {Markup.Escape(error)}[/]");
-            else if (enVivo)
+            } else if (enVivo) {
                 salidas.Clear(); // la reacción se ve en su fila, sin salida
+            }
 
             break;
 
@@ -583,10 +544,11 @@ async Task ProcesarLinea(string linea)
             // texto nuevo y su marca): aquí solo importa si fue rechazado
             error = await ProcesarEdicionAsync(textoEdicion);
 
-            if (error is not null)
+            if (error is not null) {
                 PublicarLinea($"[red]✗ {Markup.Escape(error)}[/]");
-            else if (enVivo)
+            } else if (enVivo) {
                 salidas.Clear(); // el texto cambia EN SU FILA, sin salida
+            }
 
             break;
 
@@ -595,30 +557,26 @@ async Task ProcesarLinea(string linea)
             // esquema que editar, con el Id como única pista
             error = await ProcesarBorradoAsync();
 
-            if (error is not null)
+            if (error is not null) {
                 PublicarLinea($"[red]✗ {Markup.Escape(error)}[/]");
-            else if (enVivo)
+            } else if (enVivo) {
                 salidas.Clear(); // la fila ya no está, sin salida
+            }
 
             break;
 
         case Comando.Reconectar:
             // Solo tiene sentido con la conexión caída: si la reconexión
             // automática aún va en marcha o ya estamos dentro, se avisa
-            if (cliente.EstadoValor == EstadoConexion.Desconectado)
-            {
+            if (cliente.EstadoValor == EstadoConexion.Desconectado) {
                 error = await cliente.ReconectarAsync();
 
                 PublicarLinea(error is null
                     ? "[green]●[/] Reconectado: sesión recuperada."
                     : $"[red]✗ {Markup.Escape(error)}[/]");
-            }
-            else if (cliente.EstadoValor == EstadoConexion.Conectado)
-            {
+            } else if (cliente.EstadoValor == EstadoConexion.Conectado) {
                 PublicarLinea("[grey]● Ya estás conectado: no hace falta reconectar.[/]");
-            }
-            else
-            {
+            } else {
                 PublicarLinea("[grey]⏳ La reconexión automática sigue en marcha: espera unos segundos.[/]");
             }
 
@@ -633,8 +591,9 @@ async Task ProcesarLinea(string linea)
             // redirigida (tubería de pruebas, `> fichero`) no hay búfer y
             // revienta con IOException — en ese modo no hay pantalla que
             // limpiar, así que solo se limpia el estado local
-            if (!Console.IsOutputRedirected)
+            if (!Console.IsOutputRedirected) {
                 AnsiConsole.Clear();
+            }
 
             salidas.Clear();
 
@@ -667,18 +626,19 @@ async Task ProcesarLinea(string linea)
 // valida contra la lista cerrada ANTES de tocar la red (el servidor vuelve a
 // validar, porque de la red llega lo que quiera); la reacción misma viaja
 // por el MISMO hub que todos los clientes.
-async Task<string?> ProcesarReaccionAsync(string emoji)
-{
-    var canonico = EmojisReaccion.Canonico(emoji);
+async Task<string?> ProcesarReaccionAsync(string emoji) {
+    string? canonico = EmojisReaccion.Canonico(emoji);
 
-    if (canonico is null)
+    if (canonico is null) {
         return $"Emoji no admitido. Usa: {EmojisReaccion.ListaLegible}";
+    }
 
     // Solo mensajes de PERSONA: a los avisos de sistema no se les reacciona
-    var ultimo = cliente.VistaMensajes.LastOrDefault(m => m.Tipo == TipoMensaje.Normal);
+    MensajeDto? ultimo = cliente.VistaMensajes.LastOrDefault(m => m.Tipo == TipoMensaje.Normal);
 
-    if (ultimo is null)
+    if (ultimo is null) {
         return "No hay mensajes que reaccionar en este canal.";
+    }
 
     return await cliente.ReaccionarAsync(ultimo.Id, canonico);
 }
@@ -687,12 +647,12 @@ async Task<string?> ProcesarReaccionAsync(string emoji)
 // el objetivo es TU ÚLTIMO mensaje propio del canal — el mismo criterio
 // estrechado de /reaccion. El servidor vuelve a validar la propiedad y el
 // texto: aquí solo se elige QUÉ mensaje se edita.
-async Task<string?> ProcesarEdicionAsync(string texto)
-{
-    var mio = UltimoMensajePropio();
+async Task<string?> ProcesarEdicionAsync(string texto) {
+    MensajeDto? mio = UltimoMensajePropio();
 
-    if (mio is null)
+    if (mio is null) {
         return "No hay ningún mensaje tuyo que editar en este canal.";
+    }
 
     return await cliente.EditarAsync(mio.Id, texto);
 }
@@ -702,12 +662,12 @@ async Task<string?> ProcesarEdicionAsync(string texto)
 // confirmación previa a propósito: el gesto ya es explícito y no se puede
 // deshacer, igual que /salir (la web sí confirma, porque allí el ratón
 // tropieza con más facilidad que el teclado).
-async Task<string?> ProcesarBorradoAsync()
-{
-    var mio = UltimoMensajePropio();
+async Task<string?> ProcesarBorradoAsync() {
+    MensajeDto? mio = UltimoMensajePropio();
 
-    if (mio is null)
+    if (mio is null) {
         return "No hay ningún mensaje tuyo que borrar en este canal.";
+    }
 
     return await cliente.BorrarAsync(mio.Id);
 }
@@ -715,21 +675,20 @@ async Task<string?> ProcesarBorradoAsync()
 // Tu último mensaje de PERSONA en el canal actual: los avisos de sistema
 // no son tuyos aunque salgan con nombre de la casa, y la comparación es
 // por nick ignorando mayúsculas (mismo criterio que las menciones)
-MensajeDto? UltimoMensajePropio() =>
-    cliente.VistaMensajes.LastOrDefault(m =>
+MensajeDto? UltimoMensajePropio() {
+    return cliente.VistaMensajes.LastOrDefault(m =>
         m.Tipo == TipoMensaje.Normal
         && string.Equals(m.Usuario, nickActual, StringComparison.OrdinalIgnoreCase));
+}
 
 // /sesion [borrar]: ver qué hay guardado en el perfil o borrarlo (en aulas
 // compartidas, para no heredar el nick del compañero). Tras "borrar" se
 // marca la sesión como olvidada: la salida NO vuelve a guardar nada esta
 // vez, o se borraría para nada. La vista relee del disco (la memoria
 // puede estar desactualizada).
-void ProcesarSesion(AccionSesion accion)
-{
-    if (accion == AccionSesion.Borrar)
-    {
-        var borrado = storeSesion.Borrar();
+void ProcesarSesion(AccionSesion accion) {
+    if (accion == AccionSesion.Borrar) {
+        bool borrado = storeSesion.Borrar();
         sesionOlvidada = true;
 
         PublicarLineas(borrado
@@ -740,11 +699,10 @@ void ProcesarSesion(AccionSesion accion)
         return;
     }
 
-    var guardada = storeSesion.Cargar();
-    var ruta = Markup.Escape(storeSesion.RutaFichero);
+    SesionTerminal? guardada = storeSesion.Cargar();
+    string ruta = Markup.Escape(storeSesion.RutaFichero);
 
-    if (storeSesion.SesionCorrupta)
-    {
+    if (storeSesion.SesionCorrupta) {
         PublicarLineas(
             "[yellow]⚠ Hay una sesión guardada pero no se pudo leer (fichero corrupto).[/]",
             $"[grey]Fichero:[/] {ruta}");
@@ -752,13 +710,12 @@ void ProcesarSesion(AccionSesion accion)
         return;
     }
 
-    if (guardada is null || string.IsNullOrWhiteSpace(guardada.Nick))
-    {
+    if (guardada is null || string.IsNullOrWhiteSpace(guardada.Nick)) {
         PublicarLinea("[grey]No hay sesión guardada: la próxima vez se preguntará el nick.[/]");
         return;
     }
 
-    var cuando = guardada.UltimaConexion > DateTime.MinValue
+    string cuando = guardada.UltimaConexion > DateTime.MinValue
         ? $"[grey]el[/] [bold]{guardada.UltimaConexion:dd/MM/yyyy HH:mm}[/]"
         : "[grey](sin fecha guardada)[/]";
 
@@ -773,36 +730,31 @@ void ProcesarSesion(AccionSesion accion)
 
 // Publica la salida de un comando en el destino del modo actual.
 // (Funciones locales SIN sobrecarga: una para líneas y otra para renderables)
-void PublicarLineas(params string[] lineas)
-{
-    if (enVivo)
-    {
+void PublicarLineas(params string[] lineas) {
+    if (enVivo) {
         salidas.Clear();
         salidas.AddRange(lineas.Select(l => new Markup(l)));
-    }
-    else
-    {
-        foreach (var linea in lineas)
+    } else {
+        foreach (string linea in lineas) {
             AnsiConsole.MarkupLine(linea);
+        }
     }
 }
 
 // Variante para renderables de verdad (tablas de /ayuda, listas...)
-void PublicarContenido(IRenderable contenido)
-{
-    if (enVivo)
-    {
+void PublicarContenido(IRenderable contenido) {
+    if (enVivo) {
         salidas.Clear();
         salidas.Add(contenido);
-    }
-    else
-    {
+    } else {
         AnsiConsole.Write(contenido);
         AnsiConsole.WriteLine();
     }
 }
 
-void PublicarLinea(string markup) => PublicarLineas(markup);
+void PublicarLinea(string markup) {
+    PublicarLineas(markup);
+}
 
 // Lee una línea con soporte dual: en consola INTERACTIVA, el TextPrompt de
 // Spectre (ShowDefaultValue pinta el valor por defecto en verde y Enter lo
@@ -811,16 +763,15 @@ void PublicarLinea(string markup) => PublicarLineas(markup);
 // usa Console.ReadLine con el mismo contrato: vacío → defecto, EOF → null.
 // defecto null = hay que escribir algo: el vacío lo valida el llamador con
 // su propio mensaje en español (no dejamos que Spectre responda en inglés).
-static string? PedirTexto(string etiqueta, string? defecto)
-{
-    if (!Console.IsInputRedirected)
-    {
+static string? PedirTexto(string etiqueta, string? defecto) {
+    if (!Console.IsInputRedirected) {
         var prompt = new TextPrompt<string>($"[grey]{Markup.Escape(etiqueta)}[/]");
 
-        if (defecto is not null)
+        if (defecto is not null) {
             prompt.DefaultValue(defecto);
-        else
+        } else {
             prompt.AllowEmpty();
+        }
 
         return AnsiConsole.Prompt(prompt);
     }
@@ -829,10 +780,11 @@ static string? PedirTexto(string etiqueta, string? defecto)
         ? $"[grey]{Markup.Escape(etiqueta)}[/] ({Markup.Escape(defecto)})"
         : $"[grey]{Markup.Escape(etiqueta)}[/]:");
 
-    var linea = Console.ReadLine();
+    string? linea = Console.ReadLine();
 
-    if (linea is null)
+    if (linea is null) {
         return null; // EOF: no hay más entrada
+    }
 
     return string.IsNullOrWhiteSpace(linea) ? defecto ?? string.Empty : linea.Trim();
 }
@@ -841,24 +793,24 @@ static string? PedirTexto(string etiqueta, string? defecto)
 // Con sesión guardada, la instrucción va DENTRO del prompt (Enter = antiguo);
 // sin ella, hay que escribir uno (Enter vacío avisa en español y repite).
 // Devuelve null solo si la entrada se cerró (EOF): no hay con qué preguntar.
-static string? PedirNick(ChatConfig chat, SesionTerminal? sesion)
-{
-    var etiqueta = sesion is not null
+static string? PedirNick(ChatConfig chat, SesionTerminal? sesion) {
+    string etiqueta = sesion is not null
         ? "Introduce tu nick nuevo o pulsa Enter para usar el antiguo"
         : "Introduce tu nick";
 
-    while (true)
-    {
-        var nick = PedirTexto(etiqueta, sesion?.Nick);
+    while (true) {
+        string? nick = PedirTexto(etiqueta, sesion?.Nick);
 
-        if (nick is null)
+        if (nick is null) {
             return null;
+        }
 
         nick = nick.Trim();
-        var error = chat.ValidarUsuario(nick);
+        string? error = chat.ValidarUsuario(nick);
 
-        if (error is null)
+        if (error is null) {
             return nick;
+        }
 
         AnsiConsole.MarkupLine($"[red]✗ {Markup.Escape(error)}[/]");
     }
@@ -868,44 +820,45 @@ static string? PedirNick(ChatConfig chat, SesionTerminal? sesion)
 // SIEMPRE la lista de canales y cuál se repite con Enter (el último de la
 // sesión si existe; si no, el por defecto). Nunca se elige "a ciegas".
 // Devuelve null solo si la entrada se cerró (EOF).
-static string? PedirCanal(ChatConfig chat, SesionTerminal? sesion)
-{
-    var ultimoValido = sesion is not null && chat.EsCanalValido(sesion.Canal)
+static string? PedirCanal(ChatConfig chat, SesionTerminal? sesion) {
+    string? ultimoValido = sesion is not null && chat.EsCanalValido(sesion.Canal)
         ? sesion.Canal
         : null;
 
     // Aviso didáctico: si el canal de la sesión ya no está en la
     // configuración, el programa no se queda sin opciones — cae al default
-    if (sesion is not null && ultimoValido is null)
+    if (sesion is not null && ultimoValido is null) {
         AnsiConsole.MarkupLine(
             $"[yellow]⚠ Tu último canal ({Markup.Escape(sesion.Canal)}) ya no existe.[/]");
+    }
 
-    var defecto = ultimoValido ?? chat.CanalPorDefecto;
-    var origen = ultimoValido is not null ? "(tu último canal visitado)" : "(el canal por defecto)";
+    string defecto = ultimoValido ?? chat.CanalPorDefecto;
+    string origen = ultimoValido is not null ? "(tu último canal visitado)" : "(el canal por defecto)";
 
     AnsiConsole.MarkupLine(
         $"[grey]Elige dónde entrar. Enter =[/] [bold]{Markup.Escape(defecto)}[/] [grey]{origen}[/]");
 
     // Lista completa de canales, con ← marcando el que se repetirá con Enter
-    var hex = TemaDiscord.Blurple.ToMarkup();
-    var lista = string.Join("   ", chat.Canales.Select(c =>
+    string hex = TemaDiscord.Blurple.ToMarkup();
+    string lista = string.Join("   ", chat.Canales.Select(c =>
         c.Equals(defecto, StringComparison.OrdinalIgnoreCase)
             ? $"[{hex}]{Markup.Escape(c)}[/] ←"
             : Markup.Escape(c)));
 
     AnsiConsole.MarkupLine($"[grey]  {lista}[/]");
 
-    while (true)
-    {
-        var escrito = PedirTexto("Canal", defecto);
+    while (true) {
+        string? escrito = PedirTexto("Canal", defecto);
 
-        if (escrito is null)
+        if (escrito is null) {
             return null;
+        }
 
-        var canonico = chat.EncontrarCanal(escrito);
+        string? canonico = chat.EncontrarCanal(escrito);
 
-        if (canonico is not null)
+        if (canonico is not null) {
             return canonico;
+        }
 
         AnsiConsole.MarkupLine($"[red]✗ {Markup.Escape(chat.ErrorCanalDesconocido(escrito.Trim()))}[/]");
     }
@@ -914,8 +867,7 @@ static string? PedirCanal(ChatConfig chat, SesionTerminal? sesion)
 // Lee una línea del chat en MODO TUBERÍA (sin lienzo, para automatización).
 // Devuelve null SOLO con EOF: el bucle lo usa para salir ordenadamente,
 // igual que si el usuario escribiese /salir.
-static string? LeerChat()
-{
+static string? LeerChat() {
     // ParserComandos.Parse ya recorta la línea por dentro
     return Console.ReadLine();
 }
@@ -923,15 +875,15 @@ static string? LeerChat()
 // Comprueba si la lista nueva CONTINÚA a la anterior: mismos mensajes al
 // principio (misma referencia) y alguno más. Si no, es un reemplazo
 // (historial de otro canal) y hay que repintar desde cero.
-static bool EsContinuacion(IReadOnlyList<MensajeDto> nueva, IReadOnlyList<MensajeDto> anterior)
-{
-    if (nueva.Count < anterior.Count)
+static bool EsContinuacion(IReadOnlyList<MensajeDto> nueva, IReadOnlyList<MensajeDto> anterior) {
+    if (nueva.Count < anterior.Count) {
         return false;
+    }
 
-    for (var i = 0; i < anterior.Count; i++)
-    {
-        if (!ReferenceEquals(nueva[i], anterior[i]))
+    for (int i = 0; i < anterior.Count; i++) {
+        if (!ReferenceEquals(nueva[i], anterior[i])) {
             return false;
+        }
     }
 
     return true;
@@ -940,25 +892,22 @@ static bool EsContinuacion(IReadOnlyList<MensajeDto> nueva, IReadOnlyList<Mensaj
 // Consulta GET /estadisticas ANTES de registrarse: solo para decir cuánta
 // gente hay. Un fallo de red o de JSON no corta el arranque (luego ya se
 // verá al conectar); lo único que se pierde es la cifra de bienvenida.
-static async Task PintarConectadosInicialesAsync(string urlServidor, ChatConfig chat)
-{
-    try
-    {
+static async Task PintarConectadosInicialesAsync(string urlServidor, ChatConfig chat) {
+    try {
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
 
-        var json = await http.GetStringAsync(
+        string json = await http.GetStringAsync(
             $"{urlServidor.TrimEnd('/')}{ChatRutas.Estadisticas}");
 
         // El servidor serializa en camelCase (default de los minimal APIs);
         // con CaseInsensitive llega a los parámetros del record sin más
-        var est = JsonSerializer.Deserialize<EstadisticasDto>(
+        EstadisticasDto? est = JsonSerializer.Deserialize<EstadisticasDto>(
             json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
-        if (est is not null)
+        if (est is not null) {
             AnsiConsole.MarkupLine(Conectados.DescripcionArranque(chat, est));
-    }
-    catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
-    {
+        }
+    } catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException) {
         AnsiConsole.MarkupLine(
             "[yellow]⚠ No pude consultar cuántos hay conectados (¿está el servidor arrancado? Revisa Terminal:UrlServidor)[/]");
         Log.Warning("No se pudo consultar {Ruta} en {Url}: {Motivo}",
@@ -968,10 +917,8 @@ static async Task PintarConectadosInicialesAsync(string urlServidor, ChatConfig 
 
 // El ● de Discord (compartido por la cabecera en vivo y la línea de estado):
 // verde conectado, gris conectando, naranja reconectando, rojo caído.
-static string PuntoEstadoComoMarkup(ClienteChat cliente)
-{
-    var (color, texto) = cliente.EstadoValor switch
-    {
+static string PuntoEstadoComoMarkup(ClienteChat cliente) {
+    (string color, string texto) = cliente.EstadoValor switch {
         EstadoConexion.Conectado => ("green", "conectado"),
         EstadoConexion.Conectando => ("grey", "conectando"),
         EstadoConexion.Reconectando => ("orange", "reconectando"),
@@ -982,8 +929,7 @@ static string PuntoEstadoComoMarkup(ClienteChat cliente)
 }
 
 // Cabecera de la vista en vivo: identidad + punto de estado de la conexión
-static string CabeceraComoMarkup(ClienteChat cliente, string nick, string canal)
-{
+static string CabeceraComoMarkup(ClienteChat cliente, string nick, string canal) {
     // ESTILO COMBINADO en una sola etiqueta ([#hex bold], como [bold red]):
     // nunca un ToMarkup() con ] huérfano — eso rompía el primer repintado
     return $"[{TemaDiscord.Blurple.ToMarkup()} bold]AulaChatNet[/] [grey]·[/] " +
@@ -996,9 +942,8 @@ static string CabeceraComoMarkup(ClienteChat cliente, string nick, string canal)
 // configuración. El ● marca el canal en el que estamos; las salas vacías
 // muestran 0 (el servidor solo emite las que tienen gente). Las fórmulas
 // viven en Conectados para poder testearlas sin consola.
-static string EstadoComoMarkup(ClienteChat cliente)
-{
-    var est = cliente.EstadisticasActuales;
+static string EstadoComoMarkup(ClienteChat cliente) {
+    EstadisticasDto est = cliente.EstadisticasActuales;
 
     return PuntoEstadoComoMarkup(cliente) + " [grey]·[/] " +
            $"[grey]📌 {est.TotalConectados} conectados:[/] " +
@@ -1008,27 +953,25 @@ static string EstadoComoMarkup(ClienteChat cliente)
 // Contenido de la zona de mensajes de la vista en vivo: la cronología
 // combinada (canal + privados) + la salida del último comando, si la hay.
 static IRenderable CrearZonaMensajes(
-    ClienteChat cliente, string yo, int mostrarDesde, List<IRenderable> salidas)
-{
+    ClienteChat cliente, string yo, int mostrarDesde, List<IRenderable> salidas) {
     // Canal + privados en UNA sola cronología: sin esto, un privado de las
     // 10:15 quedaría por debajo de un mensaje del canal de las 10:20,
     // porque el canal llega reemplazado (historial) y el privado llega
     // a su propio ritmo
-    var filasChat = CombinadorChat.Combinar(cliente.VistaMensajes, cliente.VistaPrivados);
+    IReadOnlyList<FilaChat> filasChat = CombinadorChat.Combinar(cliente.VistaMensajes, cliente.VistaPrivados);
 
     // La zona recorta por abajo y queremos ver SIEMPRE lo último: nos
     // quedamos con las últimas N líneas del alto disponible (margen por si
     // un mensaje largo ocupa dos filas al envolverse)
-    var alto = Math.Max(6, AnsiConsole.Console.Profile.Height - 8);
-    var desde = Math.Clamp(Math.Max(mostrarDesde, filasChat.Count - alto), 0, filasChat.Count);
+    int alto = Math.Max(6, AnsiConsole.Console.Profile.Height - 8);
+    int desde = Math.Clamp(Math.Max(mostrarDesde, filasChat.Count - alto), 0, filasChat.Count);
 
     var filas = filasChat
         .Skip(desde)
         .Select(f => (IRenderable)new Markup(VistaChat.LineaMarkup(f, yo, cliente.VistaReacciones)))
         .ToList();
 
-    if (salidas.Count > 0)
-    {
+    if (salidas.Count > 0) {
         filas.Add(new Markup(string.Empty));
         filas.AddRange(salidas);
     }
@@ -1036,32 +979,30 @@ static IRenderable CrearZonaMensajes(
     // Última fila de la zona, justo encima del pie: quién está escribiendo.
     // Sale vacía si no hay nadie, y en modo tubería esta zona ni se construye
     // (esa entrada no tiene teclas que detectar, así que tampoco se señala)
-    var escribiendo = VistaChat.LineaEscribiendoMarkup(cliente.VistaEscribiendo);
+    string escribiendo = VistaChat.LineaEscribiendoMarkup(cliente.VistaEscribiendo);
 
-    if (escribiendo.Length > 0)
+    if (escribiendo.Length > 0) {
         filas.Add(new Markup(escribiendo));
+    }
 
     return filas.Count > 0 ? new Rows(filas.ToArray()) : new Markup(string.Empty);
 }
 
 // /canales: lista de canales con sus conteos, marcando el actual.
-static IRenderable CrearContenidoCanales(ClienteChat cliente)
-{
-    var est = cliente.EstadisticasActuales;
+static IRenderable CrearContenidoCanales(ClienteChat cliente) {
+    EstadisticasDto est = cliente.EstadisticasActuales;
 
     var porCanal = est.Canales
         .ToDictionary(c => c.Canal, c => c.Conectados, StringComparer.OrdinalIgnoreCase);
 
-    var filas = new List<Markup>
-    {
+    var filas = new List<Markup> {
         new($"[grey]📌 {est.TotalConectados} conectados en total:[/]")
     };
 
-    foreach (var canalDisponible in cliente.Canales)
-    {
-        porCanal.TryGetValue(canalDisponible, out var conectados);
-        var esActual = string.Equals(canalDisponible, cliente.Canal, StringComparison.OrdinalIgnoreCase);
-        var marca = esActual ? " [green]● actual[/]" : "";
+    foreach (string canalDisponible in cliente.Canales) {
+        porCanal.TryGetValue(canalDisponible, out int conectados);
+        bool esActual = string.Equals(canalDisponible, cliente.Canal, StringComparison.OrdinalIgnoreCase);
+        string marca = esActual ? " [green]● actual[/]" : "";
 
         filas.Add(new Markup(
             $"  [{TemaDiscord.Blurple.ToMarkup()}]{Markup.Escape(canalDisponible)}[/] " +
@@ -1075,20 +1016,22 @@ static IRenderable CrearContenidoCanales(ClienteChat cliente)
 // (mismo dato, sin red); con argumento, se consulta el servidor para mirar
 // dentro de otra sala sin cambiar de canal.
 static async Task<IRenderable> CrearContenidoUsuariosAsync(
-    ClienteChat cliente, ChatConfig chat, string? canalConsulta)
-{
-    if (string.IsNullOrWhiteSpace(canalConsulta))
+    ClienteChat cliente, ChatConfig chat, string? canalConsulta) {
+    if (string.IsNullOrWhiteSpace(canalConsulta)) {
         return CrearFilasUsuarios(cliente.Canal ?? string.Empty, cliente.VistaUsuarios);
+    }
 
-    var canonico = chat.EncontrarCanal(canalConsulta);
+    string? canonico = chat.EncontrarCanal(canalConsulta);
 
-    if (canonico is null)
+    if (canonico is null) {
         return new Markup($"[red]✗ {Markup.Escape(chat.ErrorCanalDesconocido(canalConsulta.Trim()))}[/]");
+    }
 
-    if (string.Equals(canonico, cliente.Canal, StringComparison.OrdinalIgnoreCase))
+    if (string.Equals(canonico, cliente.Canal, StringComparison.OrdinalIgnoreCase)) {
         return CrearFilasUsuarios(canonico, cliente.VistaUsuarios);
+    }
 
-    var usuarios = await cliente.ObtenerUsuariosAsync(canonico);
+    IReadOnlyList<UsuarioConectadoDto>? usuarios = await cliente.ObtenerUsuariosAsync(canonico);
 
     // null = canal desconocido O no se pudo consultar (conexión caída):
     // el mismo mensaje sirve para los dos casos sin mentir en ninguno
@@ -1098,22 +1041,18 @@ static async Task<IRenderable> CrearContenidoUsuariosAsync(
 }
 
 // Lista de usuarios con su cuenta (compartida por /usuarios y /usuarios #canal)
-static IRenderable CrearFilasUsuarios(string canal, IReadOnlyList<UsuarioConectadoDto> usuarios)
-{
-    var filas = new List<Markup>
-    {
+static IRenderable CrearFilasUsuarios(string canal, IReadOnlyList<UsuarioConectadoDto> usuarios) {
+    var filas = new List<Markup> {
         new($"[grey]📌 {usuarios.Count} en línea en[/] [bold]{Markup.Escape(canal)}[/]:")
     };
 
-    if (usuarios.Count == 0)
-    {
+    if (usuarios.Count == 0) {
         filas.Add(new Markup("[grey]Aún no hay nadie conectado en este canal.[/]"));
         return new Rows(filas.ToArray());
     }
 
-    foreach (var usuario in usuarios)
-    {
-        var hex = TemaDiscord.ColorDe(usuario.Usuario).ToMarkup();
+    foreach (UsuarioConectadoDto usuario in usuarios) {
+        string hex = TemaDiscord.ColorDe(usuario.Usuario).ToMarkup();
 
         filas.Add(new Markup($"[green]●[/] [{hex}]{Markup.Escape(usuario.Usuario)}[/]"));
     }
@@ -1123,10 +1062,10 @@ static IRenderable CrearFilasUsuarios(string canal, IReadOnlyList<UsuarioConecta
 
 // Cambia de canal validando ANTES en local (misma ChatConfig que el servidor).
 // Devuelve null si se hizo; el error, si no (quien lo pinta es ProcesarLinea).
-static async Task<string?> CambiarCanalAsync(ClienteChat cliente, ChatConfig chat, string nombreCanal)
-{
-    if (!chat.EsCanalValido(nombreCanal))
+static async Task<string?> CambiarCanalAsync(ClienteChat cliente, ChatConfig chat, string nombreCanal) {
+    if (!chat.EsCanalValido(nombreCanal)) {
         return chat.ErrorCanalDesconocido(nombreCanal);
+    }
 
     return await cliente.CambiarCanalAsync(nombreCanal);
 }
@@ -1134,9 +1073,8 @@ static async Task<string?> CambiarCanalAsync(ClienteChat cliente, ChatConfig cha
 // Cambia el nick validando ANTES en local; el aviso "X ahora se llama Y"
 // lo pinta el servidor por el flujo normal de mensajes. Devuelve null si se
 // hizo; el error, si no.
-static async Task<string?> CambiarNickAsync(ClienteChat cliente, ChatConfig chat, string nombreNick)
-{
-    var error = chat.ValidarUsuario(nombreNick.Trim());
+static async Task<string?> CambiarNickAsync(ClienteChat cliente, ChatConfig chat, string nombreNick) {
+    string? error = chat.ValidarUsuario(nombreNick.Trim());
 
     return error is not null ? error : await cliente.CambiarNickAsync(nombreNick.Trim());
 }
@@ -1147,5 +1085,6 @@ static async Task<string?> CambiarNickAsync(ClienteChat cliente, ChatConfig chat
 // se pueda testear sin consola. Sin chips de reacción a propósito: este
 // modo imprime en scroll, y una línea impresa no se puede retocar cuando
 // llega el evento de reacción (la vista en vivo sí repinta la fila entera).
-static void PintarMensaje(MensajeDto mensaje) =>
+static void PintarMensaje(MensajeDto mensaje) {
     AnsiConsole.MarkupLine(VistaChat.LineaMensajeMarkup(mensaje));
+}

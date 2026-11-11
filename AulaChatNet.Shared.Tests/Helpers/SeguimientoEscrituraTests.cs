@@ -1,42 +1,43 @@
+using System.Reactive.Linq;
 using AulaChatNet.Shared.Helpers;
 using FluentAssertions;
 using Microsoft.Reactive.Testing;
-using System.Reactive.Linq;
 
 namespace AulaChatNet.Shared.Tests.Helpers;
 
 /// <summary>
-/// Pruebas del seguimiento de quién está escribiendo: qué nombres entran en
-/// la lista, cuándo caduca cada marca y qué se emite al cambiar.
-///
-/// <remarks>
-/// El tiempo corre con un reloj VIRTUAL (TestScheduler): los cinco segundos
-/// de caducidad pasan al instante con Avanzar(...) y ningún test depende
-/// de esperas reales ni de hilos. Ese es justamente el motivo de que la clase
-/// acepte un IScheduler en lugar de leer DateTime.UtcNow a secas.
-/// </remarks>
+///     Pruebas del seguimiento de quién está escribiendo: qué nombres entran en
+///     la lista, cuándo caduca cada marca y qué se emite al cambiar.
+///     <remarks>
+///         El tiempo corre con un reloj VIRTUAL (TestScheduler): los cinco segundos
+///         de caducidad pasan al instante con Avanzar(...) y ningún test depende
+///         de esperas reales ni de hilos. Ese es justamente el motivo de que la clase
+///         acepte un IScheduler en lugar de leer DateTime.UtcNow a secas.
+///     </remarks>
 /// </summary>
 [TestFixture]
-public class SeguimientoEscrituraTests
-{
+public class SeguimientoEscrituraTests {
+    [SetUp]
+    public void SetUp() {
+        _reloj = new TestScheduler();
+    }
+
     private TestScheduler _reloj = null!;
 
-    [SetUp]
-    public void SetUp() => _reloj = new TestScheduler();
-
     /// <summary>Crea un seguimiento atado al reloj virtual del test.</summary>
-    private SeguimientoEscritura Crear() => new(_reloj);
+    private SeguimientoEscritura Crear() {
+        return new SeguimientoEscritura(_reloj);
+    }
 
     /// <summary>Adelanta el reloj virtual (ningún test espera tiempo real).</summary>
-    private void Avanzar(TimeSpan tiempo) => _reloj.AdvanceTo(_reloj.Now.Ticks + tiempo.Ticks);
-
-    #region Senalar Tests
+    private void Avanzar(TimeSpan tiempo) {
+        _reloj.AdvanceTo(_reloj.Now.Ticks + tiempo.Ticks);
+    }
 
     [Test]
-    public void Senalar_PrimeraSenal_ActivaEseNombre()
-    {
+    public void Senalar_PrimeraSenal_ActivaEseNombre() {
         // Arrange
-        using var seguimiento = Crear();
+        using SeguimientoEscritura seguimiento = Crear();
 
         // Act
         seguimiento.Senalar("Ana");
@@ -46,10 +47,9 @@ public class SeguimientoEscrituraTests
     }
 
     [Test]
-    public void Senalar_DosVecesElMismo_NoLoDuplica()
-    {
+    public void Senalar_DosVecesElMismo_NoLoDuplica() {
         // Arrange
-        using var seguimiento = Crear();
+        using SeguimientoEscritura seguimiento = Crear();
 
         // Act: la segunda señal solo RENOVA la caducidad, no añade fila
         seguimiento.Senalar("Ana");
@@ -60,11 +60,10 @@ public class SeguimientoEscrituraTests
     }
 
     [Test]
-    public void Senalar_NombreConDistintasMayusculas_TieneEnCuentaSoloAUna()
-    {
+    public void Senalar_NombreConDistintasMayusculas_TieneEnCuentaSoloAUna() {
         // Arrange: los nombres de un canal son únicos sin distinguir
         // mayúsculas, así que "Ana" y "ANA" son la misma persona
-        using var seguimiento = Crear();
+        using SeguimientoEscritura seguimiento = Crear();
 
         // Act
         seguimiento.Senalar("Ana");
@@ -75,11 +74,10 @@ public class SeguimientoEscrituraTests
     }
 
     [Test]
-    public void Senalar_VariosNombres_SalenEnOrdenAlfabetico()
-    {
+    public void Senalar_VariosNombres_SalenEnOrdenAlfabetico() {
         // Arrange: el orden de llegada haría bailar los nombres cada vez que
         // alguien renueva, así que se ordena alfabéticamente
-        using var seguimiento = Crear();
+        using SeguimientoEscritura seguimiento = Crear();
 
         // Act
         seguimiento.Senalar("Bruno");
@@ -91,11 +89,10 @@ public class SeguimientoEscrituraTests
     }
 
     [Test]
-    public void Senalar_NombreVacio_NoCambiaNada()
-    {
+    public void Senalar_NombreVacio_NoCambiaNada() {
         // Arrange: la señal viene de la red y no debería llegar así, pero la
         // clase es pública y se defiende sola
-        using var seguimiento = Crear();
+        using SeguimientoEscritura seguimiento = Crear();
 
         // Act
         seguimiento.Senalar("   ");
@@ -104,15 +101,10 @@ public class SeguimientoEscrituraTests
         seguimiento.Vista.Should().BeEmpty();
     }
 
-    #endregion
-
-    #region Caducidad Tests
-
     [Test]
-    public void Latido_AntesDeCaducidad_LosMantiene()
-    {
+    public void Latido_AntesDeCaducidad_LosMantiene() {
         // Arrange
-        using var seguimiento = Crear();
+        using SeguimientoEscritura seguimiento = Crear();
         seguimiento.Senalar("Ana");
 
         // Act: cuatro segundos (la caducidad son cinco)
@@ -123,10 +115,9 @@ public class SeguimientoEscrituraTests
     }
 
     [Test]
-    public void Latido_PasadaLaCaducidad_LosDescarta()
-    {
+    public void Latido_PasadaLaCaducidad_LosDescarta() {
         // Arrange
-        using var seguimiento = Crear();
+        using SeguimientoEscritura seguimiento = Crear();
         seguimiento.Senalar("Ana");
 
         // Act: a los cinco segundos exactos la marca ya es caducada
@@ -137,10 +128,9 @@ public class SeguimientoEscrituraTests
     }
 
     [Test]
-    public void Latido_SenalarDeNuevo_RenuevaElPlazo()
-    {
+    public void Latido_SenalarDeNuevo_RenuevaElPlazo() {
         // Arrange
-        using var seguimiento = Crear();
+        using SeguimientoEscritura seguimiento = Crear();
         seguimiento.Senalar("Ana");
 
         // Act: señal fresca a los 4 s → la marca pasa a caducar a los 9 s
@@ -158,15 +148,10 @@ public class SeguimientoEscrituraTests
         seguimiento.Vista.Should().BeEmpty();
     }
 
-    #endregion
-
-    #region Quitar y Limpiar Tests
-
     [Test]
-    public void Quitar_AlguienConSenal_LoApagaAlInstante()
-    {
+    public void Quitar_AlguienConSenal_LoApagaAlInstante() {
         // Arrange: esto es lo que ocurre cuando llega un mensaje suyo
-        using var seguimiento = Crear();
+        using SeguimientoEscritura seguimiento = Crear();
         seguimiento.Senalar("Ana");
         seguimiento.Senalar("Bruno");
 
@@ -178,10 +163,9 @@ public class SeguimientoEscrituraTests
     }
 
     [Test]
-    public void Quitar_AlguienSinSenal_NoTocaNada()
-    {
+    public void Quitar_AlguienSinSenal_NoTocaNada() {
         // Arrange
-        using var seguimiento = Crear();
+        using SeguimientoEscritura seguimiento = Crear();
         seguimiento.Senalar("Ana");
 
         // Act: un mensaje de sistema con autor "Servidor", por ejemplo
@@ -192,10 +176,9 @@ public class SeguimientoEscrituraTests
     }
 
     [Test]
-    public void Limpiar_VaciaTodo()
-    {
+    public void Limpiar_VaciaTodo() {
         // Arrange: cambio de canal con la lista llena
-        using var seguimiento = Crear();
+        using SeguimientoEscritura seguimiento = Crear();
         seguimiento.Senalar("Ana");
         seguimiento.Senalar("Bruno");
 
@@ -206,24 +189,19 @@ public class SeguimientoEscrituraTests
         seguimiento.Vista.Should().BeEmpty();
     }
 
-    #endregion
-
-    #region Emisiones Tests
-
     [Test]
-    public void Emision_SoloSeEmiteCuandoLaListaCambia()
-    {
+    public void Emision_SoloSeEmiteCuandoLaListaCambia() {
         // Arrange
-        using var seguimiento = Crear();
+        using SeguimientoEscritura seguimiento = Crear();
 
         var emitidas = new List<IReadOnlyList<string>>();
-        using var suscripcion = seguimiento.Activos
+        using IDisposable suscripcion = seguimiento.Activos
             .Skip(1) // el valor inicial vacío del sujeto no es una noticia
             .Subscribe(emitidas.Add);
 
         // Act
-        seguimiento.Senalar("Ana");  // alguien nuevo → emite
-        seguimiento.Senalar("Ana");  // solo renueva → NO debe emitir
+        seguimiento.Senalar("Ana"); // alguien nuevo → emite
+        seguimiento.Senalar("Ana"); // solo renueva → NO debe emitir
         seguimiento.Senalar("Bruno"); // otro nuevo → emite
         Avanzar(SeguimientoEscritura.CaducidadPorDefecto); // los dos caducan → emite
 
@@ -233,6 +211,4 @@ public class SeguimientoEscrituraTests
         emitidas[1].Should().Equal("Ana", "Bruno");
         emitidas[2].Should().BeEmpty();
     }
-
-    #endregion
 }

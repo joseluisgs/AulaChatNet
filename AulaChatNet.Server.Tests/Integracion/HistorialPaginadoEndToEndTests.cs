@@ -16,38 +16,27 @@ using Microsoft.Extensions.Logging;
 namespace AulaChatNet.Server.Tests.Integracion;
 
 /// <summary>
-/// Prueba de REDES de la paginación del historial (Fase 4.3): el hub, el
-/// store y SQLite DE VERDAD, con Kestrel en un puerto aleatorio y clientes
-/// SignalR reales.
-///
-/// <remarks>
-/// Es la única prueba que enciende la persistencia en el arnés E2E, y no
-/// es un capricho: la caché en memoria solo retiene
-/// <c>ChatConfig.HistorialMaximo</c> mensajes, así que lo anterior SOLO
-/// existe en la base de datos. Con la ventana bajada a 3 se garantiza que
-/// cualquier página profunda pisa disco de verdad.
-/// </remarks>
+///     Prueba de REDES de la paginación del historial (Fase 4.3): el hub, el
+///     store y SQLite DE VERDAD, con Kestrel en un puerto aleatorio y clientes
+///     SignalR reales.
+///     <remarks>
+///         Es la única prueba que enciende la persistencia en el arnés E2E, y no
+///         es un capricho: la caché en memoria solo retiene
+///         <c>ChatConfig.HistorialMaximo</c> mensajes, así que lo anterior SOLO
+///         existe en la base de datos. Con la ventana bajada a 3 se garantiza que
+///         cualquier página profunda pisa disco de verdad.
+///     </remarks>
 /// </summary>
 [TestFixture]
-public class HistorialPaginadoEndToEndTests
-{
-    private const string Ruta = "/historial-paginado";
-    private static readonly TimeSpan Espera = TimeSpan.FromSeconds(5);
-
-    private WebApplication _servidor = null!;
-    private readonly List<HubConnection> _clientes = [];
-    private string _rutaBase = null!;
-
+public class HistorialPaginadoEndToEndTests {
     [SetUp]
-    public async Task SetUp()
-    {
+    public async Task SetUp() {
         // Base de datos de un solo uso en el temporal: cada test parte de
         // un historial vacío y nadie pisa los datos de otro
         _rutaBase = Path.Combine(Path.GetTempPath(), $"aulachat-paginado-{Guid.NewGuid():N}.db");
 
-        var configuracion = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
+        IConfigurationRoot configuracion = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
                 [$"{ChatConfig.Seccion}:HubRuta"] = Ruta,
                 [$"{ChatConfig.Seccion}:Canales:0"] = "#general",
                 [$"{ChatConfig.Seccion}:Canales:1"] = "#smr",
@@ -65,7 +54,7 @@ public class HistorialPaginadoEndToEndTests
             })
             .Build();
 
-        var builder = WebApplication.CreateBuilder();
+        WebApplicationBuilder builder = WebApplication.CreateBuilder();
         builder.WebHost.UseUrls("http://127.0.0.1:0"); // puerto 0 = que elija el sistema
         builder.Logging.ClearProviders(); // sin esto, la salida de Kestrel ensucia la de los tests
 
@@ -81,18 +70,19 @@ public class HistorialPaginadoEndToEndTests
         // Program.cs migra al arrancar; aquí se hace a mano antes de abrir
         // el puerto, por el mismo camino (Migrate, no EnsureCreated: este
         // proyecto tiene migraciones de verdad y hay que aplicarlas)
-        var fabrica = _servidor.Services.GetRequiredService<IDbContextFactory<AulaChatContexto>>();
-        await using var contexto = await fabrica.CreateDbContextAsync();
+        IDbContextFactory<AulaChatContexto> fabrica =
+            _servidor.Services.GetRequiredService<IDbContextFactory<AulaChatContexto>>();
+        await using AulaChatContexto contexto = await fabrica.CreateDbContextAsync();
         await contexto.Database.MigrateAsync();
 
         await _servidor.StartAsync();
     }
 
     [TearDown]
-    public async Task TearDown()
-    {
-        foreach (var cliente in _clientes)
+    public async Task TearDown() {
+        foreach (HubConnection cliente in _clientes) {
             await cliente.DisposeAsync();
+        }
 
         await _servidor.DisposeAsync();
 
@@ -103,22 +93,24 @@ public class HistorialPaginadoEndToEndTests
         // Best effort: si algo se quedara abierto, el limpiador del sistema
         // operativo se ocupa del temporal — un fallo aquí no debe nublar un
         // test que salió bien
-        try
-        {
+        try {
             File.Delete(_rutaBase);
             File.Delete(_rutaBase + "-wal");
             File.Delete(_rutaBase + "-shm");
-        }
-        catch (IOException)
-        {
-        }
+        } catch (IOException) { }
     }
+
+    private const string Ruta = "/historial-paginado";
+    private static readonly TimeSpan Espera = TimeSpan.FromSeconds(5);
+
+    private WebApplication _servidor = null!;
+    private readonly List<HubConnection> _clientes = [];
+    private string _rutaBase = null!;
 
     /// <summary>Crea un cliente SignalR REAL conectado al servidor de prueba.</summary>
     /// <returns>La conexión, aún sin registrar en ningún canal.</returns>
-    private async Task<HubConnection> CrearClienteAsync()
-    {
-        var cliente = new HubConnectionBuilder()
+    private async Task<HubConnection> CrearClienteAsync() {
+        HubConnection cliente = new HubConnectionBuilder()
             .WithUrl($"{_servidor.Urls.First()}{Ruta}")
             .Build();
 
@@ -129,31 +121,29 @@ public class HistorialPaginadoEndToEndTests
     }
 
     /// <summary>Registra a un cliente en un canal y falla el test si el alta sale mal.</summary>
-    private static async Task RegistrarAsync(HubConnection cliente, string usuario, string canal)
-    {
-        var error = await cliente.InvokeAsync<string?>(ChatHubMetodos.Conectar, usuario, canal);
+    private static async Task RegistrarAsync(HubConnection cliente, string usuario, string canal) {
+        string? error = await cliente.InvokeAsync<string?>(ChatHubMetodos.Conectar, usuario, canal);
 
         error.Should().BeNull("el alta de {0} debe salir bien", usuario);
     }
 
     /// <summary>
-    /// Espera a que la cola de escritura en segundo plano haya persistido
-    /// los mensajes. Es FIFO: cuando la base ya tiene el ÚLTIMO, los
-    /// anteriores también. Es el mismo "punto de sincronía" que un TCS en
-    /// las otras pruebas, pero cruzando el proceso de un servicio en
-    /// segundo plano — sin esto, la paginación correría contra una base
-    /// a medio escribir y el test parpadearía.
+    ///     Espera a que la cola de escritura en segundo plano haya persistido
+    ///     los mensajes. Es FIFO: cuando la base ya tiene el ÚLTIMO, los
+    ///     anteriores también. Es el mismo "punto de sincronía" que un TCS en
+    ///     las otras pruebas, pero cruzando el proceso de un servicio en
+    ///     segundo plano — sin esto, la paginación correría contra una base
+    ///     a medio escribir y el test parpadearía.
     /// </summary>
     /// <param name="total">Mensajes que deben estar ya en la base de datos.</param>
-    private async Task EsperarPersistidosAsync(int total)
-    {
-        var repo = _servidor.Services.GetRequiredService<IMensajesRepository>();
-        var limite = DateTime.UtcNow + Espera;
+    private async Task EsperarPersistidosAsync(int total) {
+        IMensajesRepository repo = _servidor.Services.GetRequiredService<IMensajesRepository>();
+        DateTime limite = DateTime.UtcNow + Espera;
 
-        while (DateTime.UtcNow < limite)
-        {
-            if ((await repo.GetUltimosAsync("#general", 100)).Count >= total)
+        while (DateTime.UtcNow < limite) {
+            if ((await repo.GetUltimosAsync("#general", 100)).Count >= total) {
                 return;
+            }
 
             await Task.Delay(25);
         }
@@ -162,18 +152,16 @@ public class HistorialPaginadoEndToEndTests
     }
 
     [Test]
-    public async Task LasPaginasVanHaciaAtrasSinRepetirNiPerderNada()
-    {
+    public async Task LasPaginasVanHaciaAtrasSinRepetirNiPerderNada() {
         // Arrange: Ana escribe DOCE mensajes en #general. Cada uno con 20
         // ms de separación: el cursor de la paginación es la MARCA DE
         // TIEMPO, y con gemelos en el mismo milisegundo una página podría
         // traer dos a la vez y las aserciones dudarían
-        var ana = await CrearClienteAsync();
+        HubConnection ana = await CrearClienteAsync();
         await RegistrarAsync(ana, "Ana", "#general");
 
-        for (var i = 1; i <= 12; i++)
-        {
-            var error = await ana.InvokeAsync<string?>(ChatHubMetodos.Enviar, $"mensaje {i:D2}");
+        for (int i = 1; i <= 12; i++) {
+            string? error = await ana.InvokeAsync<string?>(ChatHubMetodos.Enviar, $"mensaje {i:D2}");
             error.Should().BeNull("el mensaje {0} debe salir bien", i);
             await Task.Delay(20);
         }
@@ -184,7 +172,7 @@ public class HistorialPaginadoEndToEndTests
         // Se captura con TCS (mismo patrón que el resto de E2E): el aviso
         // viaja por el MISMO canal que la invocación, pero no forma parte
         // de su retorno, así que se espera con su propio plazo
-        var beto = await CrearClienteAsync();
+        HubConnection beto = await CrearClienteAsync();
         var historialRecibido = new TaskCompletionSource<IReadOnlyList<MensajeDto>>(
             TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -192,14 +180,14 @@ public class HistorialPaginadoEndToEndTests
             ChatHubEventos.HistorialRecibido, h => historialRecibido.TrySetResult(h));
 
         await RegistrarAsync(beto, "Beto", "#general");
-        var historialDeBeto = await historialRecibido.Task.WaitAsync(Espera);
+        IReadOnlyList<MensajeDto> historialDeBeto = await historialRecibido.Task.WaitAsync(Espera);
 
         // Assert inicial: los últimos tres normalitos, del antiguo al nuevo
         historialDeBeto.Should().HaveCount(3, "la caché solo retiene HistorialMaximo");
         historialDeBeto.Select(m => m.Texto).Should().Equal("mensaje 10", "mensaje 11", "mensaje 12");
 
         // Act 1: la primera página pide desde el más antiguo que ya ve
-        var pagina1 = await beto.InvokeAsync<IReadOnlyList<MensajeDto>>(
+        IReadOnlyList<MensajeDto> pagina1 = await beto.InvokeAsync<IReadOnlyList<MensajeDto>>(
             ChatHubMetodos.Historial, historialDeBeto[0].Timestamp, 3);
 
         // Assert 1: el cursor (mensaje 10) VUELVE en la página — el rango
@@ -209,14 +197,14 @@ public class HistorialPaginadoEndToEndTests
 
         // Act 2: la página siguiente sigue el cursor que dejó la anterior
         // (el más antiguo de la que acaba de llegar)
-        var pagina2 = await beto.InvokeAsync<IReadOnlyList<MensajeDto>>(
+        IReadOnlyList<MensajeDto> pagina2 = await beto.InvokeAsync<IReadOnlyList<MensajeDto>>(
             ChatHubMetodos.Historial, pagina1[0].Timestamp, 3);
 
         // Assert 2: el cursor (m8) vuelve otra vez, y lo nuevo es m6 y m7
         pagina2.Select(m => m.Texto).Should().Equal("mensaje 06", "mensaje 07", "mensaje 08");
 
         // Act 3: un cursor ANTERIOR a todo lo que hay
-        var ninguna = await beto.InvokeAsync<IReadOnlyList<MensajeDto>>(
+        IReadOnlyList<MensajeDto> ninguna = await beto.InvokeAsync<IReadOnlyList<MensajeDto>>(
             ChatHubMetodos.Historial, new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc), 3);
 
         // Assert 3: página vacía = "no queda más historial", y con eso el
@@ -225,14 +213,13 @@ public class HistorialPaginadoEndToEndTests
     }
 
     [Test]
-    public async Task SinRegistroNoHayHistorialQuePaginar()
-    {
+    public async Task SinRegistroNoHayHistorialQuePaginar() {
         // Arrange: el cliente está conectado, pero nunca se dio de alta
-        var cliente = await CrearClienteAsync();
+        HubConnection cliente = await CrearClienteAsync();
 
         // Act: sin registro no hay canal propio, y sin canal no hay nada
         // que enseñar — null es el "no estás registrado" de este método
-        var pagina = await cliente.InvokeAsync<IReadOnlyList<MensajeDto>?>(
+        IReadOnlyList<MensajeDto>? pagina = await cliente.InvokeAsync<IReadOnlyList<MensajeDto>?>(
             ChatHubMetodos.Historial, DateTime.UtcNow, 10);
 
         // Assert
@@ -240,15 +227,13 @@ public class HistorialPaginadoEndToEndTests
     }
 
     [Test]
-    public async Task PedirUnaPaginaGiganteSeLimitaALaVentana()
-    {
+    public async Task PedirUnaPaginaGiganteSeLimitaALaVentana() {
         // Arrange: Ana escribe cuatro mensajes y se espera a que la cola
         // de escritura los deje en la base
-        var ana = await CrearClienteAsync();
+        HubConnection ana = await CrearClienteAsync();
         await RegistrarAsync(ana, "Ana", "#general");
 
-        for (var i = 1; i <= 4; i++)
-        {
+        for (int i = 1; i <= 4; i++) {
             await ana.InvokeAsync<string?>(ChatHubMetodos.Enviar, $"mensaje {i:D2}");
             await Task.Delay(20);
         }
@@ -257,7 +242,7 @@ public class HistorialPaginadoEndToEndTests
 
         // Act: pide una página GIGANTE desde un cursor en el futuro (es
         // decir, "dame todo lo que tengas")
-        var pagina = await ana.InvokeAsync<IReadOnlyList<MensajeDto>?>(
+        IReadOnlyList<MensajeDto>? pagina = await ana.InvokeAsync<IReadOnlyList<MensajeDto>?>(
             ChatHubMetodos.Historial, DateTime.UtcNow.AddMinutes(1), 100);
 
         // Assert: pidió 100, pero una página nunca supera la ventana del

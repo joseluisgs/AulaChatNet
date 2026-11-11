@@ -18,7 +18,7 @@
         <img class="barra-icono"
              src="resources/icon-app.png"
              alt="AulaChatNet"
-             width="28" height="28" />
+             width="28" height="28"/>
         <span class="barra-logo"># AulaChatNet</span>
         <span class="barra-separador">·</span>
         <span class="barra-nick">@(_nick ?? "…")</span>
@@ -31,8 +31,7 @@
             @_usuarios.Count en la sala · @_estadisticas.TotalConectados en total
         </span>
 
-        @if (_estado == EstadoConexion.Desconectado)
-        {
+        @if (_estado == EstadoConexion.Desconectado) {
             <button type="button" class="boton-secundario" @onclick="ReconectarAsync">Reconectar</button>
         }
 
@@ -42,8 +41,7 @@
     @* Mensaje de error en SU línea, a todo el ancho: la fila de arriba queda
        intacta y el texto entero cabe (531 px de texto frente a 806 px
        disponibles), incluso el más largo de 121 caracteres. *@
-    @if (_error is not null)
-    {
+    @if (_error is not null) {
         <div class="barra-error">@_error</div>
     }
 </header>
@@ -59,47 +57,40 @@
     private readonly CompositeDisposable _suscripciones = new();
 
     /// <summary>Las cinco suscripciones de la barra (una por dato pintado).</summary>
-    protected override void OnInitialized()
-    {
-        _suscripciones.Add(Store.Nick.Subscribe(valor =>
-        {
+    protected override void OnInitialized() {
+        _suscripciones.Add(Store.Nick.Subscribe(valor => {
             _nick = valor;
             _ = InvokeAsync(StateHasChanged);
         }));
 
-        _suscripciones.Add(Store.CanalActual.Subscribe(valor =>
-        {
+        _suscripciones.Add(Store.CanalActual.Subscribe(valor => {
             _canal = valor;
             _ = InvokeAsync(StateHasChanged);
         }));
 
-        _suscripciones.Add(Store.Estado.Subscribe(valor =>
-        {
+        _suscripciones.Add(Store.Estado.Subscribe(valor => {
             _estado = valor;
             _error = null; // un estado nuevo borra el error de reconexión anterior
             _ = InvokeAsync(StateHasChanged);
         }));
 
-        _suscripciones.Add(Store.Usuarios.Subscribe(lista =>
-        {
+        _suscripciones.Add(Store.Usuarios.Subscribe(lista => {
             _usuarios = lista;
             _ = InvokeAsync(StateHasChanged);
         }));
 
-        _suscripciones.Add(Store.Estadisticas.Subscribe(est =>
-        {
+        _suscripciones.Add(Store.Estadisticas.Subscribe(est => {
             _estadisticas = est;
             _ = InvokeAsync(StateHasChanged);
         }));
     }
 
     /// <summary>
-    /// Punto de Discord: misma paleta que la terminal (verde conectado, gris
-    /// conectando, naranja reconectando, rojo caído) — la clase CSS del punto
-    /// y su texto salen del mismo sitio para que no se desincronicen.
+    ///     Punto de Discord: misma paleta que la terminal (verde conectado, gris
+    ///     conectando, naranja reconectando, rojo caído) — la clase CSS del punto
+    ///     y su texto salen del mismo sitio para que no se desincronicen.
     /// </summary>
-    private (string Clase, string Texto) Punto => _estado switch
-    {
+    private (string Clase, string Texto) Punto => _estado switch {
         EstadoConexion.Conectado => ("conectado", "conectado"),
         EstadoConexion.Conectando => ("conectando", "conectando"),
         EstadoConexion.Reconectando => ("reconectando", "reconectando"),
@@ -107,15 +98,19 @@
     };
 
     /// <summary>Reintenta a mano cuando la reconexión automática ya se rindió.</summary>
-    private async Task ReconectarAsync()
-    {
+    private async Task ReconectarAsync() {
         // Devuelve null si entró; el error (traducido a palabras de usuario) si no
         _error = await Store.ReconectarAsync();
     }
 
     /// <summary>Cierra la sesión de forma ordenada: vuelve al panel de entrada.</summary>
-    private async Task SalirAsync() => await Store.CerrarAsync();
+    private async Task SalirAsync() {
+        await Store.CerrarAsync();
+    }
 
     /// <summary>Libera las suscripciones cuando el componente se destruye.</summary>
-    public void Dispose() => _suscripciones.Dispose();
+    public void Dispose() {
+        _suscripciones.Dispose();
+    }
+
 }
