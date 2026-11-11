@@ -1,37 +1,34 @@
-using AulaChatNet.Client.Blazor.Components.Shared;
+using AngleSharp.Html.Dom;
 using AulaChatNet.Client.Blazor.Components.Services;
+using AulaChatNet.Client.Blazor.Components.Shared;
 using AulaChatNet.Shared.Comandos;
 using AulaChatNet.Shared.Configuracion;
-using AngleSharp.Html.Dom;
 using Bunit;
-using Microsoft.Extensions.DependencyInjection;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Moq;
 
 namespace AulaChatNet.Client.Blazor.Components.Tests.Components;
 
 /// <summary>
-/// Pruebas de la caja de texto: validación local junto al campo, envío a la
-/// store y la convención del proyecto — lo del CAMPO se pinta aquí (vacío, largo);
-/// lo de CONEXIÓN va al flujo de mensajes como aviso. Y lo que empieza por
-/// "/" se despacha al procesador de comandos (mismo parser que la terminal)
-/// en lugar de ir al canal.
+///     Pruebas de la caja de texto: validación local junto al campo, envío a la
+///     store y la convención del proyecto — lo del CAMPO se pinta aquí (vacío, largo);
+///     lo de CONEXIÓN va al flujo de mensajes como aviso. Y lo que empieza por
+///     "/" se despacha al procesador de comandos (mismo parser que la terminal)
+///     en lugar de ir al canal.
 /// </summary>
 [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
-public class CajaMensajeTests : BunitContext
-{
-    private StoreFalsa _store = null!;
+public class CajaMensajeTests : BunitContext {
     private Mock<IProcesadorComandos> _procesador = null!;
+    private StoreFalsa _store = null!;
 
     [SetUp]
-    public void SetUp()
-    {
+    public void SetUp() {
         _store = StoreFalsa.Crear();
         _procesador = new Mock<IProcesadorComandos>();
         Services.AddSingleton(_store.Objeto);
         Services.AddSingleton(_procesador.Object);
-        Services.AddSingleton(new ChatConfig
-        {
+        Services.AddSingleton(new ChatConfig {
             MensajeLongitudMaxima = 500
         });
 
@@ -41,20 +38,18 @@ public class CajaMensajeTests : BunitContext
     }
 
     [Test]
-    public void Boton_Deshabilitado_CuandoElCampoEstaVacio()
-    {
+    public void Boton_Deshabilitado_CuandoElCampoEstaVacio() {
         // Arrange y act
-        var cut = Render<CajaMensaje>();
+        IRenderedComponent<CajaMensaje> cut = Render<CajaMensaje>();
 
         // Assert: sin texto no hay nada que enviar
         cut.Find("button.caja-boton").HasAttribute("disabled").Should().BeTrue();
     }
 
     [Test]
-    public void Escribir_HabilitaElBoton()
-    {
+    public void Escribir_HabilitaElBoton() {
         // Arrange
-        var cut = Render<CajaMensaje>();
+        IRenderedComponent<CajaMensaje> cut = Render<CajaMensaje>();
 
         // Act
         cut.Find("input.caja-entrada").Input("hola");
@@ -64,11 +59,10 @@ public class CajaMensajeTests : BunitContext
     }
 
     [Test]
-    public async Task EnviarTextoValido_LlamaALaStoreYBorraElCampo()
-    {
+    public async Task EnviarTextoValido_LlamaALaStoreYBorraElCampo() {
         // Arrange
         _store.Mock.Setup(s => s.EnviarAsync("hola")).ReturnsAsync((string?)null);
-        var cut = Render<CajaMensaje>();
+        IRenderedComponent<CajaMensaje> cut = Render<CajaMensaje>();
         cut.Find("input.caja-entrada").Input("hola");
 
         // Act
@@ -81,10 +75,9 @@ public class CajaMensajeTests : BunitContext
     }
 
     [Test]
-    public void EnviarVacio_NoLlamaALaStoreYSeAvisa()
-    {
+    public void EnviarVacio_NoLlamaALaStoreYSeAvisa() {
         // Arrange
-        var cut = Render<CajaMensaje>();
+        IRenderedComponent<CajaMensaje> cut = Render<CajaMensaje>();
 
         // Act: se fuerza el envío igual (el botón ya vendrá deshabilitado)
         cut.Find("form").TriggerEvent("onsubmit", EventArgs.Empty);
@@ -95,10 +88,9 @@ public class CajaMensajeTests : BunitContext
     }
 
     [Test]
-    public void EnviarDemasiadoLargo_NoLlamaALaStoreYSeAvisa()
-    {
+    public void EnviarDemasiadoLargo_NoLlamaALaStoreYSeAvisa() {
         // Arrange: la validación local es la MISMA que la del servidor
-        var cut = Render<CajaMensaje>();
+        IRenderedComponent<CajaMensaje> cut = Render<CajaMensaje>();
         cut.Find("input.caja-entrada").Input(new string('a', 501));
 
         // Act
@@ -110,12 +102,11 @@ public class CajaMensajeTests : BunitContext
     }
 
     [Test]
-    public void SiFallaLaConexion_ElAvisoVaAlFlujoDeMensajes()
-    {
+    public void SiFallaLaConexion_ElAvisoVaAlFlujoDeMensajes() {
         // Arrange: el campo está perfecto; lo que falla es la conexión
         _store.Mock.Setup(s => s.EnviarAsync("hola"))
             .ReturnsAsync("Sin conexión con el servidor");
-        var cut = Render<CajaMensaje>();
+        IRenderedComponent<CajaMensaje> cut = Render<CajaMensaje>();
         cut.Find("input.caja-entrada").Input("hola");
 
         // Act
@@ -127,10 +118,9 @@ public class CajaMensajeTests : BunitContext
     }
 
     [Test]
-    public async Task EnviarComando_LoDespachaAlProcesadorYNoAlCanal()
-    {
+    public async Task EnviarComando_LoDespachaAlProcesadorYNoAlCanal() {
         // Arrange: una línea con "/" es un COMANDO (parser de Shared), no un mensaje
-        var cut = Render<CajaMensaje>();
+        IRenderedComponent<CajaMensaje> cut = Render<CajaMensaje>();
         cut.Find("input.caja-entrada").Input("/canal daw");
 
         // Act
@@ -148,10 +138,9 @@ public class CajaMensajeTests : BunitContext
     }
 
     [Test]
-    public async Task ComandoDesconocido_NoSeEnviaAlCanal()
-    {
+    public async Task ComandoDesconocido_NoSeEnviaAlCanal() {
         // Arrange
-        var cut = Render<CajaMensaje>();
+        IRenderedComponent<CajaMensaje> cut = Render<CajaMensaje>();
         cut.Find("input.caja-entrada").Input("/magia");
 
         // Act
@@ -169,10 +158,9 @@ public class CajaMensajeTests : BunitContext
     #region Privado Tests
 
     [Test]
-    public void PrivadoCompleto_MuestraElChipConElDestinatarioYLaNota()
-    {
+    public void PrivadoCompleto_MuestraElChipConElDestinatarioYLaNota() {
         // Arrange
-        var cut = Render<CajaMensaje>();
+        IRenderedComponent<CajaMensaje> cut = Render<CajaMensaje>();
 
         // Act: con destino Y texto, la línea ya es un privado
         cut.Find("input.caja-entrada").Input("/privado Ana ¿nos vemos?");
@@ -183,11 +171,10 @@ public class CajaMensajeTests : BunitContext
     }
 
     [Test]
-    public void PrivadoSinDestino_TodaviaNoHayChip_SiSaleLaNota()
-    {
+    public void PrivadoSinDestino_TodaviaNoHayChip_SiSaleLaNota() {
         // Arrange: mientras se teclea el destino, aún no hay a quién nombrar,
         // pero el aviso de que no se guarda ya puede estar
-        var cut = Render<CajaMensaje>();
+        IRenderedComponent<CajaMensaje> cut = Render<CajaMensaje>();
 
         // Act
         cut.Find("input.caja-entrada").Input("/privado ");
@@ -198,10 +185,9 @@ public class CajaMensajeTests : BunitContext
     }
 
     [Test]
-    public void LineaNormal_NoMuestraNadaDePrivado()
-    {
+    public void LineaNormal_NoMuestraNadaDePrivado() {
         // Arrange
-        var cut = Render<CajaMensaje>();
+        IRenderedComponent<CajaMensaje> cut = Render<CajaMensaje>();
 
         // Act: la charla normal no debe llevar ni chip ni nota
         cut.Find("input.caja-entrada").Input("buenas a todos");
@@ -212,10 +198,9 @@ public class CajaMensajeTests : BunitContext
     }
 
     [Test]
-    public void ClicEnLaLista_PreRellenaLaLineaConElPrivado()
-    {
+    public void ClicEnLaLista_PreRellenaLaLineaConElPrivado() {
         // Arrange
-        var cut = Render<CajaMensaje>();
+        IRenderedComponent<CajaMensaje> cut = Render<CajaMensaje>();
 
         // Act: la lista de conectados pide escribirle a Luis
         _store.DestinatarioPrivado.OnNext("Luis");
@@ -226,10 +211,9 @@ public class CajaMensajeTests : BunitContext
     }
 
     [Test]
-    public void CerrarElChip_BorraLaLineaYVuelveElPlaceholder()
-    {
+    public void CerrarElChip_BorraLaLineaYVuelveElPlaceholder() {
         // Arrange
-        var cut = Render<CajaMensaje>();
+        IRenderedComponent<CajaMensaje> cut = Render<CajaMensaje>();
         _store.DestinatarioPrivado.OnNext("Luis");
 
         // Act
@@ -242,10 +226,9 @@ public class CajaMensajeTests : BunitContext
     }
 
     [Test]
-    public async Task EnviarPrivado_LoDespachaAlProcesadorYNoAlCanal()
-    {
+    public async Task EnviarPrivado_LoDespachaAlProcesadorYNoAlCanal() {
         // Arrange
-        var cut = Render<CajaMensaje>();
+        IRenderedComponent<CajaMensaje> cut = Render<CajaMensaje>();
         cut.Find("input.caja-entrada").Input("/privado Ana hola");
 
         // Act
@@ -268,23 +251,21 @@ public class CajaMensajeTests : BunitContext
     #region Escritura Tests
 
     [Test]
-    public void SinNadieEscribiendo_NoSePintaNada()
-    {
+    public void SinNadieEscribiendo_NoSePintaNada() {
         // Arrange: el sujeto arranca vacío (nadie escribiendo en el canal)
-        var cut = Render<CajaMensaje>();
+        IRenderedComponent<CajaMensaje> cut = Render<CajaMensaje>();
 
         // Act / Assert: la línea no debe ocupar un hueco en balde
         cut.FindAll(".caja-escribiendo").Should().BeEmpty();
     }
 
     [Test]
-    public void AlguienEscribiendo_SePintaLaFraseConLosNombres()
-    {
+    public void AlguienEscribiendo_SePintaLaFraseConLosNombres() {
         // Arrange: la lista llega antes del render (el sujeto recuerda el último valor)
         _store.Escribiendo.OnNext(["Ana", "Bruno"]);
 
         // Act
-        var cut = Render<CajaMensaje>();
+        IRenderedComponent<CajaMensaje> cut = Render<CajaMensaje>();
 
         // Assert: la frase viene de Shared, así que es literalmente el mismo
         // texto que pinta la terminal
@@ -293,10 +274,9 @@ public class CajaMensajeTests : BunitContext
     }
 
     [Test]
-    public void DejaDeEscribirse_LaLineaDesaparece()
-    {
+    public void DejaDeEscribirse_LaLineaDesaparece() {
         // Arrange
-        var cut = Render<CajaMensaje>();
+        IRenderedComponent<CajaMensaje> cut = Render<CajaMensaje>();
         _store.Escribiendo.OnNext(["Ana"]);
         cut.Find(".caja-escribiendo").TextContent.Should().Contain("Ana");
 
@@ -308,10 +288,9 @@ public class CajaMensajeTests : BunitContext
     }
 
     [Test]
-    public void Escribir_AvisaALaStoreDeQueSeEstaEscribiendo()
-    {
+    public void Escribir_AvisaALaStoreDeQueSeEstaEscribiendo() {
         // Arrange
-        var cut = Render<CajaMensaje>();
+        IRenderedComponent<CajaMensaje> cut = Render<CajaMensaje>();
 
         // Act: una tecla del cuadro
         cut.Find("input.caja-entrada").Input("h");

@@ -1,43 +1,41 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace AulaChatNet.Server.Persistencia;
 
 /// <summary>
-/// Contexto de Entity Framework Core del chat: la puerta de entrada a la base
-/// de datos SQLite embebida en un solo fichero (<c>aulachat.db</c>).
-///
-/// <remarks>
-/// <para>
-/// Es la pieza que convierte "el historial vive en RAM y muere al parar el
-/// servidor" en "el historial sobrevive a cualquier reinicio". Su única tabla
-/// es <see cref="Mensajes"/>: el resto del estado (quién está conectado, la
-/// unicidad de nicks) es EFÍMERO y sigue en el <c>ChatStore</c> en memoria,
-/// porque guardar connectionIds de SignalR en disco sería inútil — tras un
-/// reinicio ya no significan nada.
-/// </para>
-/// <para>
-/// Como el <c>ChatStore</c> es un singleton y EF Core exige que el
-/// <c>DbContext</c> sea de corta vida (scoped), este contexto se registra con
-/// <c>AddDbContextFactory</c>: el singleton crea un contexto nuevo por cada
-/// operación en vez de compartir uno: compartirlo rompería el hilo de EF Core
-/// con concurrencia.
-/// </para>
-/// </remarks>
+///     Contexto de Entity Framework Core del chat: la puerta de entrada a la base
+///     de datos SQLite embebida en un solo fichero (<c>aulachat.db</c>).
+///     <remarks>
+///         <para>
+///             Es la pieza que convierte "el historial vive en RAM y muere al parar el
+///             servidor" en "el historial sobrevive a cualquier reinicio". Su única tabla
+///             es <see cref="Mensajes" />: el resto del estado (quién está conectado, la
+///             unicidad de nicks) es EFÍMERO y sigue en el <c>ChatStore</c> en memoria,
+///             porque guardar connectionIds de SignalR en disco sería inútil — tras un
+///             reinicio ya no significan nada.
+///         </para>
+///         <para>
+///             Como el <c>ChatStore</c> es un singleton y EF Core exige que el
+///             <c>DbContext</c> sea de corta vida (scoped), este contexto se registra con
+///             <c>AddDbContextFactory</c>: el singleton crea un contexto nuevo por cada
+///             operación en vez de compartir uno: compartirlo rompería el hilo de EF Core
+///             con concurrencia.
+///         </para>
+///     </remarks>
 /// </summary>
-public class AulaChatContexto(DbContextOptions<AulaChatContexto> opciones) : DbContext(opciones)
-{
+public class AulaChatContexto(DbContextOptions<AulaChatContexto> opciones) : DbContext(opciones) {
     /// <summary>
-    /// Mensajes del chat, de TODOS los canales. La consulta habitual es
-    /// "los últimos N de un canal", que resuelve el índice (Canal, Timestamp).
+    ///     Mensajes del chat, de TODOS los canales. La consulta habitual es
+    ///     "los últimos N de un canal", que resuelve el índice (Canal, Timestamp).
     /// </summary>
     public DbSet<MensajeEntidad> Mensajes => Set<MensajeEntidad>();
 
     /// <inheritdoc />
-    protected override void OnModelCreating(ModelBuilder modelBuilder)
-    {
+    protected override void OnModelCreating(ModelBuilder modelBuilder) {
         base.OnModelCreating(modelBuilder);
 
-        var mensaje = modelBuilder.Entity<MensajeEntidad>();
+        EntityTypeBuilder<MensajeEntidad> mensaje = modelBuilder.Entity<MensajeEntidad>();
 
         // La tabla se llama como el DbSet y la clave es el GUID que ya trae
         // el MensajeDto desde el servidor: ValueGeneratedNever porque NO la

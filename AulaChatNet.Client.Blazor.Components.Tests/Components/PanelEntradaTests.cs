@@ -1,39 +1,38 @@
 using System.Net;
 using System.Text;
-using AulaChatNet.Client.Blazor.Components.Shared;
+using AngleSharp.Html.Dom;
 using AulaChatNet.Client.Blazor.Components.Configuracion;
+using AulaChatNet.Client.Blazor.Components.Shared;
 using AulaChatNet.Client.Blazor.Components.State;
 using AulaChatNet.Shared.Configuracion;
 using AulaChatNet.Shared.Dtos;
-using AngleSharp.Html.Dom;
 using Bunit;
-using Microsoft.Extensions.DependencyInjection;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Moq;
 
 namespace AulaChatNet.Client.Blazor.Components.Tests.Components;
 
 /// <summary>
-/// Pruebas del panel de entrada: la bienvenida con la gente conectada
-/// (GET /estadisticas), la sesión recordada y — lo más delicado — el
-/// comportamiento ante rechazos del servidor y fallos de red (que NO vuelva
-/// a preguntar el nick y ofrezca reintentar).
+///     Pruebas del panel de entrada: la bienvenida con la gente conectada
+///     (GET /estadisticas), la sesión recordada y — lo más delicado — el
+///     comportamiento ante rechazos del servidor y fallos de red (que NO vuelva
+///     a preguntar el nick y ofrezca reintentar).
 /// </summary>
 [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
-public class PanelEntradaTests : BunitContext
-{
+public class PanelEntradaTests : BunitContext {
     /// <summary>Respuesta del servidor para /estadisticas en los tests.</summary>
     private const string EstadisticasJson =
         """
         {"totalConectados":3,"canales":[{"canal":"#general","conectados":2},{"canal":"#daw","conectados":1}]}
         """;
 
-    private StoreFalsa _store = null!;
     private Mock<ISesionStore> _sesion = null!;
 
+    private StoreFalsa _store = null!;
+
     [SetUp]
-    public void SetUp()
-    {
+    public void SetUp() {
         _store = StoreFalsa.Crear();
         _sesion = new Mock<ISesionStore>();
         _sesion.Setup(s => s.CargarAsync()).ReturnsAsync((SesionGuardada?)null);
@@ -42,8 +41,7 @@ public class PanelEntradaTests : BunitContext
 
         Services.AddSingleton(_store.Objeto);
         Services.AddSingleton(_sesion.Object);
-        Services.AddSingleton(new ChatConfig
-        {
+        Services.AddSingleton(new ChatConfig {
             Canales = ["#general", "#daw"],
             UsuarioLongitudMinima = 2,
             UsuarioLongitudMaxima = 20,
@@ -54,10 +52,9 @@ public class PanelEntradaTests : BunitContext
     }
 
     [Test]
-    public void MuestraLaGenteConectadaAntesDeEntrar()
-    {
+    public void MuestraLaGenteConectadaAntesDeEntrar() {
         // Arrange y act: ya se registró el HttpClient en el SetUp
-        var cut = Render<PanelEntrada>();
+        IRenderedComponent<PanelEntrada> cut = Render<PanelEntrada>();
 
         // Assert: total y reparto por sala, en el orden de la configuración
         cut.Find(".entrada-stats").TextContent.Should().Contain(
@@ -65,26 +62,24 @@ public class PanelEntradaTests : BunitContext
     }
 
     [Test]
-    public void SinNadieConectado_LoDiceConSuFrase()
-    {
+    public void SinNadieConectado_LoDiceConSuFrase() {
         // Arrange
         ServidorConGente("""{"totalConectados":0,"canales":[]}""");
 
         // Act
-        var cut = Render<PanelEntrada>();
+        IRenderedComponent<PanelEntrada> cut = Render<PanelEntrada>();
 
         // Assert
         cut.Find(".entrada-stats").TextContent.Should().Contain("no hay nadie conectado todavía");
     }
 
     [Test]
-    public void ServidorCaido_MuestraAvisoSinTiposDeExcepcion()
-    {
+    public void ServidorCaido_MuestraAvisoSinTiposDeExcepcion() {
         // Arrange: el GET falla (sin red, apagado...)
         ServidorQueFalla();
 
         // Act
-        var cut = Render<PanelEntrada>();
+        IRenderedComponent<PanelEntrada> cut = Render<PanelEntrada>();
 
         // Assert: la cifra es opcional; el arranque NO se corta
         cut.Find(".entrada-stats.aviso").TextContent.Should()
@@ -93,13 +88,12 @@ public class PanelEntradaTests : BunitContext
     }
 
     [Test]
-    public void SesionRecordada_DejaNickCanalYEnlaceDeBorrarlo()
-    {
+    public void SesionRecordada_DejaNickCanalYEnlaceDeBorrarlo() {
         // Arrange: alguien ya entró desde este navegador
         _sesion.Setup(s => s.CargarAsync()).ReturnsAsync(new SesionGuardada("Ana", "#daw"));
 
         // Act
-        var cut = Render<PanelEntrada>();
+        IRenderedComponent<PanelEntrada> cut = Render<PanelEntrada>();
 
         // Assert
         ((IHtmlInputElement)cut.Find("input#nick")).Value.Should().Be("Ana");
@@ -112,10 +106,9 @@ public class PanelEntradaTests : BunitContext
     }
 
     [Test]
-    public void NickDemasiadoCorto_MuestraElErrorSinLlamarAlServidor()
-    {
+    public void NickDemasiadoCorto_MuestraElErrorSinLlamarAlServidor() {
         // Arrange
-        var cut = Render<PanelEntrada>();
+        IRenderedComponent<PanelEntrada> cut = Render<PanelEntrada>();
         cut.Find("input#nick").Input("A");
 
         // Act
@@ -129,12 +122,11 @@ public class PanelEntradaTests : BunitContext
     }
 
     [Test]
-    public void EntrarCorrecto_ConectaYGuardaLaSesion()
-    {
+    public void EntrarCorrecto_ConectaYGuardaLaSesion() {
         // Arrange
         _store.Mock.Setup(s => s.ConectarAsync("Ana", "#general"))
-            .ReturnsAsync(new ResultadoConexion(null, HayServidor: true));
-        var cut = Render<PanelEntrada>();
+            .ReturnsAsync(new ResultadoConexion(null, true));
+        IRenderedComponent<PanelEntrada> cut = Render<PanelEntrada>();
         cut.Find("input#nick").Input("Ana");
 
         // Act
@@ -147,12 +139,11 @@ public class PanelEntradaTests : BunitContext
     }
 
     [Test]
-    public void RechazoDelServidor_MuestraElErrorYOfreceCorregirElNick()
-    {
+    public void RechazoDelServidor_MuestraElErrorYOfreceCorregirElNick() {
         // Arrange: el servidor respondió y dice que el nombre está en uso
         _store.Mock.Setup(s => s.ConectarAsync("Ana", "#general"))
-            .ReturnsAsync(new ResultadoConexion("Ese nombre de usuario ya está en uso, elige otro", HayServidor: true));
-        var cut = Render<PanelEntrada>();
+            .ReturnsAsync(new ResultadoConexion("Ese nombre de usuario ya está en uso, elige otro", true));
+        IRenderedComponent<PanelEntrada> cut = Render<PanelEntrada>();
         cut.Find("input#nick").Input("Ana");
 
         // Act
@@ -165,13 +156,12 @@ public class PanelEntradaTests : BunitContext
     }
 
     [Test]
-    public void FalloDeRed_ConservaElNickYOfreceReintentar()
-    {
+    public void FalloDeRed_ConservaElNickYOfreceReintentar() {
         // Arrange: el servidor ni se pudo alcanzar (el caso de la terminal
         // en el que NO hay que volver a preguntar el nick)
         _store.Mock.Setup(s => s.ConectarAsync("Ana", "#general"))
-            .ReturnsAsync(new ResultadoConexion("No se pudo conectar con el servidor: no hay red.", HayServidor: false));
-        var cut = Render<PanelEntrada>();
+            .ReturnsAsync(new ResultadoConexion("No se pudo conectar con el servidor: no hay red.", false));
+        IRenderedComponent<PanelEntrada> cut = Render<PanelEntrada>();
         cut.Find("input#nick").Input("Ana");
 
         // Act
@@ -186,27 +176,28 @@ public class PanelEntradaTests : BunitContext
     // ── Ayudantes ──
 
     /// <summary>Registra un HttpClient que responde /estadisticas con gente.</summary>
-    private void ServidorConGente(string json = EstadisticasJson) =>
-        Servidor(() => new HttpResponseMessage(HttpStatusCode.OK)
-        {
+    private void ServidorConGente(string json = EstadisticasJson) {
+        Servidor(() => new HttpResponseMessage(HttpStatusCode.OK) {
             Content = new StringContent(json, Encoding.UTF8, "application/json")
         });
+    }
 
     /// <summary>Registra un HttpClient cuya descarga lanza un fallo de red.</summary>
-    private void ServidorQueFalla() =>
+    private void ServidorQueFalla() {
         Servidor(() => throw new HttpRequestException("sin conexión"));
+    }
 
-    private void Servidor(Func<HttpResponseMessage> responder) =>
-        Services.AddSingleton(new HttpClient(new HandlerFalso(responder))
-        {
+    private void Servidor(Func<HttpResponseMessage> responder) {
+        Services.AddSingleton(new HttpClient(new HandlerFalso(responder)) {
             BaseAddress = new Uri("http://localhost/")
         });
+    }
 
     /// <summary>Handler mínimo que responde (o falla) sin salir de la memoria.</summary>
-    private sealed class HandlerFalso(Func<HttpResponseMessage> responder) : HttpMessageHandler
-    {
+    private sealed class HandlerFalso(Func<HttpResponseMessage> responder) : HttpMessageHandler {
         protected override Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request, CancellationToken cancellationToken) =>
-            Task.FromResult(responder());
+            HttpRequestMessage request, CancellationToken cancellationToken) {
+            return Task.FromResult(responder());
+        }
     }
 }

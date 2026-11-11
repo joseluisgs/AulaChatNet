@@ -7,44 +7,30 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace AulaChatNet.Server.Tests.Integracion;
 
 /// <summary>
-/// Prueba de REDES del mensaje privado: el <c>ChatHub</c> y el
-/// <c>ChatStore</c> de verdad, Kestrel escuchando en un puerto aleatorio y
-/// TRES clientes SignalR reales.
-///
-/// <remarks>
-/// Los tests con dobles de Moq ya dicen a QUIÉN debe llegar cada cosa; este
-/// comprueba que el mensaje VIAJA de verdad — el DTO serializado, el nombre
-/// del evento y el transporte— cosa que un doble no puede demostrar porque ni
-/// siquiera usa la red. Es el mismo truco que ya usaba
-/// <c>ServidorDePrueba</c> de la terminal, pero con el hub auténtico.
-/// </remarks>
+///     Prueba de REDES del mensaje privado: el <c>ChatHub</c> y el
+///     <c>ChatStore</c> de verdad, Kestrel escuchando en un puerto aleatorio y
+///     TRES clientes SignalR reales.
+///     <remarks>
+///         Los tests con dobles de Moq ya dicen a QUIÉN debe llegar cada cosa; este
+///         comprueba que el mensaje VIAJA de verdad — el DTO serializado, el nombre
+///         del evento y el transporte— cosa que un doble no puede demostrar porque ni
+///         siquiera usa la red. Es el mismo truco que ya usaba
+///         <c>ServidorDePrueba</c> de la terminal, pero con el hub auténtico.
+///     </remarks>
 /// </summary>
 [TestFixture]
-public class PrivadosEndToEndTests
-{
-    /// <summary>Ruta del hub: la misma en el servidor y en los clientes del test.</summary>
-    private const string Ruta = "/hubs/chat";
-
-    /// <summary>Tiempo máximo de espera: si un privado no llega en 5 s, algo va mal.</summary>
-    private static readonly TimeSpan Espera = TimeSpan.FromSeconds(5);
-
-    private WebApplication _servidor = null!;
-    private readonly List<HubConnection> _clientes = [];
-
+public class PrivadosEndToEndTests {
     [SetUp]
-    public async Task SetUp()
-    {
+    public async Task SetUp() {
         // Misma configuración que el appsettings del servidor real, pero en
         // memoria: así no hay que tocar ficheros ni puertos fijos
-        var configuracion = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
+        IConfigurationRoot configuracion = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
                 [$"{ChatConfig.Seccion}:HubRuta"] = Ruta,
                 [$"{ChatConfig.Seccion}:Canales:0"] = "#general",
                 [$"{ChatConfig.Seccion}:Canales:1"] = "#smr",
@@ -55,7 +41,7 @@ public class PrivadosEndToEndTests
             })
             .Build();
 
-        var builder = WebApplication.CreateBuilder();
+        WebApplicationBuilder builder = WebApplication.CreateBuilder();
         builder.WebHost.UseUrls("http://127.0.0.1:0"); // puerto 0 = que elija el sistema
         builder.Logging.ClearProviders(); // sin esto, la salida de Kestrel ensucia la de los tests
 
@@ -70,28 +56,36 @@ public class PrivadosEndToEndTests
     }
 
     [TearDown]
-    public async Task TearDown()
-    {
-        foreach (var cliente in _clientes)
+    public async Task TearDown() {
+        foreach (HubConnection cliente in _clientes) {
             await cliente.DisposeAsync();
+        }
 
         await _servidor.DisposeAsync();
     }
+
+    /// <summary>Ruta del hub: la misma en el servidor y en los clientes del test.</summary>
+    private const string Ruta = "/hubs/chat";
+
+    /// <summary>Tiempo máximo de espera: si un privado no llega en 5 s, algo va mal.</summary>
+    private static readonly TimeSpan Espera = TimeSpan.FromSeconds(5);
+
+    private WebApplication _servidor = null!;
+    private readonly List<HubConnection> _clientes = [];
 
     /// <summary>Conecta un cliente REAL y lo da de alta en el canal dado.</summary>
     /// <param name="usuario">Nombre con el que se registra.</param>
     /// <param name="canal">Canal de entrada.</param>
     /// <returns>La conexión, lista para invocar y escuchar.</returns>
-    private async Task<HubConnection> ConectarAsync(string usuario, string canal)
-    {
-        var cliente = new HubConnectionBuilder()
+    private async Task<HubConnection> ConectarAsync(string usuario, string canal) {
+        HubConnection cliente = new HubConnectionBuilder()
             .WithUrl($"{_servidor.Urls.First()}{Ruta}")
             .Build();
 
         _clientes.Add(cliente);
         await cliente.StartAsync();
 
-        var error = await cliente.InvokeAsync<string?>(ChatHubMetodos.Conectar, usuario, canal);
+        string? error = await cliente.InvokeAsync<string?>(ChatHubMetodos.Conectar, usuario, canal);
 
         // Si el alta falla, el resto del test no significa nada: mejor parar aquí
         error.Should().BeNull("el alta de {0} debe salir bien", usuario);
@@ -101,9 +95,8 @@ public class PrivadosEndToEndTests
 
     /// <summary>Suscribe un cliente a los privados y devuelve la PRIMERA recepción.</summary>
     /// <param name="cliente">Cliente que va a escuchar.</param>
-    /// <returns>El primer privado que le llegue (espera como máximo <see cref="Espera"/>).</returns>
-    private static Task<MensajePrivadoDto> PrimerPrivadoQueLlegue(HubConnection cliente)
-    {
+    /// <returns>El primer privado que le llegue (espera como máximo <see cref="Espera" />).</returns>
+    private static Task<MensajePrivadoDto> PrimerPrivadoQueLlegue(HubConnection cliente) {
         var recepcion = new TaskCompletionSource<MensajePrivadoDto>(
             TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -114,26 +107,25 @@ public class PrivadosEndToEndTests
     }
 
     [Test]
-    public async Task PrivadoEntreDosClientesReales_LosLlegaSoloALosDos()
-    {
+    public async Task PrivadoEntreDosClientesReales_LosLlegaSoloALosDos() {
         // Arrange: tres personas en #general, y una cuarta en otra sala
-        var ana = await ConectarAsync("Ana", "#general");
-        var luis = await ConectarAsync("Luis", "#general");
-        var roberto = await ConectarAsync("Roberto", "#general");
-        var deOtraSala = await ConectarAsync("Marta", "#smr");
+        HubConnection ana = await ConectarAsync("Ana", "#general");
+        HubConnection luis = await ConectarAsync("Luis", "#general");
+        HubConnection roberto = await ConectarAsync("Roberto", "#general");
+        HubConnection deOtraSala = await ConectarAsync("Marta", "#smr");
 
-        var llegaALuis = PrimerPrivadoQueLlegue(luis);
-        var llegaAAna = PrimerPrivadoQueLlegue(ana);
+        Task<MensajePrivadoDto> llegaALuis = PrimerPrivadoQueLlegue(luis);
+        Task<MensajePrivadoDto> llegaAAna = PrimerPrivadoQueLlegue(ana);
 
         // Act: el privado viaja por la red de verdad
-        var error = await ana.InvokeAsync<string?>(
+        string? error = await ana.InvokeAsync<string?>(
             ChatHubMetodos.EnviarPrivado, "Luis", "Confidencia real");
 
         // Assert: los dos implicados lo reciben, con el mismo texto
         error.Should().BeNull();
 
-        var paraLuis = await llegaALuis;
-        var ecoDeAna = await llegaAAna;
+        MensajePrivadoDto paraLuis = await llegaALuis;
+        MensajePrivadoDto ecoDeAna = await llegaAAna;
 
         paraLuis.Emisor.Should().Be("Ana");
         paraLuis.Destinatario.Should().Be("Luis");
@@ -141,8 +133,8 @@ public class PrivadosEndToEndTests
         ecoDeAna.Id.Should().Be(paraLuis.Id);
 
         // Y a nadie más: ni al compañero de su sala ni al de otra
-        var llegaARoberto = PrimerPrivadoQueLlegue(roberto);
-        var llegaAMarta = PrimerPrivadoQueLlegue(deOtraSala);
+        Task<MensajePrivadoDto> llegaARoberto = PrimerPrivadoQueLlegue(roberto);
+        Task<MensajePrivadoDto> llegaAMarta = PrimerPrivadoQueLlegue(deOtraSala);
 
         await Task.Delay(300); // margen para un envío que no debe existir
 
@@ -151,15 +143,14 @@ public class PrivadosEndToEndTests
     }
 
     [Test]
-    public async Task Privado_AUnNombreInexistente_LlegaElErrorYNoSeEnviaNada()
-    {
+    public async Task Privado_AUnNombreInexistente_LlegaElErrorYNoSeEnviaNada() {
         // Arrange
-        var ana = await ConectarAsync("Ana", "#general");
-        var luis = await ConectarAsync("Luis", "#general");
-        var llegaALuis = PrimerPrivadoQueLlegue(luis);
+        HubConnection ana = await ConectarAsync("Ana", "#general");
+        HubConnection luis = await ConectarAsync("Luis", "#general");
+        Task<MensajePrivadoDto> llegaALuis = PrimerPrivadoQueLlegue(luis);
 
         // Act
-        var error = await ana.InvokeAsync<string?>(
+        string? error = await ana.InvokeAsync<string?>(
             ChatHubMetodos.EnviarPrivado, "Maria", "¿Estás ahí?");
 
         // Assert: el error se devuelve por el MISMO camino de la llamada
@@ -169,15 +160,14 @@ public class PrivadosEndToEndTests
     }
 
     [Test]
-    public async Task Privado_NoApareceEnElHistorialQueRecibeQuienEntraDespues()
-    {
+    public async Task Privado_NoApareceEnElHistorialQueRecibeQuienEntraDespues() {
         // Arrange
-        var ana = await ConectarAsync("Ana", "#general");
-        var luis = await ConectarAsync("Luis", "#general");
+        HubConnection ana = await ConectarAsync("Ana", "#general");
+        HubConnection luis = await ConectarAsync("Luis", "#general");
         await ana.InvokeAsync<string?>(ChatHubMetodos.EnviarPrivado, "Luis", "Esto es una confidencia");
 
         // Act: alguien entra DESPUÉS y recibe el historial del canal
-        var roberto = new HubConnectionBuilder()
+        HubConnection roberto = new HubConnectionBuilder()
             .WithUrl($"{_servidor.Urls.First()}{Ruta}")
             .Build();
         _clientes.Add(roberto);
@@ -191,7 +181,7 @@ public class PrivadosEndToEndTests
         await roberto.StartAsync();
         await roberto.InvokeAsync<string?>(ChatHubMetodos.Conectar, "Roberto", "#general");
 
-        var historial = await historialRecibido.Task.WaitAsync(Espera);
+        IReadOnlyList<MensajeDto> historial = await historialRecibido.Task.WaitAsync(Espera);
 
         // Assert: el historial trae las uniones, pero NUNCA la confidencia
         historial.Should().NotContain(m =>

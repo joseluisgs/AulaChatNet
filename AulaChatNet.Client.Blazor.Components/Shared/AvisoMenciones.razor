@@ -7,8 +7,7 @@
    MencionRecibida; la store lleva el contador; aquí solo se pinta y se
    habla con el navegador — document.title es JavaScript, y aquí no se
    pinta nada: se le pide al navegador que lo haga. *@
-@if (_noVistas > 0)
-{
+@if (_noVistas > 0) {
     <button class="mencion-aviso" @onclick="MarcarVistas"
             title="Menciones sin mirar. Pulsa para darlas por vistas">
         💬 @_noVistas
@@ -16,6 +15,7 @@
 }
 
 @code {
+
     /// <summary>Menciones sin mirar (lee el flujo de la store).</summary>
     private int _noVistas;
 
@@ -23,20 +23,17 @@
     private readonly List<IDisposable> _suscripciones = [];
 
     /// <summary>
-    /// Se suscribe al contador (para el badge) y a la última mención (para
-    /// el parpadeo). Al init, los BehaviorSubject entregan su valor actual:
-    /// contador 0 y mención null, que este componente ignora.
+    ///     Se suscribe al contador (para el badge) y a la última mención (para
+    ///     el parpadeo). Al init, los BehaviorSubject entregan su valor actual:
+    ///     contador 0 y mención null, que este componente ignora.
     /// </summary>
-    protected override void OnInitialized()
-    {
-        _suscripciones.Add(Store.MencionesNoVistas.Subscribe(n =>
-        {
+    protected override void OnInitialized() {
+        _suscripciones.Add(Store.MencionesNoVistas.Subscribe(n => {
             _noVistas = n;
             _ = InvokeAsync(StateHasChanged);
         }));
 
-        _suscripciones.Add(Store.UltimaMencion.Subscribe(mencion =>
-        {
+        _suscripciones.Add(Store.UltimaMencion.Subscribe(mencion => {
             if (mencion is null)
                 return;
 
@@ -49,19 +46,18 @@
     }
 
     /// <summary>
-    /// El clic del badge apaga DOS cosas: el parpadeo de la pestaña (una
-    /// función JS de index.html) y el contador (la store pone el badge a cero).
+    ///     El clic del badge apaga DOS cosas: el parpadeo de la pestaña (una
+    ///     función JS de index.html) y el contador (la store pone el badge a cero).
     /// </summary>
-    private async Task MarcarVistas()
-    {
+    private async Task MarcarVistas() {
         await JS.InvokeVoidAsync("aulachat.terminarParpadeo");
         Store.MarcarMencionesVistas();
     }
 
     /// <summary>Libera las suscripciones cuando el componente se destruye.</summary>
-    public void Dispose()
-    {
+    public void Dispose() {
         foreach (var suscripcion in _suscripciones)
             suscripcion.Dispose();
     }
+
 }

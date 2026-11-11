@@ -3,38 +3,36 @@ using AulaChatNet.Shared.Dtos;
 namespace AulaChatNet.Server.Persistencia;
 
 /// <summary>
-/// Entidad de persistencia de un mensaje: lo que la base de datos guarda en la
-/// tabla <c>Mensajes</c>. Es la Fase 2 del historial, que en la Fase 1 vivía en
-/// una <c>ConcurrentQueue</c> y moría al parar el servidor.
-///
-/// <remarks>
-/// <para>
-/// <b>Por qué no es el <see cref="MensajeDto"/>:</b> las capas se separan a
-/// propósito. El DTO viaja por la red hacia los clientes; la entidad es el
-/// reflejo del esquema en disco. Que sean dos objetos permite cambiar uno sin
-/// tocar al otro (partir la tabla en dos, añadir una columna de auditoría,
-/// cambiar el motor...) sin que el contrato con los clientes se mueva.
-/// </para>
-/// <para>
-/// <b>El canal va como texto denormalizado</b>, sin clave foránea: los canales
-/// los define la configuración (appsettings.json), no los datos. Meter una
-/// tabla <c>Canales</c> solo para poder hacer un JOIN innecesario sería
-/// complejidad sin valor.
-/// </para>
-/// <para>
-/// Es una clase mutable (no un <c>record</c>) porque EF Core la rellena
-/// propiedad a propiedad al leer de disco y necesita un constructor sin
-/// argumentos y setters. Los <c>record</c> son para los DTOs inmutables; aquí
-/// lo que importa es que el ORM pueda materializarla.
-/// </para>
-/// </remarks>
+///     Entidad de persistencia de un mensaje: lo que la base de datos guarda en la
+///     tabla <c>Mensajes</c>. Es la Fase 2 del historial, que en la Fase 1 vivía en
+///     una <c>ConcurrentQueue</c> y moría al parar el servidor.
+///     <remarks>
+///         <para>
+///             <b>Por qué no es el <see cref="MensajeDto" />:</b> las capas se separan a
+///             propósito. El DTO viaja por la red hacia los clientes; la entidad es el
+///             reflejo del esquema en disco. Que sean dos objetos permite cambiar uno sin
+///             tocar al otro (partir la tabla en dos, añadir una columna de auditoría,
+///             cambiar el motor...) sin que el contrato con los clientes se mueva.
+///         </para>
+///         <para>
+///             <b>El canal va como texto denormalizado</b>, sin clave foránea: los canales
+///             los define la configuración (appsettings.json), no los datos. Meter una
+///             tabla <c>Canales</c> solo para poder hacer un JOIN innecesario sería
+///             complejidad sin valor.
+///         </para>
+///         <para>
+///             Es una clase mutable (no un <c>record</c>) porque EF Core la rellena
+///             propiedad a propiedad al leer de disco y necesita un constructor sin
+///             argumentos y setters. Los <c>record</c> son para los DTOs inmutables; aquí
+///             lo que importa es que el ORM pueda materializarla.
+///         </para>
+///     </remarks>
 /// </summary>
-public class MensajeEntidad
-{
+public class MensajeEntidad {
     /// <summary>
-    /// Identificador único del mensaje. Es el MISMO <see cref="MensajeDto.Id"/>
-    /// que genera el servidor al recibirlo, no uno nuevo de la base de datos:
-    /// así el cliente puede reconocer "su" mensaje sin id adicional.
+    ///     Identificador único del mensaje. Es el MISMO <see cref="MensajeDto.Id" />
+    ///     que genera el servidor al recibirlo, no uno nuevo de la base de datos:
+    ///     así el cliente puede reconocer "su" mensaje sin id adicional.
     /// </summary>
     public Guid Id { get; set; }
 
@@ -43,10 +41,10 @@ public class MensajeEntidad
 
     /// <summary>Nick de quien escribió el mensaje.</summary>
     /// <remarks>
-    /// Va como texto, sin tabla de usuarios: en este proyecto no existen las
-    /// cuentas (no hay registro ni contraseña), así que no hay identidad que
-    /// enlazar. Un límite honesto: si dos personas usan el mismo nick en
-    /// momentos distintos, no se pueden distinguir.
+    ///     Va como texto, sin tabla de usuarios: en este proyecto no existen las
+    ///     cuentas (no hay registro ni contraseña), así que no hay identidad que
+    ///     enlazar. Un límite honesto: si dos personas usan el mismo nick en
+    ///     momentos distintos, no se pueden distinguir.
     /// </remarks>
     public string Usuario { get; set; } = string.Empty;
 
@@ -54,52 +52,54 @@ public class MensajeEntidad
     public string Texto { get; set; } = string.Empty;
 
     /// <summary>
-    /// Momento (UTC) en el que se escribió, asignado SIEMPRE por el servidor.
-    ///
-    /// <remarks>
-    /// <para>
-    /// Es <c>DateTime</c> SIEMPRE en UTC, y ese es un contrato, no un detalle.
-    /// La lección que cuesta aprender: SQLite no tiene un tipo de fecha nativo,
-    /// guarda texto, y el proveedor de EF Core puede DEVOLVER el <c>Kind</c>
-    /// perdido (Unspecified en vez de Utc). Por eso al LEER hay que devolverlo
-    /// a UTC con <c>DateTime.SpecifyKind</c>, y por eso aquí se usa
-    /// <c>DateTime</c> y no <c>DateTimeOffset</c>.
-    /// </para>
-    /// <para>
-    /// De hecho, la primera versión de esta entidad usó <c>DateTimeOffset</c>
-    /// precisamente para blindar el UTC… y SQLite reventó al ordenar:
-    /// <c>SQLite does not support expressions of type 'DateTimeOffset' in ORDER
-    /// BY clauses</c>. La consulta central del chat ("los últimos N de un
-    /// canal") es un ORDER BY, así que la opción "más segura" rompía lo
-    /// principal. Con <c>DateTime</c> en UTC el orden SÍ funciona, porque se
-    /// guarda como texto ISO-8601 con ceros a la izquierda y el orden
-    /// lexicográfico coincide con el cronológico. Un gotcha real, cazado por
-    /// los tests y aquí documentado.
-    /// </para>
-    /// </remarks>
+    ///     Momento (UTC) en el que se escribió, asignado SIEMPRE por el servidor.
+    ///     <remarks>
+    ///         <para>
+    ///             Es <c>DateTime</c> SIEMPRE en UTC, y ese es un contrato, no un detalle.
+    ///             La lección que cuesta aprender: SQLite no tiene un tipo de fecha nativo,
+    ///             guarda texto, y el proveedor de EF Core puede DEVOLVER el <c>Kind</c>
+    ///             perdido (Unspecified en vez de Utc). Por eso al LEER hay que devolverlo
+    ///             a UTC con <c>DateTime.SpecifyKind</c>, y por eso aquí se usa
+    ///             <c>DateTime</c> y no <c>DateTimeOffset</c>.
+    ///         </para>
+    ///         <para>
+    ///             De hecho, la primera versión de esta entidad usó <c>DateTimeOffset</c>
+    ///             precisamente para blindar el UTC… y SQLite reventó al ordenar:
+    ///             <c>
+    ///                 SQLite does not support expressions of type 'DateTimeOffset' in ORDER
+    ///                 BY clauses
+    ///             </c>
+    ///             . La consulta central del chat ("los últimos N de un
+    ///             canal") es un ORDER BY, así que la opción "más segura" rompía lo
+    ///             principal. Con <c>DateTime</c> en UTC el orden SÍ funciona, porque se
+    ///             guarda como texto ISO-8601 con ceros a la izquierda y el orden
+    ///             lexicográfico coincide con el cronológico. Un gotcha real, cazado por
+    ///             los tests y aquí documentado.
+    ///         </para>
+    ///     </remarks>
     /// </summary>
     public DateTime Timestamp { get; set; }
 
     /// <summary>
-    /// Tipo del mensaje: <see cref="TipoMensaje.Normal"/> (de usuario) o
-    /// <see cref="TipoMensaje.Sistema"/> (unión, salida, cambio de nick).
+    ///     Tipo del mensaje: <see cref="TipoMensaje.Normal" /> (de usuario) o
+    ///     <see cref="TipoMensaje.Sistema" /> (unión, salida, cambio de nick).
     /// </summary>
     /// <remarks>
-    /// Se guarda como entero (0 y 1), que es como EF Core mapea los enums por
-    /// defecto. Aunque ahora SOLO se persisten los normales, la columna
-    /// contempla ambos valores por si algún día cambia la decisión.
+    ///     Se guarda como entero (0 y 1), que es como EF Core mapea los enums por
+    ///     defecto. Aunque ahora SOLO se persisten los normales, la columna
+    ///     contempla ambos valores por si algún día cambia la decisión.
     /// </remarks>
     public TipoMensaje Tipo { get; set; }
 
     /// <summary>
-    /// true si el texto se modificó DESPUÉS de enviarse (Fase 4.4). Se pone
-    /// al editar y ya no se quita: aunque luego vuelvas a editar, el mensaje
-    /// sigue siendo "editado" para quien lo mira.
+    ///     true si el texto se modificó DESPUÉS de enviarse (Fase 4.4). Se pone
+    ///     al editar y ya no se quita: aunque luego vuelvas a editar, el mensaje
+    ///     sigue siendo "editado" para quien lo mira.
     /// </summary>
     /// <remarks>
-    /// Se guarda como 0/1 (booleano de SQLite). Sin esta columna, el marcador
-    /// "(editado)" se perdería en cada reinicio: el texto nuevo sí estaría,
-    /// pero ya no habría forma de saber que alguna vez fue distinto.
+    ///     Se guarda como 0/1 (booleano de SQLite). Sin esta columna, el marcador
+    ///     "(editado)" se perdería en cada reinicio: el texto nuevo sí estaría,
+    ///     pero ya no habría forma de saber que alguna vez fue distinto.
     /// </remarks>
     public bool Editado { get; set; }
 }

@@ -11,7 +11,7 @@ using Serilog.Events;
 
 Console.OutputEncoding = Encoding.UTF8;
 
-var builder = WebApplication.CreateBuilder(args);
+WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
 // Serilog: la configuración vive entera en la sección "Serilog" de
 // appsettings.json (sinks, niveles, rolling de 7 días del fichero de
@@ -28,8 +28,8 @@ Log.Information("🚀 Inicializando AulaChatNet.Server...");
 // 🔧 CONFIGURACIÓN DE SERVICIOS (Extension Methods en Infrastructures)
 // ============================================================================
 
-var services = builder.Services;
-var configuration = builder.Configuration;
+IServiceCollection services = builder.Services;
+ConfigurationManager configuration = builder.Configuration;
 
 // Opciones tipadas del chat (sección "Chat") + store en memoria (singleton)
 services.AddChatServices(configuration);
@@ -48,7 +48,7 @@ services.AddCorsPolicy(configuration);
 // 🚀 CONSTRUCCIÓN DE LA APLICACIÓN
 // ============================================================================
 
-var app = builder.Build();
+WebApplication app = builder.Build();
 
 Log.Information("✅ Aplicación construida");
 
@@ -58,8 +58,7 @@ Log.Information("✅ Aplicación construida");
 
 // Log de peticiones HTTP. La negociación de SignalR genera una petición por
 // cada conexión al hub; la bajamos a Debug para no ensuciar la consola.
-app.UseSerilogRequestLogging(opciones =>
-{
+app.UseSerilogRequestLogging(opciones => {
     opciones.GetLevel = (httpContext, transcurrido, excepcion) =>
         excepcion is not null
             ? LogEventLevel.Error
@@ -90,50 +89,42 @@ PrintStartupInfo(configuration);
 // ▶️ ARRANQUE DE LA APLICACIÓN
 // ============================================================================
 
-try
-{
+try {
     // Persistencia al arrancar (Fase 2). Se usa Migrate() y no EnsureCreated():
     // Migrate() aplica SOLO lo que falta y conserva los datos existentes;
     // EnsureCreated() recrearía el esquema y borraría el historial guardado.
     // Se usa un servicio con scope porque el DbContext es de corta vida.
-    var persistencia = app.Services.CreateScope().ServiceProvider
+    IDbContextFactory<AulaChatContexto> persistencia = app.Services.CreateScope().ServiceProvider
         .GetRequiredService<IDbContextFactory<AulaChatContexto>>();
 
-    var opcionesPersistencia = app.Services.GetRequiredService<IOptions<PersistenciaConfig>>().Value;
+    PersistenciaConfig opcionesPersistencia = app.Services.GetRequiredService<IOptions<PersistenciaConfig>>().Value;
 
     // Un único contexto desechable para toda la fase de arranque (borrado + migración)
-    await using var contexto = await persistencia.CreateDbContextAsync();
+    await using AulaChatContexto contexto = await persistencia.CreateDbContextAsync();
 
     // Limpieza opcional: si la clave está activa, se BORRA la base de datos
     // entera antes de migrar, para empezar con el historial vacío. Está pensada
     // para desarrollo. El porqué es una clave explícita y no una regla por
     // entorno está explicado en PersistenciaConfig.LimpiarAlArrancar.
-    if (opcionesPersistencia.LimpiarAlArrancar)
-    {
-        var borrada = await contexto.Database.EnsureDeletedAsync();
+    if (opcionesPersistencia.LimpiarAlArrancar) {
+        bool borrada = await contexto.Database.EnsureDeletedAsync();
         Log.Warning(
             "🧹 Arranque limpio (LimpiarAlArrancar=true): base de datos {Estado}. El historial empieza vacío.",
             borrada ? "borrada y recreada" : "no existía, se crea vacía");
     }
 
-    if (opcionesPersistencia.MigrarAutomaticamente)
-    {
-        var migraciones = await contexto.Database.GetPendingMigrationsAsync();
+    if (opcionesPersistencia.MigrarAutomaticamente) {
+        IEnumerable<string> migraciones = await contexto.Database.GetPendingMigrationsAsync();
 
-        if (migraciones.Any())
-        {
+        if (migraciones.Any()) {
             await contexto.Database.MigrateAsync();
             Log.Information(
                 "💾 Base de datos migrada en {Ruta} ({Pendientes} migraciones aplicadas)",
                 opcionesPersistencia.Ruta, migraciones.Count());
-        }
-        else
-        {
+        } else {
             Log.Information("💾 Base de datos al día en {Ruta}", opcionesPersistencia.Ruta);
         }
-    }
-    else
-    {
+    } else {
         // Sin migraciones no hay tablas. Si además se pidió limpiar, el borrado
         // deja la BD sin esquema, así que se avisa alto y claro.
         Log.Warning(
@@ -152,27 +143,20 @@ try
     // implementación de la persistencia, no del contrato del hub.
     // Si algo falla (p. ej. esquema sin migrar), se avisa y se arranca con la
     // caché vacía: una precarga no debe tumbar el servidor.
-    try
-    {
-        var store = app.Services.GetRequiredService<ChatStore>();
-        var precargados = await store.PrecargarAsync(opcionesPersistencia.PreloadMensajes);
+    try {
+        ChatStore store = app.Services.GetRequiredService<ChatStore>();
+        int precargados = await store.PrecargarAsync(opcionesPersistencia.PreloadMensajes);
         Log.Information("📚 Historial precargado: {N} mensajes desde la base de datos", precargados);
-    }
-    catch (Exception ex)
-    {
+    } catch (Exception ex) {
         Log.Warning(ex,
             "No se pudo precargar el historial (¿esquema sin migrar?); se arranca con la caché vacía");
     }
 
     app.Run();
-}
-catch (Exception ex)
-{
+} catch (Exception ex) {
     Log.Fatal(ex, "💥 La aplicación falló al iniciar");
     throw;
-}
-finally
-{
+} finally {
     Log.CloseAndFlush();
 }
 
@@ -181,15 +165,14 @@ finally
 // Imprime en los logs la información de inicio del servidor.
 // </summary>
 // <param name="configuration">La configuración de la aplicación.</param>
-static void PrintStartupInfo(IConfiguration configuration)
-{
-    var chat = configuration.GetSection(ChatConfig.Seccion).Get<ChatConfig>()
-               ?? new ChatConfig();
+static void PrintStartupInfo(IConfiguration configuration) {
+    ChatConfig chat = configuration.GetSection(ChatConfig.Seccion).Get<ChatConfig>()
+                      ?? new ChatConfig();
 
-    var urls = configuration["ASPNETCORE_URLS"]?.Split(';') ?? ["http://localhost:5030"];
-    var primeraUrl = urls.FirstOrDefault() ?? "http://localhost:5030";
-    var host = primeraUrl.Contains("://") ? primeraUrl.Split("://")[1].Split(':')[0] : "localhost";
-    var puerto = primeraUrl.Contains(':') ? primeraUrl.Split(':').Last() : "5030";
+    string[] urls = configuration["ASPNETCORE_URLS"]?.Split(';') ?? ["http://localhost:5030"];
+    string primeraUrl = urls.FirstOrDefault() ?? "http://localhost:5030";
+    string host = primeraUrl.Contains("://") ? primeraUrl.Split("://")[1].Split(':')[0] : "localhost";
+    string puerto = primeraUrl.Contains(':') ? primeraUrl.Split(':').Last() : "5030";
 
     Log.Information("=================================================================");
     Log.Information("AulaChatNet - Chat en tiempo real para el aula");

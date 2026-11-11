@@ -4,42 +4,35 @@ using AulaChatNet.Shared.Comandos;
 using AulaChatNet.Shared.Configuracion;
 using AulaChatNet.Shared.Dtos;
 using AulaChatNet.Shared.Helpers;
-using FluentAssertions;
 using Moq;
 
 namespace AulaChatNet.Client.Blazor.Components.Tests.Services;
 
 /// <summary>
-/// Pruebas del procesador de comandos de la web: MISMO parser y MISMAS
-/// reglas que la terminal (ChatConfig compartida), ejecutados contra stores
-/// simuladas — sin red y sin navegador. Por cada comando se comprueba qué
-/// toca en la store y qué se le cuenta al usuario (avisos en el flujo).
+///     Pruebas del procesador de comandos de la web: MISMO parser y MISMAS
+///     reglas que la terminal (ChatConfig compartida), ejecutados contra stores
+///     simuladas — sin red y sin navegador. Por cada comando se comprueba qué
+///     toca en la store y qué se le cuenta al usuario (avisos en el flujo).
 /// </summary>
 [TestFixture]
-public class ProcesadorComandosTests
-{
-    private StoreFalsa _store = null!;
-    private Mock<ISesionStore> _sesion = null!;
-    private ChatConfig _config = null!;
-    private ProcesadorComandos _procesador = null!;
-
+public class ProcesadorComandosTests {
     [SetUp]
-    public void SetUp()
-    {
+    public void SetUp() {
         _store = StoreFalsa.Crear(["#general", "#daw"]);
         _sesion = new Mock<ISesionStore>();
-        _config = new ChatConfig
-        {
+        _config = new ChatConfig {
             Canales = ["#general", "#daw"]
         };
         _procesador = new ProcesadorComandos(_store.Objeto, _config, _sesion.Object);
     }
 
-    #region Ayuda Tests
+    private StoreFalsa _store = null!;
+    private Mock<ISesionStore> _sesion = null!;
+    private ChatConfig _config = null!;
+    private ProcesadorComandos _procesador = null!;
 
     [Test]
-    public async Task AyudaSinTema_EnseniaElCatalogoCompleto()
-    {
+    public async Task AyudaSinTema_EnseniaElCatalogoCompleto() {
         // Act
         await _procesador.EjecutarAsync(new Comando.Ayuda(null));
 
@@ -51,8 +44,7 @@ public class ProcesadorComandosTests
     }
 
     [Test]
-    public async Task AyudaConTema_EnseniaSoloEseComando()
-    {
+    public async Task AyudaConTema_EnseniaSoloEseComando() {
         // Act: "canal" (sin barra) debe bastar
         await _procesador.EjecutarAsync(new Comando.Ayuda("canal"));
 
@@ -63,8 +55,7 @@ public class ProcesadorComandosTests
     }
 
     [Test]
-    public async Task AyudaConTemaInexistente_AvisaQueNoHayAyuda()
-    {
+    public async Task AyudaConTemaInexistente_AvisaQueNoHayAyuda() {
         // Act
         await _procesador.EjecutarAsync(new Comando.Ayuda("magia"));
 
@@ -73,13 +64,8 @@ public class ProcesadorComandosTests
             t.Contains("No hay ayuda") && t.Contains("/ayuda"))), Times.Once);
     }
 
-    #endregion
-
-    #region Canales Tests
-
     [Test]
-    public async Task Canales_MuestraTotalesConteosYElActual()
-    {
+    public async Task Canales_MuestraTotalesConteosYElActual() {
         // Arrange: estamos en #daw con 2 de las 3 personas conectadas
         _store.CanalActual.OnNext("#daw");
         _store.Estadisticas.OnNext(new EstadisticasDto(3,
@@ -95,13 +81,8 @@ public class ProcesadorComandosTests
             t.Contains("#daw 2 ● actual"))), Times.Once);
     }
 
-    #endregion
-
-    #region Canal Tests
-
     [Test]
-    public async Task CanalNoValido_AvisaSinTocarLaRed()
-    {
+    public async Task CanalNoValido_AvisaSinTocarLaRed() {
         // Act
         await _procesador.EjecutarAsync(new Comando.Canal("noexiste"));
 
@@ -111,8 +92,7 @@ public class ProcesadorComandosTests
     }
 
     [Test]
-    public async Task CanalValido_CambiaElCanalSinAviso()
-    {
+    public async Task CanalValido_CambiaElCanalSinAviso() {
         // Act: "daw" sin almohadilla vale (lo normaliza ChatConfig/hub)
         await _procesador.EjecutarAsync(new Comando.Canal("daw"));
 
@@ -123,8 +103,7 @@ public class ProcesadorComandosTests
     }
 
     [Test]
-    public async Task CanalValidoConErrorDeLaStore_AvisaElError()
-    {
+    public async Task CanalValidoConErrorDeLaStore_AvisaElError() {
         // Arrange: la store traduce la caída de conexión a un mensaje
         _store.Mock.Setup(s => s.CambiarCanalAsync("daw"))
             .ReturnsAsync("Sin conexión con el servidor");
@@ -136,13 +115,8 @@ public class ProcesadorComandosTests
         _store.Mock.Verify(s => s.Aviso("Sin conexión con el servidor"), Times.Once);
     }
 
-    #endregion
-
-    #region Nick Tests
-
     [Test]
-    public async Task NickDemasiadoCorto_AvisaSinTocarLaRed()
-    {
+    public async Task NickDemasiadoCorto_AvisaSinTocarLaRed() {
         // Act: un solo carácter no llega al mínimo de ChatConfig
         await _procesador.EjecutarAsync(new Comando.Nick("a"));
 
@@ -152,8 +126,7 @@ public class ProcesadorComandosTests
     }
 
     [Test]
-    public async Task NickValido_CambiaElNickSinAvisoDeExito()
-    {
+    public async Task NickValido_CambiaElNickSinAvisoDeExito() {
         // Act
         await _procesador.EjecutarAsync(new Comando.Nick("Ana2"));
 
@@ -162,13 +135,8 @@ public class ProcesadorComandosTests
         _store.Mock.Verify(s => s.Aviso(It.IsAny<string>()), Times.Never);
     }
 
-    #endregion
-
-    #region Usuarios Tests
-
     [Test]
-    public async Task UsuariosSinArgumento_ListaLosDelCanalActualSinRed()
-    {
+    public async Task UsuariosSinArgumento_ListaLosDelCanalActualSinRed() {
         // Arrange: somos #general con dos personas dentro
         _store.CanalActual.OnNext("#general");
         _store.Usuarios.OnNext(
@@ -189,8 +157,7 @@ public class ProcesadorComandosTests
     }
 
     [Test]
-    public async Task UsuariosDeOtroCanal_ConsultaAlServidor()
-    {
+    public async Task UsuariosDeOtroCanal_ConsultaAlServidor() {
         // Arrange: dentro de #general mirando dentro de #daw
         _store.CanalActual.OnNext("#general");
         _store.Mock.Setup(s => s.ObtenerUsuariosAsync("#daw"))
@@ -206,8 +173,7 @@ public class ProcesadorComandosTests
     }
 
     [Test]
-    public async Task UsuariosDeOtroCanalSinConexion_AvisaSinMentir()
-    {
+    public async Task UsuariosDeOtroCanalSinConexion_AvisaSinMentir() {
         // Arrange: la store devuelve null cuando no pudo consultar
         _store.CanalActual.OnNext("#general");
         _store.Mock.Setup(s => s.ObtenerUsuariosAsync("#daw"))
@@ -221,8 +187,7 @@ public class ProcesadorComandosTests
     }
 
     [Test]
-    public async Task UsuariosDeCanalInexistente_AvisaConLaListaDeValidos()
-    {
+    public async Task UsuariosDeCanalInexistente_AvisaConLaListaDeValidos() {
         // Act
         await _procesador.EjecutarAsync(new Comando.Usuarios("noexiste"));
 
@@ -231,13 +196,8 @@ public class ProcesadorComandosTests
         _store.Mock.Verify(s => s.Aviso(It.Is<string>(t => t.Contains("no existe"))), Times.Once);
     }
 
-    #endregion
-
-    #region Privado Tests
-
     [Test]
-    public async Task Privado_LlamaAlStoreConElDestinatarioYElTexto()
-    {
+    public async Task Privado_LlamaAlStoreConElDestinatarioYElTexto() {
         // Arrange
         _store.Mock.Setup(s => s.EnviarPrivadoAsync(It.IsAny<string>(), It.IsAny<string>()))
             .ReturnsAsync((string?)null);
@@ -250,8 +210,7 @@ public class ProcesadorComandosTests
     }
 
     [Test]
-    public async Task PrivadoCorrecto_NoAvisaNada_NadieQuiereUnMensajeDeConfirmacion()
-    {
+    public async Task PrivadoCorrecto_NoAvisaNada_NadieQuiereUnMensajeDeConfirmacion() {
         // Arrange: el eco del privado llega por evento y lo pinta la vista
         _store.Mock.Setup(s => s.EnviarPrivadoAsync(It.IsAny<string>(), It.IsAny<string>()))
             .ReturnsAsync((string?)null);
@@ -264,8 +223,7 @@ public class ProcesadorComandosTests
     }
 
     [Test]
-    public async Task PrivadoConError_DevuelveElAvisoAlFlujo()
-    {
+    public async Task PrivadoConError_DevuelveElAvisoAlFlujo() {
         // Arrange: el servidor no encuentra a nadie con ese nombre
         _store.Mock.Setup(s => s.EnviarPrivadoAsync("Maria", It.IsAny<string>()))
             .ReturnsAsync("No hay nadie llamado Maria conectado en tu canal");
@@ -277,13 +235,8 @@ public class ProcesadorComandosTests
         _store.Mock.Verify(s => s.Aviso(It.Is<string>(t => t.Contains("Maria"))), Times.Once);
     }
 
-    #endregion
-
-    #region Reconectar Tests
-
     [Test]
-    public async Task ReconectarDesconectado_VuelveAEntrarYAvisa()
-    {
+    public async Task ReconectarDesconectado_VuelveAEntrarYAvisa() {
         // Arrange: fuera (la reconexión automática ya se rindió)
         _store.Estado.OnNext(EstadoConexion.Desconectado);
         _store.Mock.Setup(s => s.ReconectarAsync()).ReturnsAsync((string?)null);
@@ -297,8 +250,7 @@ public class ProcesadorComandosTests
     }
 
     [Test]
-    public async Task ReconectarConectado_AvisaQueNoHaceFalta()
-    {
+    public async Task ReconectarConectado_AvisaQueNoHaceFalta() {
         // Arrange: la store arranca conectada (StoreFalsa)
         // Act
         await _procesador.EjecutarAsync(new Comando.Reconectar());
@@ -309,8 +261,7 @@ public class ProcesadorComandosTests
     }
 
     [Test]
-    public async Task ReconectarMientrasSeReconectaSolo_PidePaciencia()
-    {
+    public async Task ReconectarMientrasSeReconectaSolo_PidePaciencia() {
         // Arrange: la reconexión automática de SignalR aún va en marcha
         _store.Estado.OnNext(EstadoConexion.Reconectando);
 
@@ -322,13 +273,8 @@ public class ProcesadorComandosTests
         _store.Mock.Verify(s => s.Aviso(It.Is<string>(t => t.Contains("sigue en marcha"))), Times.Once);
     }
 
-    #endregion
-
-    #region Sesión Tests
-
     [Test]
-    public async Task SesionVer_MuestraLoGuardadoDelNavegador()
-    {
+    public async Task SesionVer_MuestraLoGuardadoDelNavegador() {
         // Arrange
         _sesion.Setup(s => s.CargarAsync()).ReturnsAsync(new SesionGuardada("Ana", "#daw"));
 
@@ -341,8 +287,7 @@ public class ProcesadorComandosTests
     }
 
     [Test]
-    public async Task SesionVerSinNadaGuardado_LoDiceClaramente()
-    {
+    public async Task SesionVerSinNadaGuardado_LoDiceClaramente() {
         // Arrange: mock suelto → null (no hay sesión)
         _sesion.Setup(s => s.CargarAsync()).ReturnsAsync((SesionGuardada?)null);
 
@@ -355,8 +300,7 @@ public class ProcesadorComandosTests
     }
 
     [Test]
-    public async Task SesionBorrar_BorraYConfirmo()
-    {
+    public async Task SesionBorrar_BorraYConfirmo() {
         // Arrange
         _sesion.Setup(s => s.BorrarAsync()).ReturnsAsync(true);
 
@@ -369,8 +313,7 @@ public class ProcesadorComandosTests
     }
 
     [Test]
-    public async Task SesionBorrarSinNada_AvisaQueNoHabiaNada()
-    {
+    public async Task SesionBorrarSinNada_AvisaQueNoHabiaNada() {
         // Arrange
         _sesion.Setup(s => s.BorrarAsync()).ReturnsAsync(false);
 
@@ -381,13 +324,8 @@ public class ProcesadorComandosTests
         _store.Mock.Verify(s => s.Aviso(It.Is<string>(t => t.Contains("No había ninguna sesión"))), Times.Once);
     }
 
-    #endregion
-
-    #region Limpiar, Salir y errores Tests
-
     [Test]
-    public async Task Limpiar_VaciaLaVistaLocalSinAvisar()
-    {
+    public async Task Limpiar_VaciaLaVistaLocalSinAvisar() {
         // Act: limpiar es silencioso, igual que en la terminal
         await _procesador.EjecutarAsync(new Comando.Limpiar());
 
@@ -397,8 +335,7 @@ public class ProcesadorComandosTests
     }
 
     [Test]
-    public async Task Salir_CierraLaSesionOrdenadamente()
-    {
+    public async Task Salir_CierraLaSesionOrdenadamente() {
         // Act: mismo camino que el botón Salir de la barra
         await _procesador.EjecutarAsync(new Comando.Salir());
 
@@ -407,8 +344,7 @@ public class ProcesadorComandosTests
     }
 
     [Test]
-    public async Task Desconocido_RecuerdaLaAyuda()
-    {
+    public async Task Desconocido_RecuerdaLaAyuda() {
         // Act
         await _procesador.EjecutarAsync(new Comando.Desconocido("/magia"));
 
@@ -418,8 +354,7 @@ public class ProcesadorComandosTests
     }
 
     [Test]
-    public async Task Invalido_EnseniaElUsoCorrecto()
-    {
+    public async Task Invalido_EnseniaElUsoCorrecto() {
         // Act: el parser ya tipó el motivo y el uso (p. ej. /canal sin nombre)
         await _procesador.EjecutarAsync(new Comando.Invalido(
             "Falta el nombre del canal", "Usa: /canal <nombre> (p. ej. /canal daw)"));
@@ -431,8 +366,7 @@ public class ProcesadorComandosTests
     }
 
     [Test]
-    public async Task MensajeNormal_NoPasaPorElProcesador()
-    {
+    public async Task MensajeNormal_NoPasaPorElProcesador() {
         // Act: la caja no manda aquí lo que no es comando; si llegara,
         // el procesador no hace nada con ello
         await _procesador.EjecutarAsync(new Comando.Enviar("hola"));
@@ -443,13 +377,8 @@ public class ProcesadorComandosTests
         _store.Mock.Verify(s => s.CerrarAsync(), Times.Never);
     }
 
-    #endregion
-
-    #region Reaccion Tests
-
     [Test]
-    public async Task ReaccionAlUltimoMensaje_InvocaAlServerConSuId()
-    {
+    public async Task ReaccionAlUltimoMensaje_InvocaAlServerConSuId() {
         // Arrange: dos mensajes en la vista; el objetivo es el ÚLTIMO de persona
         var primero = new MensajeDto(Guid.NewGuid(), "Ana", "Hola", DateTime.UtcNow, TipoMensaje.Normal);
         var ultimo = new MensajeDto(Guid.NewGuid(), "Bruno", "¿Tal?", DateTime.UtcNow, TipoMensaje.Normal);
@@ -464,8 +393,7 @@ public class ProcesadorComandosTests
     }
 
     [Test]
-    public async Task ReaccionConEmojiFueraDeLaLista_SeAvisaSinTocarLaRed()
-    {
+    public async Task ReaccionConEmojiFueraDeLaLista_SeAvisaSinTocarLaRed() {
         // Act: 🔥 es bonito, pero no está en la lista cerrada
         await _procesador.EjecutarAsync(new Comando.Reaccion("🔥"));
 
@@ -476,8 +404,7 @@ public class ProcesadorComandosTests
     }
 
     [Test]
-    public async Task ReaccionSinMensajes_AvisaQueNoHayNadaQueReaccionar()
-    {
+    public async Task ReaccionSinMensajes_AvisaQueNoHayNadaQueReaccionar() {
         // Arrange: vista vacía (nunca se entró en un canal)
         _store.Mensajes.OnNext([]);
 
@@ -490,8 +417,7 @@ public class ProcesadorComandosTests
     }
 
     [Test]
-    public async Task ReaccionASoloAvisosDeSistema_NoCuentaComoMensaje()
-    {
+    public async Task ReaccionASoloAvisosDeSistema_NoCuentaComoMensaje() {
         // Arrange: la vista solo tiene el aviso de unión (no es de persona)
         var aviso = new MensajeDto(
             Guid.NewGuid(), MensajesSistema.Autor, "Luis se ha unido al canal",
@@ -508,8 +434,7 @@ public class ProcesadorComandosTests
     }
 
     [Test]
-    public async Task ReaccionConErrorDelServer_SeAvisaEnLaVista()
-    {
+    public async Task ReaccionConErrorDelServer_SeAvisaEnLaVista() {
         // Arrange: el servidor rechaza (mensaje ya fuera de la caché)
         _store.Mensajes.OnNext(
             [new MensajeDto(Guid.NewGuid(), "Ana", "Hola", DateTime.UtcNow, TipoMensaje.Normal)]);
@@ -523,13 +448,8 @@ public class ProcesadorComandosTests
         _store.Mock.Verify(s => s.Aviso("Ese mensaje ya no está en el canal"), Times.Once);
     }
 
-    #endregion
-
-    #region Editar y borrar Tests
-
     [Test]
-    public async Task EditarAccionTuyo_InvocaAlServerConSuId()
-    {
+    public async Task EditarAccionTuyo_InvocaAlServerConSuId() {
         // Arrange: Ana escribe y ahora edita SU último mensaje — aunque
         // haya mensajes de otros (y de sistema) DESPUÉS en la vista
         _store.Nick.OnNext("Ana");
@@ -539,7 +459,7 @@ public class ProcesadorComandosTests
             new MensajeDto(Guid.NewGuid(), "Luis", "¿Tal?", DateTime.UtcNow, TipoMensaje.Normal)
         ]);
 
-        var mio = _store.Mensajes.Value[0];
+        MensajeDto mio = _store.Mensajes.Value[0];
 
         // Act
         await _procesador.EjecutarAsync(new Comando.Editar("Hola a todos"));
@@ -550,8 +470,7 @@ public class ProcesadorComandosTests
     }
 
     [Test]
-    public async Task EditarSinMensajesPropios_AvisaSinTocarLaRed()
-    {
+    public async Task EditarSinMensajesPropios_AvisaSinTocarLaRed() {
         // Arrange: en la vista solo hay mensajes de otros
         _store.Nick.OnNext("Ana");
         _store.Mensajes.OnNext(
@@ -568,8 +487,7 @@ public class ProcesadorComandosTests
     }
 
     [Test]
-    public async Task EditarConErrorDelServer_SeAvisaEnLaVista()
-    {
+    public async Task EditarConErrorDelServer_SeAvisaEnLaVista() {
         // Arrange: el servidor rechaza (mensaje ya no en el canal)
         _store.Nick.OnNext("Ana");
         _store.Mensajes.OnNext(
@@ -585,8 +503,7 @@ public class ProcesadorComandosTests
     }
 
     [Test]
-    public async Task BorrarAccionTuyo_InvocaAlServerConSuId()
-    {
+    public async Task BorrarAccionTuyo_InvocaAlServerConSuId() {
         // Arrange: mismo criterio que editar — tu último mensaje, no el del
         // canal
         _store.Nick.OnNext("Ana");
@@ -596,7 +513,7 @@ public class ProcesadorComandosTests
             new MensajeDto(Guid.NewGuid(), "Luis", "¿Tal?", DateTime.UtcNow, TipoMensaje.Normal)
         ]);
 
-        var mio = _store.Mensajes.Value[0];
+        MensajeDto mio = _store.Mensajes.Value[0];
 
         // Act
         await _procesador.EjecutarAsync(new Comando.Borrar());
@@ -607,8 +524,7 @@ public class ProcesadorComandosTests
     }
 
     [Test]
-    public async Task BorrarSinMensajesPropios_AvisaSinTocarLaRed()
-    {
+    public async Task BorrarSinMensajesPropios_AvisaSinTocarLaRed() {
         // Arrange: vista vacía (nunca se escribió nada)
         _store.Nick.OnNext("Ana");
         _store.Mensajes.OnNext([]);
@@ -623,8 +539,7 @@ public class ProcesadorComandosTests
     }
 
     [Test]
-    public async Task BorrarConErrorDelServer_SeAvisaEnLaVista()
-    {
+    public async Task BorrarConErrorDelServer_SeAvisaEnLaVista() {
         // Arrange: el servidor rechaza (mensaje ajeno, se cambió el nick...)
         _store.Nick.OnNext("Ana");
         _store.Mensajes.OnNext(
@@ -638,6 +553,4 @@ public class ProcesadorComandosTests
         // Assert
         _store.Mock.Verify(s => s.Aviso("Solo puedes modificar tus propios mensajes"), Times.Once);
     }
-
-    #endregion
 }

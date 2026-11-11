@@ -8,21 +8,20 @@ using Microsoft.Extensions.DependencyInjection;
 namespace AulaChatNet.Client.Blazor.Components.Tests.Components;
 
 /// <summary>
-/// Pruebas de la fila de mensaje privado: MISMA estructura que un mensaje
-/// normal, con el 🔒 rosa, el "para/de quien" según quién lo escribió y el
-/// aviso de que no se guarda colgado del title del candado.
+///     Pruebas de la fila de mensaje privado: MISMA estructura que un mensaje
+///     normal, con el 🔒 rosa, el "para/de quien" según quién lo escribió y el
+///     aviso de que no se guarda colgado del title del candado.
 /// </summary>
 [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
-public class PrivadoItemTests : BunitContext
-{
+public class PrivadoItemTests : BunitContext {
     /// <summary>Crea el privado de prueba: de Ana a Luis.</summary>
-    private static MensajePrivadoDto Privado() =>
-        new(Guid.NewGuid(), "Ana", "Luis", "Esto no lo ve nadie más",
+    private static MensajePrivadoDto Privado() {
+        return new MensajePrivadoDto(Guid.NewGuid(), "Ana", "Luis", "Esto no lo ve nadie más",
             new DateTime(2026, 3, 2, 11, 0, 0, DateTimeKind.Utc));
+    }
 
     /// <summary>Renderiza la fila con el nick dado como "yo".</summary>
-    private IRenderedComponent<PrivadoItem> Renderizar(string? yo)
-    {
+    private IRenderedComponent<PrivadoItem> Renderizar(string? yo) {
         var store = StoreFalsa.Crear();
         store.Nick.OnNext(yo);
         Services.AddSingleton(store.Objeto);
@@ -32,30 +31,27 @@ public class PrivadoItemTests : BunitContext
     }
 
     [Test]
-    public void PrivadoQueEscribiYo_DiceParaQuienEs()
-    {
+    public void PrivadoQueEscribiYo_DiceParaQuienEs() {
         // Arrange y act
-        var cut = Renderizar("Ana");
+        IRenderedComponent<PrivadoItem> cut = Renderizar("Ana");
 
         // Assert
         cut.Find(".privado-marca").TextContent.Should().Contain("para Luis");
     }
 
     [Test]
-    public void PrivadoQueMeEnviaron_DiceQuienLoEscribio()
-    {
+    public void PrivadoQueMeEnviaron_DiceQuienLoEscribio() {
         // Arrange y act: yo soy Luis, así que el de Ana es "de Ana"
-        var cut = Renderizar("Luis");
+        IRenderedComponent<PrivadoItem> cut = Renderizar("Luis");
 
         // Assert
         cut.Find(".privado-marca").TextContent.Should().Contain("de Ana");
     }
 
     [Test]
-    public void Marca_LlevaLaNotaDeQueNoSeGuardaEnElTitle()
-    {
+    public void Marca_LlevaLaNotaDeQueNoSeGuardaEnElTitle() {
         // Arrange y act
-        var cut = Renderizar("Luis");
+        IRenderedComponent<PrivadoItem> cut = Renderizar("Luis");
 
         // Assert: descubrible al pasar el ratón, sin sumar una línea al flujo
         cut.Find(".privado-marca")
@@ -63,10 +59,9 @@ public class PrivadoItemTests : BunitContext
     }
 
     [Test]
-    public void Fila_LlevaElCuerpoDelMensaje()
-    {
+    public void Fila_LlevaElCuerpoDelMensaje() {
         // Arrange y act
-        var cut = Renderizar("Luis");
+        IRenderedComponent<PrivadoItem> cut = Renderizar("Luis");
 
         // Assert: debajo del candado sigue estando el mensaje, igual que siempre
         cut.Find(".mensaje-texto").TextContent.Should().Be("Esto no lo ve nadie más");

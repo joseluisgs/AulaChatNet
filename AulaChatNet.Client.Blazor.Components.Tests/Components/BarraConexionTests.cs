@@ -1,26 +1,23 @@
 using AulaChatNet.Client.Blazor.Components.Shared;
-using AulaChatNet.Client.Blazor.Components.State;
 using AulaChatNet.Shared.Dtos;
 using Bunit;
-using Microsoft.Extensions.DependencyInjection;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Moq;
 
 namespace AulaChatNet.Client.Blazor.Components.Tests.Components;
 
 /// <summary>
-/// Pruebas de la barra superior: identidad, punto de estado (la misma paleta
-/// que la terminal), conteos (sala + total) y los dos botones — Reconectar
-/// (solo cuando la conexión se ha caído) y Salir.
+///     Pruebas de la barra superior: identidad, punto de estado (la misma paleta
+///     que la terminal), conteos (sala + total) y los dos botones — Reconectar
+///     (solo cuando la conexión se ha caído) y Salir.
 /// </summary>
 [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
-public class BarraConexionTests : BunitContext
-{
+public class BarraConexionTests : BunitContext {
     private StoreFalsa _store = null!;
 
     [SetUp]
-    public void SetUp()
-    {
+    public void SetUp() {
         _store = StoreFalsa.Crear();
         _store.Nick.OnNext("Ana");
         _store.CanalActual.OnNext("#general");
@@ -32,13 +29,12 @@ public class BarraConexionTests : BunitContext
     }
 
     [Test]
-    public void ConConexionEstable_MuestraIdentidadPuntoYConteos()
-    {
+    public void ConConexionEstable_MuestraIdentidadPuntoYConteos() {
         // Arrange
         _store.Estado.OnNext(EstadoConexion.Conectado);
 
         // Act
-        var cut = Render<BarraConexion>();
+        IRenderedComponent<BarraConexion> cut = Render<BarraConexion>();
 
         // Assert: "1 en la sala" (evento de grupo) · "3 en total" (evento global)
         cut.Find(".barra-nick").TextContent.Should().Be("Ana");
@@ -51,13 +47,12 @@ public class BarraConexionTests : BunitContext
     }
 
     [Test]
-    public void Reconectando_PoneElPuntoNaranja()
-    {
+    public void Reconectando_PoneElPuntoNaranja() {
         // Arrange
         _store.Estado.OnNext(EstadoConexion.Reconectando);
 
         // Act
-        var cut = Render<BarraConexion>();
+        IRenderedComponent<BarraConexion> cut = Render<BarraConexion>();
 
         // Assert
         cut.Find(".punto.reconectando").Should().NotBeNull();
@@ -65,13 +60,12 @@ public class BarraConexionTests : BunitContext
     }
 
     [Test]
-    public void ConexionCaida_MuestraElBotonReconectar()
-    {
+    public void ConexionCaida_MuestraElBotonReconectar() {
         // Arrange
         _store.Estado.OnNext(EstadoConexion.Desconectado);
 
         // Act
-        var cut = Render<BarraConexion>();
+        IRenderedComponent<BarraConexion> cut = Render<BarraConexion>();
 
         // Assert
         cut.Find(".punto.desconectado").Should().NotBeNull();
@@ -80,13 +74,12 @@ public class BarraConexionTests : BunitContext
     }
 
     [Test]
-    public void Reconectar_LlamaALaStoreY_MuestraElErrorTraducido()
-    {
+    public void Reconectar_LlamaALaStoreY_MuestraElErrorTraducido() {
         // Arrange: la reconexión manual devuelve un error ya traducido
         _store.Estado.OnNext(EstadoConexion.Desconectado);
         _store.Mock.Setup(s => s.ReconectarAsync())
             .ReturnsAsync("No se pudo reconectar: no hay red.");
-        var cut = Render<BarraConexion>();
+        IRenderedComponent<BarraConexion> cut = Render<BarraConexion>();
 
         // Act
         cut.FindAll("button.boton-secundario")
@@ -98,10 +91,9 @@ public class BarraConexionTests : BunitContext
     }
 
     [Test]
-    public void Salir_CierraLaSesionEnLaStore()
-    {
+    public void Salir_CierraLaSesionEnLaStore() {
         // Arrange
-        var cut = Render<BarraConexion>();
+        IRenderedComponent<BarraConexion> cut = Render<BarraConexion>();
 
         // Act: la store pondrá EnSesion a false y la página volverá al panel
         cut.FindAll("button.boton-secundario")

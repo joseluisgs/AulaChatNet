@@ -1,57 +1,59 @@
+using System.Net.Http;
 using AulaChatNet.Client.Blazor.Components.Configuracion;
 using AulaChatNet.Client.Blazor.Components.Infrastructures;
-using AulaChatNet.Client.Blazor.Components.Services.Storage;   // ILocalStorageService
-using AulaChatNet.Client.Wpf.Services;           // FileStorageService
+using AulaChatNet.Client.Blazor.Components.Services.Storage;
+using AulaChatNet.Client.Wpf.Services;
 using AulaChatNet.Shared.Configuracion;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;   // Replace
-using System.Net.Http;   // HttpClient (la variante windows del SDK no lo trae implícito)
+using Microsoft.Extensions.DependencyInjection.Extensions;
+// ILocalStorageService
+// FileStorageService
+// Replace
+
+// HttpClient (la variante windows del SDK no lo trae implícito)
 
 namespace AulaChatNet.Client.Wpf.Infrastructures;
 
 /// <summary>
-/// Registro de servicios de la app de escritorio (patrón de métodos de
-/// extensión, igual que el <c>ServicesConfig</c> del servidor): MISMO
-/// esqueleto que el host WebAssembly — ChatConfig, WebConfig, HttpClient y
-/// las stores reactivas de la librería compartida— con UNA diferencia de
-/// fondo: aquí no existe el "mismo origen", porque no hay página servida,
-/// hay un .exe, así que una <c>Web:UrlServidor</c> vacía apunta al servidor
-/// local por defecto en lugar de a la URL de la que se cargó la app.
+///     Registro de servicios de la app de escritorio (patrón de métodos de
+///     extensión, igual que el <c>ServicesConfig</c> del servidor): MISMO
+///     esqueleto que el host WebAssembly — ChatConfig, WebConfig, HttpClient y
+///     las stores reactivas de la librería compartida— con UNA diferencia de
+///     fondo: aquí no existe el "mismo origen", porque no hay página servida,
+///     hay un .exe, así que una <c>Web:UrlServidor</c> vacía apunta al servidor
+///     local por defecto en lugar de a la URL de la que se cargó la app.
 /// </summary>
-public static class ServicesConfig
-{
+public static class ServicesConfig {
     /// <summary>
-    /// URL base del servidor que se usa cuando <c>Web:UrlServidor</c> está
-    /// vacía o ausente (el servidor de desarrollo escucha aquí).
+    ///     URL base del servidor que se usa cuando <c>Web:UrlServidor</c> está
+    ///     vacía o ausente (el servidor de desarrollo escucha aquí).
     /// </summary>
     public const string UrlServidorPorDefecto = "http://localhost:5030";
 
     /// <summary>
-    /// Registra la configuración del chat, el HttpClient de
-    /// <c>GET /estadisticas</c> y las stores reactivas apuntando al hub.
+    ///     Registra la configuración del chat, el HttpClient de
+    ///     <c>GET /estadisticas</c> y las stores reactivas apuntando al hub.
     /// </summary>
     /// <param name="services">Colección de servicios de la aplicación.</param>
     /// <param name="config">Configuración leída de appsettings.json (disco).</param>
     /// <returns>La misma colección, para poder encadenar llamadas.</returns>
-    public static IServiceCollection AddClienteWpf(this IServiceCollection services, IConfiguration config)
-    {
+    public static IServiceCollection AddClienteWpf(this IServiceCollection services, IConfiguration config) {
         // Mismas secciones que en la web: "Chat" viene de Shared (la usa el
         // servidor para validar) y "Web" son ajustes del cliente (la URL del
         // servidor y si recordar sesión)
-        var chat = config.GetSection(ChatConfig.Seccion).Get<ChatConfig>() ?? new ChatConfig();
-        var web = config.GetSection(WebConfig.Seccion).Get<WebConfig>() ?? new WebConfig();
+        ChatConfig chat = config.GetSection(ChatConfig.Seccion).Get<ChatConfig>() ?? new ChatConfig();
+        WebConfig web = config.GetSection(WebConfig.Seccion).Get<WebConfig>() ?? new WebConfig();
 
         services.AddSingleton(chat);
         services.AddSingleton(web);
 
-        var baseServidor = ResolverUrlServidor(web);
+        string baseServidor = ResolverUrlServidor(web);
 
         // HttpClient para GET /estadisticas (la misma consulta de bienvenida
         // que hace la terminal antes de registrarse). Timeout corto: la
         // cifra de personas conectadas es opcional, el chat va por SignalR
-        services.AddSingleton(_ => new HttpClient
-        {
+        services.AddSingleton(_ => new HttpClient {
             BaseAddress = new Uri($"{baseServidor}/"),
             Timeout = TimeSpan.FromSeconds(3)
         });
@@ -85,16 +87,17 @@ public static class ServicesConfig
     }
 
     /// <summary>
-    /// Resuelve la URL base del servidor a partir de la configuración. En el
-    /// navegador vacío significaba "mismo origen" (la web la descarga el
-    /// servidor); aquí ese concepto no existe, así que vacío = el servidor
-    /// local por defecto. Con URL escrita, se recorta la barra final para
-    /// poder concatenar la ruta del hub sin dobles barras.
+    ///     Resuelve la URL base del servidor a partir de la configuración. En el
+    ///     navegador vacío significaba "mismo origen" (la web la descarga el
+    ///     servidor); aquí ese concepto no existe, así que vacío = el servidor
+    ///     local por defecto. Con URL escrita, se recorta la barra final para
+    ///     poder concatenar la ruta del hub sin dobles barras.
     /// </summary>
     /// <param name="web">Opciones del cliente (sección "Web").</param>
     /// <returns>URL base del servidor, sin barra final.</returns>
-    public static string ResolverUrlServidor(WebConfig web) =>
-        string.IsNullOrWhiteSpace(web.UrlServidor)
+    public static string ResolverUrlServidor(WebConfig web) {
+        return string.IsNullOrWhiteSpace(web.UrlServidor)
             ? UrlServidorPorDefecto
             : web.UrlServidor.TrimEnd('/');
+    }
 }

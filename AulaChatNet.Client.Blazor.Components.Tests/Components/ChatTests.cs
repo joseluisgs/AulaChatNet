@@ -1,31 +1,28 @@
 using System.Net;
 using System.Text;
-using AulaChatNet.Client.Blazor.Components;
-using AulaChatNet.Client.Blazor.Components.Pages;
 using AulaChatNet.Client.Blazor.Components.Configuracion;
+using AulaChatNet.Client.Blazor.Components.Pages;
 using AulaChatNet.Client.Blazor.Components.Services;
 using AulaChatNet.Client.Blazor.Components.State;
 using AulaChatNet.Shared.Configuracion;
 using Bunit;
-using Microsoft.Extensions.DependencyInjection;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Moq;
 
 namespace AulaChatNet.Client.Blazor.Components.Tests.Components;
 
 /// <summary>
-/// Pruebas de la página conductora: su ÚNICA decisión es de dónde viene la
-/// sesión — sin ella se pinta el panel de entrada, con ella la vista de
-/// canal completa. El que manda es el observable EnSesion de la store.
+///     Pruebas de la página conductora: su ÚNICA decisión es de dónde viene la
+///     sesión — sin ella se pinta el panel de entrada, con ella la vista de
+///     canal completa. El que manda es el observable EnSesion de la store.
 /// </summary>
 [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
-public class ChatTests : BunitContext
-{
+public class ChatTests : BunitContext {
     private StoreFalsa _store = null!;
 
     [SetUp]
-    public void SetUp()
-    {
+    public void SetUp() {
         // El canal baja el scroll con JS puro (wwwroot/js/aulachat.js): sin
         // navegador no hay scroll que probar, bUnit lo deja pasar en suelto
         JSInterop.Mode = JSRuntimeMode.Loose;
@@ -40,26 +37,23 @@ public class ChatTests : BunitContext
         // La vista de canal incluye la caja de texto, que despacha los
         // comandos (/canal...) al procesador compartido
         Services.AddSingleton(Mock.Of<IProcesadorComandos>());
-        Services.AddSingleton(new ChatConfig
-        {
+        Services.AddSingleton(new ChatConfig {
             Canales = ["#general", "#daw"]
         });
         Services.AddSingleton(new WebConfig());
 
         // El panel de entrada consulta la gente conectada al arrancar
-        Services.AddSingleton(new HttpClient(new HandlerFalso())
-        {
+        Services.AddSingleton(new HttpClient(new HandlerFalso()) {
             BaseAddress = new Uri("http://localhost/")
         });
     }
 
     [Test]
-    public void SinSesion_MuestraElPanelDeEntrada()
-    {
+    public void SinSesion_MuestraElPanelDeEntrada() {
         // Arrange: la store arranca con EnSesion = false (BehaviorSubject)
 
         // Act
-        var cut = Render<Chat>();
+        IRenderedComponent<Chat> cut = Render<Chat>();
 
         // Assert
         cut.FindAll(".entrada").Should().HaveCount(1);
@@ -67,13 +61,12 @@ public class ChatTests : BunitContext
     }
 
     [Test]
-    public void ConSesion_MuestraLaVistaDeCanalaCompleta()
-    {
+    public void ConSesion_MuestraLaVistaDeCanalaCompleta() {
         // Arrange: la store avisa de que el alta triunfó ANTES de pintar
         _store.EnSesion.OnNext(true);
 
         // Act
-        var cut = Render<Chat>();
+        IRenderedComponent<Chat> cut = Render<Chat>();
 
         // Assert: las cinco piezas del chat, y sin rastro de la entrada
         cut.FindAll(".barra").Should().HaveCount(1);
@@ -85,11 +78,10 @@ public class ChatTests : BunitContext
     }
 
     [Test]
-    public void AlPerderLaSesion_VuelveAlPanelDeEntrada()
-    {
+    public void AlPerderLaSesion_VuelveAlPanelDeEntrada() {
         // Arrange: dentro del chat
         _store.EnSesion.OnNext(true);
-        var cut = Render<Chat>();
+        IRenderedComponent<Chat> cut = Render<Chat>();
 
         // Act: el botón Salir (vía store) cierra la sesión
         _store.EnSesion.OnNext(false);
@@ -100,15 +92,14 @@ public class ChatTests : BunitContext
     }
 
     /// <summary>Handler mínimo: el panel solo pide /estadisticas al arrancar.</summary>
-    private sealed class HandlerFalso : HttpMessageHandler
-    {
+    private sealed class HandlerFalso : HttpMessageHandler {
         protected override Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request, CancellationToken cancellationToken) =>
-            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
-            {
+            HttpRequestMessage request, CancellationToken cancellationToken) {
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) {
                 Content = new StringContent(
                     """{"totalConectados":0,"canales":[]}""",
                     Encoding.UTF8, "application/json")
             });
+        }
     }
 }

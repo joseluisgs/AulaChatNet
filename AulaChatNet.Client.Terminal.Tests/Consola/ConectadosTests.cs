@@ -6,46 +6,41 @@ using FluentAssertions;
 namespace AulaChatNet.Client.Terminal.Tests.Consola;
 
 /// <summary>
-/// Suite de tests para Conectados: las fórmulas de "cuánta gente hay"
-/// (mensaje de arranque y línea de estado). Son cadenas puras, así que se
-/// comprueban sin red, sin servidor y sin consola.
+///     Suite de tests para Conectados: las fórmulas de "cuánta gente hay"
+///     (mensaje de arranque y línea de estado). Son cadenas puras, así que se
+///     comprueban sin red, sin servidor y sin consola.
 /// </summary>
 [TestFixture]
-public class ConectadosTests
-{
-    private ChatConfig _chat = null!;
-
+public class ConectadosTests {
     [SetUp]
-    public void Setup()
-    {
+    public void Setup() {
         // Mismo orden que appsettings: general, daw, dam, asir, smr
-        _chat = new ChatConfig
-        {
+        _chat = new ChatConfig {
             Canales = ["#general", "#daw", "#dam", "#asir", "#smr"]
         };
     }
 
+    private ChatConfig _chat = null!;
+
     [Test]
-    public void DescripcionArranque_CeroConectados_DiceQueNoHayNadie()
-    {
+    public void DescripcionArranque_CeroConectados_DiceQueNoHayNadie() {
         // Arrange: el servidor no emite salas vacías
         var est = new EstadisticasDto(0, []);
 
         // Act
-        var texto = Conectados.DescripcionArranque(_chat, est);
+        string texto = Conectados.DescripcionArranque(_chat, est);
 
         // Assert
         texto.Should().Contain("no hay nadie conectado");
     }
 
     [Test]
-    public void DescripcionArranque_UnaConectada_UsaSingular()
-    {
+    public void DescripcionArranque_UnaConectada_UsaSingular() {
         // Arrange
         var est = new EstadisticasDto(1, [new ConteoCanalDto("#general", 1)]);
 
         // Act
-        var texto = Conectados.DescripcionArranque(_chat, est);
+        string texto = Conectados.DescripcionArranque(_chat, est);
 
         // Assert: "1 persona conectada", nunca "1 personas"
         texto.Should().Contain("1 persona conectada")
@@ -53,8 +48,7 @@ public class ConectadosTests
     }
 
     [Test]
-    public void DescripcionArranque_Varias_UsaPluralYElTotal()
-    {
+    public void DescripcionArranque_Varias_UsaPluralYElTotal() {
         // Arrange
         var est = new EstadisticasDto(20,
         [
@@ -63,15 +57,14 @@ public class ConectadosTests
         ]);
 
         // Act
-        var texto = Conectados.DescripcionArranque(_chat, est);
+        string texto = Conectados.DescripcionArranque(_chat, est);
 
         // Assert
         texto.Should().Contain("20 personas conectadas");
     }
 
     [Test]
-    public void DescripcionArranque_LlevaElRepartoPorSala()
-    {
+    public void DescripcionArranque_LlevaElRepartoPorSala() {
         // Arrange
         var est = new EstadisticasDto(3,
         [
@@ -80,7 +73,7 @@ public class ConectadosTests
         ]);
 
         // Act
-        var texto = Conectados.DescripcionArranque(_chat, est);
+        string texto = Conectados.DescripcionArranque(_chat, est);
 
         // Assert: total Y desglose en la misma línea
         texto.Should().Contain("3 personas conectadas")
@@ -88,8 +81,7 @@ public class ConectadosTests
     }
 
     [Test]
-    public void ConteosPorSala_RespetaElOrdenDeLaConfiguracion()
-    {
+    public void ConteosPorSala_RespetaElOrdenDeLaConfiguracion() {
         // Arrange: el servidor manda las salas por POBLACIÓN (daw primero),
         // pero en pantalla manda appsettings (general, daw, dam, asir, smr)
         var est = new EstadisticasDto(3,
@@ -99,7 +91,7 @@ public class ConectadosTests
         ]);
 
         // Act
-        var texto = Conectados.ConteosPorSala(_chat.Canales, est, canalActual: null);
+        string texto = Conectados.ConteosPorSala(_chat.Canales, est, null);
 
         // Assert
         texto.IndexOf("#general", StringComparison.Ordinal)
@@ -113,21 +105,19 @@ public class ConectadosTests
     }
 
     [Test]
-    public void ConteosPorSala_SalaSinGente_PintaCero()
-    {
+    public void ConteosPorSala_SalaSinGente_PintaCero() {
         // Arrange: solo #general tiene gente; el resto el servidor no lo emite
         var est = new EstadisticasDto(1, [new ConteoCanalDto("#general", 1)]);
 
         // Act
-        var texto = Conectados.ConteosPorSala(_chat.Canales, est, canalActual: null);
+        string texto = Conectados.ConteosPorSala(_chat.Canales, est, null);
 
         // Assert: la terminal pinta el 0 ella misma
         texto.Should().Contain("#smr [white]0[/]");
     }
 
     [Test]
-    public void ConteosPorSala_CanalActual_LoMarcaConPuntoVerde()
-    {
+    public void ConteosPorSala_CanalActual_LoMarcaConPuntoVerde() {
         // Arrange
         var est = new EstadisticasDto(2,
         [
@@ -136,7 +126,7 @@ public class ConectadosTests
         ]);
 
         // Act
-        var texto = Conectados.ConteosPorSala(_chat.Canales, est, canalActual: "#daw");
+        string texto = Conectados.ConteosPorSala(_chat.Canales, est, "#daw");
 
         // Assert
         texto.Should().Contain("[green]#daw 1 ●[/]");

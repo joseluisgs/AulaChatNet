@@ -1,10 +1,10 @@
 namespace AulaChatNet.Shared.Dtos;
 
 /// <summary>
-/// DTO con el número de usuarios conectados en UN canal (sala) ahora mismo.
+///     DTO con el número de usuarios conectados en UN canal (sala) ahora mismo.
 /// </summary>
 /// <example>
-/// { "canal": "#general", "conectados": 3 }
+///     { "canal": "#general", "conectados": 3 }
 /// </example>
 public record ConteoCanalDto(
     // <summary>Canal canónico tal y como aparece en la configuración.</summary>

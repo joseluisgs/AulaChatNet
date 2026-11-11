@@ -1,35 +1,35 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
-  <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <RootNamespace>AulaChatNet.Server</RootNamespace>
-    <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <!-- Sin NoWarn de CS1591: todo el API público está documentado, así que
-         con TreatWarningsAsErrors la compilación FALLA si aparece documentación
-         XML pendiente (la convención del proyecto se autocumple, no se silencia). -->
-  </PropertyGroup>
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <RootNamespace>AulaChatNet.Server</RootNamespace>
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+        <!-- Sin NoWarn de CS1591: todo el API público está documentado, así que
+             con TreatWarningsAsErrors la compilación FALLA si aparece documentación
+             XML pendiente (la convención del proyecto se autocumple, no se silencia). -->
+    </PropertyGroup>
 
-  <ItemGroup>
-    <!-- Logging estructurado (estilo Tienda): consola + fichero de errores con rolling -->
-    <PackageReference Include="Serilog.AspNetCore" />
-    <PackageReference Include="Serilog.Sinks.Console" />
-    <PackageReference Include="Serilog.Sinks.File" />
+    <ItemGroup>
+        <!-- Logging estructurado (estilo Tienda): consola + fichero de errores con rolling -->
+        <PackageReference Include="Serilog.AspNetCore"/>
+        <PackageReference Include="Serilog.Sinks.Console"/>
+        <PackageReference Include="Serilog.Sinks.File"/>
 
-    <!-- ════════ Persistencia (Fase 2) ════════ -->
-    <!-- EF Core + SQLite: la base de datos vive en UN fichero embebido, sin servidor -->
-    <PackageReference Include="Microsoft.EntityFrameworkCore" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
+        <!-- ════════ Persistencia (Fase 2) ════════ -->
+        <!-- EF Core + SQLite: la base de datos vive en UN fichero embebido, sin servidor -->
+        <PackageReference Include="Microsoft.EntityFrameworkCore"/>
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite"/>
 
-    <!-- Solo para dotnet ef (migraciones); PrivateAssets evita que viaje al alumno
-         en un publish — lo necesita el que DISEÑA el esquema, no quien ejecuta la app -->
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" />
-  </ItemGroup>
+        <!-- Solo para dotnet ef (migraciones); PrivateAssets evita que viaje al alumno
+             en un publish — lo necesita el que DISEÑA el esquema, no quien ejecuta la app -->
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Design"/>
+    </ItemGroup>
 
-  <ItemGroup>
-    <!-- El servidor es AGNÓSTICO: no conoce a ningún cliente. Solo expone lo
-         que todos consumen (hub SignalR + GET /estadisticas); la web se arranca
-         y se sirve en su propio proceso (5031) y el terminal corre en consola. -->
-    <ProjectReference Include="..\AulaChatNet.Shared\AulaChatNet.Shared.csproj" />
-  </ItemGroup>
+    <ItemGroup>
+        <!-- El servidor es AGNÓSTICO: no conoce a ningún cliente. Solo expone lo
+             que todos consumen (hub SignalR + GET /estadisticas); la web se arranca
+             y se sirve en su propio proceso (5031) y el terminal corre en consola. -->
+        <ProjectReference Include="..\AulaChatNet.Shared\AulaChatNet.Shared.csproj"/>
+    </ItemGroup>
 
 </Project>

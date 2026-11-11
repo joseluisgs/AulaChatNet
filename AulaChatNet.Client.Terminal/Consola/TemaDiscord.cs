@@ -3,22 +3,19 @@ using Spectre.Console;
 namespace AulaChatNet.Client.Terminal.Consola;
 
 /// <summary>
-/// Paleta de colores del chat: la Discord clásica (dark theme) y los colores
-/// derivados de cada usuario.
-///
-/// <remarks>
-/// El color de cada nick es una función PURA del nombre (hash estable): misma
-/// semilla → mismo color, igual que los avatares de DiceBear. Así Ana siempre
-/// es del mismo color en todas las sesiones, sin guardar nada.
-///
-/// Los hex se crean con <c>Color.FromHex</c> (Spectre.Console 0.57): acepta
-/// "#RRGGBB", "RRGGBB" o hasta "RGB". Para meter un color en un string de
-/// markup se usa <c>color.ToMarkup()</c>, que sí devuelve "#RRGGBB" con la
-/// almohadilla que el markup necesita (<c>ToHex()</c> la omite).
-/// </remarks>
+///     Paleta de colores del chat: la Discord clásica (dark theme) y los colores
+///     derivados de cada usuario.
+///     <remarks>
+///         El color de cada nick es una función PURA del nombre (hash estable): misma
+///         semilla → mismo color, igual que los avatares de DiceBear. Así Ana siempre
+///         es del mismo color en todas las sesiones, sin guardar nada.
+///         Los hex se crean con <c>Color.FromHex</c> (Spectre.Console 0.57): acepta
+///         "#RRGGBB", "RRGGBB" o hasta "RGB". Para meter un color en un string de
+///         markup se usa <c>color.ToMarkup()</c>, que sí devuelve "#RRGGBB" con la
+///         almohadilla que el markup necesita (<c>ToHex()</c> la omite).
+///     </remarks>
 /// </summary>
-public static class TemaDiscord
-{
+public static class TemaDiscord {
     /// <summary>Acento (blurple) de Discord.</summary>
     public static readonly Color Blurple = Color.FromHex("#5865f2");
 
@@ -44,10 +41,10 @@ public static class TemaDiscord
     public static readonly Color Rojo = Color.FromHex("#f44336");
 
     /// <summary>
-    /// Rosa de acento: marca lo PRIVADO (🔒 y el "para/de quien"). Se elige
-    /// aparte de los demás a propósito: el verde ya significa "en línea" y el
-    /// rojo ya significa "error", así que un privado pintado con esos dos
-    /// colores mentiría sobre lo que el color significa en el resto de la app.
+    ///     Rosa de acento: marca lo PRIVADO (🔒 y el "para/de quien"). Se elige
+    ///     aparte de los demás a propósito: el verde ya significa "en línea" y el
+    ///     rojo ya significa "error", así que un privado pintado con esos dos
+    ///     colores mentiría sobre lo que el color significa en el resto de la app.
     /// </summary>
     public static readonly Color Fucsia = Color.FromHex("#eb459e");
 
@@ -55,11 +52,10 @@ public static class TemaDiscord
     public static readonly Color Amarillo = Color.FromHex("#faa61a");
 
     /// <summary>
-    /// Colores vivos legibles sobre fondo oscuro; el nick se pinta con uno
-    /// de ellos según su hash. Sin blancos ni negros (se perderían en el fondo).
+    ///     Colores vivos legibles sobre fondo oscuro; el nick se pinta con uno
+    ///     de ellos según su hash. Sin blancos ni negros (se perderían en el fondo).
     /// </summary>
-    private static readonly Color[] Paleta =
-    [
+    private static readonly Color[] Paleta = [
         Color.FromHex("#f44336"), // rojo
         Color.FromHex("#ff9800"), // naranja
         Color.FromHex("#ffeb3b"), // amarillo
@@ -67,43 +63,42 @@ public static class TemaDiscord
         Color.FromHex("#00bcd4"), // cian
         Color.FromHex("#2196f3"), // azul
         Color.FromHex("#9c27b0"), // morado
-        Color.FromHex("#e91e63")  // rosa
+        Color.FromHex("#e91e63") // rosa
     ];
 
     /// <summary>
-    /// Devuelve el color estable de un usuario a partir de su nombre.
+    ///     Devuelve el color estable de un usuario a partir de su nombre.
     /// </summary>
     /// <param name="usuario">Nombre de usuario.</param>
     /// <returns>Color de la paleta; el mismo siempre para el mismo nombre.</returns>
-    public static Color ColorDe(string usuario)
-    {
+    public static Color ColorDe(string usuario) {
         // Hash simple y estable (mismo algoritmo en todas las plataformas y
         // sesiones). La máscara 0x7FFFFFFF evita int.MinValue, que rompería
         // Math.Abs — detalle clásico de los hashes con aritmética entera.
-        var hash = 0;
+        int hash = 0;
 
-        foreach (var letra in usuario)
+        foreach (char letra in usuario) {
             hash = unchecked(hash * 31 + letra);
+        }
 
         return Paleta[(hash & 0x7FFFFFFF) % Paleta.Length];
     }
 
     /// <summary>
-    /// Iniciales estilo Discord entre corchetes: dos letras de dos palabras,
-    /// o las dos primeras de una sola ("José Luis" → "JL", "Ana" → "AN").
+    ///     Iniciales estilo Discord entre corchetes: dos letras de dos palabras,
+    ///     o las dos primeras de una sola ("José Luis" → "JL", "Ana" → "AN").
     /// </summary>
     /// <param name="usuario">Nombre de usuario.</param>
     /// <returns>Iniciales en mayúsculas (mínimo un carácter).</returns>
-    public static string Iniciales(string usuario)
-    {
-        var trozos = usuario.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    public static string Iniciales(string usuario) {
+        string[] trozos = usuario.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-        if (trozos.Length == 0)
+        if (trozos.Length == 0) {
             return "?";
+        }
 
-        if (trozos.Length == 1)
-        {
-            var palabra = trozos[0];
+        if (trozos.Length == 1) {
+            string palabra = trozos[0];
 
             return palabra.Length >= 2
                 ? palabra[..2].ToUpperInvariant()

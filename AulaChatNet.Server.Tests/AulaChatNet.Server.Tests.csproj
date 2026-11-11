@@ -1,39 +1,39 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <RootNamespace>AulaChatNet.Server.Tests</RootNamespace>
-    <IsPackable>false</IsPackable>
-    <IsTestProject>true</IsTestProject>
-  </PropertyGroup>
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <RootNamespace>AulaChatNet.Server.Tests</RootNamespace>
+        <IsPackable>false</IsPackable>
+        <IsTestProject>true</IsTestProject>
+    </PropertyGroup>
 
-  <ItemGroup>
-    <Using Include="NUnit.Framework" />
-  </ItemGroup>
+    <ItemGroup>
+        <Using Include="NUnit.Framework"/>
+    </ItemGroup>
 
-  <ItemGroup>
-    <PackageReference Include="coverlet.collector" />
-    <PackageReference Include="FluentAssertions" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" />
-    <PackageReference Include="Moq" />
-    <PackageReference Include="NUnit" />
-    <PackageReference Include="NUnit.Analyzers" />
-    <PackageReference Include="NUnit3TestAdapter" />
+    <ItemGroup>
+        <PackageReference Include="coverlet.collector"/>
+        <PackageReference Include="FluentAssertions"/>
+        <PackageReference Include="Microsoft.NET.Test.Sdk"/>
+        <PackageReference Include="Moq"/>
+        <PackageReference Include="NUnit"/>
+        <PackageReference Include="NUnit.Analyzers"/>
+        <PackageReference Include="NUnit3TestAdapter"/>
 
-    <!-- Cliente SignalR REAL para los tests de integración: Kestrel escuchando
-         en un puerto aleatorio y dos clientes de verdad. Los dobles de Moq
-         comprueban QUIÉN debe recibir cada cosa; estos tests comprueban que el
-         mensaje VIAJA de verdad por la red (serialización y eventos incluidos) -->
-    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" />
+        <!-- Cliente SignalR REAL para los tests de integración: Kestrel escuchando
+             en un puerto aleatorio y dos clientes de verdad. Los dobles de Moq
+             comprueban QUIÉN debe recibir cada cosa; estos tests comprueban que el
+             mensaje VIAJA de verdad por la red (serialización y eventos incluidos) -->
+        <PackageReference Include="Microsoft.AspNetCore.SignalR.Client"/>
 
-    <!-- SQLite para los tests del repositorio: se usa la base de datos en
-         memoria COMPARTIDA (no la llana :memory:, que daría una BD vacía nueva
-         por cada conexión y haría los tests falsos) -->
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
-  </ItemGroup>
+        <!-- SQLite para los tests del repositorio: se usa la base de datos en
+             memoria COMPARTIDA (no la llana :memory:, que daría una BD vacía nueva
+             por cada conexión y haría los tests falsos) -->
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite"/>
+    </ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\AulaChatNet.Server\AulaChatNet.Server.csproj" />
-  </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="..\AulaChatNet.Server\AulaChatNet.Server.csproj"/>
+    </ItemGroup>
 
 </Project>

@@ -1,46 +1,46 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
-    <RootNamespace>AulaChatNet.Client.Terminal</RootNamespace>
-    <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <!-- Icono de la aplicación: csc lo incrusta en el .exe (/win32icon), así
-         que se ve en el Explorador, en la barra de tareas y en Alt+Tab. El .ico
-         vive en resources/, DENTRO del propio proyecto, así que la ruta no sale
-         nunca del proyecto: si se copia o mueve el cliente, la compilación
-         sigue funcionando. El maestro está en resources/ de la raíz. -->
-    <ApplicationIcon>resources\icon-app.ico</ApplicationIcon>
-    <!-- Sin NoWarn de CS1591: todo el API público está documentado, así que
-         con TreatWarningsAsErrors la compilación FALLA si aparece documentación
-         XML pendiente (la convención del proyecto se autocumple, no se silencia). -->
-  </PropertyGroup>
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net10.0</TargetFramework>
+        <RootNamespace>AulaChatNet.Client.Terminal</RootNamespace>
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+        <!-- Icono de la aplicación: csc lo incrusta en el .exe (/win32icon), así
+             que se ve en el Explorador, en la barra de tareas y en Alt+Tab. El .ico
+             vive en resources/, DENTRO del propio proyecto, así que la ruta no sale
+             nunca del proyecto: si se copia o mueve el cliente, la compilación
+             sigue funcionando. El maestro está en resources/ de la raíz. -->
+        <ApplicationIcon>resources\icon-app.ico</ApplicationIcon>
+        <!-- Sin NoWarn de CS1591: todo el API público está documentado, así que
+             con TreatWarningsAsErrors la compilación FALLA si aparece documentación
+             XML pendiente (la convención del proyecto se autocumple, no se silencia). -->
+    </PropertyGroup>
 
-  <ItemGroup>
-    <!-- Conexión al ChatHub + UI de terminal + capa reactiva -->
-    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" />
-    <PackageReference Include="Spectre.Console" />
-    <PackageReference Include="System.Reactive" />
+    <ItemGroup>
+        <!-- Conexión al ChatHub + UI de terminal + capa reactiva -->
+        <PackageReference Include="Microsoft.AspNetCore.SignalR.Client"/>
+        <PackageReference Include="Spectre.Console"/>
+        <PackageReference Include="System.Reactive"/>
 
-    <!-- Configuración: lee su appsettings.json (sección Chat) -->
-    <PackageReference Include="Microsoft.Extensions.Configuration.Json" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" />
+        <!-- Configuración: lee su appsettings.json (sección Chat) -->
+        <PackageReference Include="Microsoft.Extensions.Configuration.Json"/>
+        <PackageReference Include="Microsoft.Extensions.Configuration.Binder"/>
 
-    <!-- Logging: Serilog SOLO a fichero (ver SerilogConfig: el sink de consola
-         lucharía con el lienzo en vivo de Spectre) -->
-    <PackageReference Include="Serilog" />
-    <PackageReference Include="Serilog.Sinks.File" />
-  </ItemGroup>
+        <!-- Logging: Serilog SOLO a fichero (ver SerilogConfig: el sink de consola
+             lucharía con el lienzo en vivo de Spectre) -->
+        <PackageReference Include="Serilog"/>
+        <PackageReference Include="Serilog.Sinks.File"/>
+    </ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\AulaChatNet.Shared\AulaChatNet.Shared.csproj" />
-  </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="..\AulaChatNet.Shared\AulaChatNet.Shared.csproj"/>
+    </ItemGroup>
 
-  <ItemGroup>
-    <!-- El appsettings de la consola NO se copia solo (no es proyecto web): lo copiamos al bin -->
-    <None Update="appsettings.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-  </ItemGroup>
+    <ItemGroup>
+        <!-- El appsettings de la consola NO se copia solo (no es proyecto web): lo copiamos al bin -->
+        <None Update="appsettings.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
+    </ItemGroup>
 
 </Project>
