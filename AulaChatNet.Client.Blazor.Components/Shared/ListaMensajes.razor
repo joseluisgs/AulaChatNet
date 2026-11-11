@@ -14,8 +14,7 @@
 @inject IJSRuntime JS
 
 <div class="mensajes" id="lista-mensajes" @onscroll="AlDesplazar">
-    @if (_hayAnteriores && _filas.Count > 0)
-    {
+    @if (_hayAnteriores && _filas.Count > 0) {
         @* Vive ARRIBA de todo, donde acaba la gente al hacer scroll. Si el
            servidor devuelve una página vacía, la store apaga HayAnteriores
            y el botón se va solo: no hace falta preguntarle al usuario. *@
@@ -25,26 +24,22 @@
         </button>
     }
 
-    @foreach (var fila in _filas)
-    {
+    @foreach (var fila in _filas) {
         @* El pattern matching no es por estética: al extraer el valor en la
            condición, el compilador SABE que no es null y no hace falta
            ni un "!" ni un aviso de nulabilidad *@
-        @if (fila.EsPrivado && fila.Privado is { } privado)
-        {
-            <PrivadoItem Privado="privado" @key="privado.Id" />
+        @if (fila.EsPrivado && fila.Privado is { } privado) {
+            <PrivadoItem Privado="privado" @key="privado.Id"/>
         }
-        else if (fila.Mensaje is { } mensaje)
-        {
+        else if (fila.Mensaje is { } mensaje) {
             <MensajeItem Mensaje="mensaje"
                          Reacciones="ChipsDe(mensaje.Id)"
                          Nick="@_nick"
-                         @key="mensaje.Id" />
+                         @key="mensaje.Id"/>
         }
     }
 
-    @if (_filas.Count == 0)
-    {
+    @if (_filas.Count == 0) {
         <p class="mensajes-vacio">
             Todavía no hay mensajes en este canal. ¡Sé el primero en saludar! 👋
         </p>
@@ -52,9 +47,10 @@
 </div>
 
 @code {
+
     /// <summary>
-    /// Distancia al borde superior que dispara la carga automática: no se
-    /// espera a que el lector llegue al pixel cero.
+    ///     Distancia al borde superior que dispara la carga automática: no se
+    ///     espera a que el lector llegue al pixel cero.
     /// </summary>
     private const double UmbralCarga = 80;
 
@@ -83,16 +79,13 @@
     private bool _cargando;
 
     /// <summary>Cinco suscripciones: canal, privados, reacciones, nick y paginación.</summary>
-    protected override void OnInitialized()
-    {
-        _suscripcion = Store.Mensajes.Subscribe(mensajes =>
-        {
+    protected override void OnInitialized() {
+        _suscripcion = Store.Mensajes.Subscribe(mensajes => {
             _mensajes = mensajes;
             Recalcular();
         });
 
-        _suscripcionPrivados = Store.Privados.Subscribe(privados =>
-        {
+        _suscripcionPrivados = Store.Privados.Subscribe(privados => {
             _privados = privados;
             Recalcular();
         });
@@ -100,24 +93,21 @@
         // Las reacciones NO reordenan nada (el orden de las filas no
         // cambia), así que con repintar basta — y sin bajar el scroll: una
         // reacción no debe arrastrar la vista de quien estaba leyendo
-        _suscripcionReacciones = Store.Reacciones.Subscribe(reacciones =>
-        {
+        _suscripcionReacciones = Store.Reacciones.Subscribe(reacciones => {
             _reacciones = reacciones;
             _ = InvokeAsync(StateHasChanged);
         });
 
         // El nick decide qué chip sale resaltado como propio; llega tarde
         // (tras el alta) y puede cambiar con /nick, así que también se suscribe
-        _suscripcionNick = Store.Nick.Subscribe(nick =>
-        {
+        _suscripcionNick = Store.Nick.Subscribe(nick => {
             _nick = nick;
             _ = InvokeAsync(StateHasChanged);
         });
 
         // El botón de "cargar antiguos" vive y muere con este flujo: la
         // store es quien sabe si puede quedar algo por detrás de la vista
-        _suscripcionAnteriores = Store.HayAnteriores.Subscribe(hay =>
-        {
+        _suscripcionAnteriores = Store.HayAnteriores.Subscribe(hay => {
             _hayAnteriores = hay;
             _ = InvokeAsync(StateHasChanged);
         });
@@ -126,16 +116,16 @@
     /// <summary>Chips de UN mensaje: los del mapa de reacciones, o vacío.</summary>
     /// <param name="idMensaje">Mensaje a mirar.</param>
     /// <returns>Sus reacciones actuales (lista vacía si no tiene ninguna).</returns>
-    private IReadOnlyList<ReaccionDto> ChipsDe(Guid idMensaje) =>
-        _reacciones.TryGetValue(idMensaje, out var estado) ? estado.Reacciones : [];
+    private IReadOnlyList<ReaccionDto> ChipsDe(Guid idMensaje) {
+        return _reacciones.TryGetValue(idMensaje, out var estado) ? estado.Reacciones : [];
+    }
 
     /// <summary>
-    /// Vuelve a ordenar las dos vistas juntas y pide un repintado: es el
-    /// único punto donde se decide el orden de la mezcla, para que el canal
-    /// y los privados no se ordenen nunca por caminos distintos.
+    ///     Vuelve a ordenar las dos vistas juntas y pide un repintado: es el
+    ///     único punto donde se decide el orden de la mezcla, para que el canal
+    ///     y los privados no se ordenen nunca por caminos distintos.
     /// </summary>
-    private void Recalcular()
-    {
+    private void Recalcular() {
         _filas = CombinadorChat.Combinar(_mensajes, _privados);
 
         // Mientras se recupera una página vieja NO se baja: el scroll se
@@ -147,13 +137,12 @@
     }
 
     /// <summary>
-    /// Pide una página de mensajes antiguos a la store. La altura se mide
-    /// ANTES (con el DOM actual) y el ajuste se hace DESPUÉS del repintado:
-    /// la página nueva crece POR ARRIBA y, sin compensarla, el lector
-    /// saltaría al principio del canal.
+    ///     Pide una página de mensajes antiguos a la store. La altura se mide
+    ///     ANTES (con el DOM actual) y el ajuste se hace DESPUÉS del repintado:
+    ///     la página nueva crece POR ARRIBA y, sin compensarla, el lector
+    ///     saltaría al principio del canal.
     /// </summary>
-    private async Task CargarAnterioresAsync()
-    {
+    private async Task CargarAnterioresAsync() {
         if (_cargando)
             return;
 
@@ -172,13 +161,12 @@
     }
 
     /// <summary>
-    /// Carga automática al acercarse al borde superior. Un solo disparo por
-    /// evento: si tras la recuperación se sigue cerca del borde, el propio
-    /// movimiento del lector dispara la siguiente página.
+    ///     Carga automática al acercarse al borde superior. Un solo disparo por
+    ///     evento: si tras la recuperación se sigue cerca del borde, el propio
+    ///     movimiento del lector dispara la siguiente página.
     /// </summary>
     /// <param name="_">Argumento del evento de scroll (no se usa).</param>
-    private async Task AlDesplazar(EventArgs _)
-    {
+    private async Task AlDesplazar(EventArgs _) {
         if (_cargando || !_hayAnteriores || _filas.Count == 0 || _pendienteRecuperar)
             return;
 
@@ -191,13 +179,11 @@
     }
 
     /// <summary>
-    /// Tras repintar: si hay una página vieja pendiente, recupera la
-    /// posición del lector; si no, baja el scroll si había algo nuevo.
+    ///     Tras repintar: si hay una página vieja pendiente, recupera la
+    ///     posición del lector; si no, baja el scroll si había algo nuevo.
     /// </summary>
-    protected override async Task OnAfterRenderAsync(bool primero)
-    {
-        if (_pendienteRecuperar)
-        {
+    protected override async Task OnAfterRenderAsync(bool primero) {
+        if (_pendienteRecuperar) {
             _pendienteRecuperar = false;
             await JS.InvokeVoidAsync("aulachat.recuperarScroll", "lista-mensajes", _alturaAntes);
             return;
@@ -211,12 +197,12 @@
     }
 
     /// <summary>Libera las cinco suscripciones cuando el componente se destruye.</summary>
-    public void Dispose()
-    {
+    public void Dispose() {
         _suscripcion?.Dispose();
         _suscripcionPrivados?.Dispose();
         _suscripcionReacciones?.Dispose();
         _suscripcionNick?.Dispose();
         _suscripcionAnteriores?.Dispose();
     }
+
 }

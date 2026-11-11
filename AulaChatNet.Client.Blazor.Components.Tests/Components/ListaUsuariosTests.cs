@@ -9,15 +9,13 @@ using Moq;
 namespace AulaChatNet.Client.Blazor.Components.Tests.Components;
 
 /// <summary>
-/// Pruebas de la columna de conectados: SOLO los del canal actual (evento de
-/// grupo) con su punto verde; el total GLOBAL vive en la barra, no aquí.
+///     Pruebas de la columna de conectados: SOLO los del canal actual (evento de
+///     grupo) con su punto verde; el total GLOBAL vive en la barra, no aquí.
 /// </summary>
 [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
-public class ListaUsuariosTests : BunitContext
-{
+public class ListaUsuariosTests : BunitContext {
     [Test]
-    public void PintaUnUsuarioPorCadaConectadoDeLaSala()
-    {
+    public void PintaUnUsuarioPorCadaConectadoDeLaSala() {
         // Arrange
         var store = StoreFalsa.Crear();
         store.Usuarios.OnNext(
@@ -29,7 +27,7 @@ public class ListaUsuariosTests : BunitContext
         Services.AddSingleton(new ChatConfig());
 
         // Act
-        var cut = Render<ListaUsuarios>();
+        IRenderedComponent<ListaUsuarios> cut = Render<ListaUsuarios>();
 
         // Assert: fila + avatar + nombre + punto verde por persona
         cut.FindAll(".usuario").Should().HaveCount(2);
@@ -39,8 +37,7 @@ public class ListaUsuariosTests : BunitContext
     }
 
     [Test]
-    public void Titulo_MuestraElConteoDeLaSala()
-    {
+    public void Titulo_MuestraElConteoDeLaSala() {
         // Arrange
         var store = StoreFalsa.Crear();
         store.Usuarios.OnNext([new UsuarioConectadoDto("Ana", DateTime.UtcNow)]);
@@ -48,22 +45,21 @@ public class ListaUsuariosTests : BunitContext
         Services.AddSingleton(new ChatConfig());
 
         // Act
-        var cut = Render<ListaUsuarios>();
+        IRenderedComponent<ListaUsuarios> cut = Render<ListaUsuarios>();
 
         // Assert
         cut.Find(".lista-titulo").TextContent.Should().Contain("Conectados").And.Contain("1");
     }
 
     [Test]
-    public void ListaVacia_DejaUnAvisoAmable()
-    {
+    public void ListaVacia_DejaUnAvisoAmable() {
         // Arrange: nadie más en la sala (de momento)
         var store = StoreFalsa.Crear();
         Services.AddSingleton(store.Objeto);
         Services.AddSingleton(new ChatConfig());
 
         // Act
-        var cut = Render<ListaUsuarios>();
+        IRenderedComponent<ListaUsuarios> cut = Render<ListaUsuarios>();
 
         // Assert
         cut.FindAll(".usuario").Should().BeEmpty();
@@ -71,13 +67,12 @@ public class ListaUsuariosTests : BunitContext
     }
 
     [Test]
-    public void CuandoLlegaAlguienNuevo_SeRefrescaSinVolverAPintar()
-    {
+    public void CuandoLlegaAlguienNuevo_SeRefrescaSinVolverAPintar() {
         // Arrange
         var store = StoreFalsa.Crear();
         Services.AddSingleton(store.Objeto);
         Services.AddSingleton(new ChatConfig());
-        var cut = Render<ListaUsuarios>();
+        IRenderedComponent<ListaUsuarios> cut = Render<ListaUsuarios>();
 
         // Act: el servidor avisa de que entra alguien (evento de grupo)
         store.Usuarios.OnNext([new UsuarioConectadoDto("María", DateTime.UtcNow)]);
@@ -88,8 +83,7 @@ public class ListaUsuariosTests : BunitContext
     }
 
     [Test]
-    public void ClicEnUnCompanero_PidePrepararSuPrivado()
-    {
+    public void ClicEnUnCompanero_PidePrepararSuPrivado() {
         // Arrange
         var store = StoreFalsa.Crear();
         store.Nick.OnNext("Ana");
@@ -100,7 +94,7 @@ public class ListaUsuariosTests : BunitContext
         ]);
         Services.AddSingleton(store.Objeto);
         Services.AddSingleton(new ChatConfig());
-        var cut = Render<ListaUsuarios>();
+        IRenderedComponent<ListaUsuarios> cut = Render<ListaUsuarios>();
 
         // Act: el segundo de la lista es Luis
         cut.FindAll(".usuario")[1].Click();
@@ -110,8 +104,7 @@ public class ListaUsuariosTests : BunitContext
     }
 
     [Test]
-    public void ClicEnMiPropioNombre_NoPideNada()
-    {
+    public void ClicEnMiPropioNombre_NoPideNada() {
         // Arrange: un privado a ti mismo no tiene sentido, y el servidor lo
         // rechazaría — mejor no abrir siquiera la puerta
         var store = StoreFalsa.Crear();
@@ -119,7 +112,7 @@ public class ListaUsuariosTests : BunitContext
         store.Usuarios.OnNext([new UsuarioConectadoDto("Ana", DateTime.UtcNow)]);
         Services.AddSingleton(store.Objeto);
         Services.AddSingleton(new ChatConfig());
-        var cut = Render<ListaUsuarios>();
+        IRenderedComponent<ListaUsuarios> cut = Render<ListaUsuarios>();
 
         // Act
         cut.FindAll(".usuario")[0].Click();
@@ -129,8 +122,7 @@ public class ListaUsuariosTests : BunitContext
     }
 
     [Test]
-    public void MismoNombreConOtrasMayusculas_SigueSiendoElMismo()
-    {
+    public void MismoNombreConOtrasMayusculas_SigueSiendoElMismo() {
         // Arrange: el servidor normaliza al registrar, y aquí no debe
         // ofrecerse un privado a uno mismo aunque el nombre venga distinto
         var store = StoreFalsa.Crear();
@@ -138,7 +130,7 @@ public class ListaUsuariosTests : BunitContext
         store.Usuarios.OnNext([new UsuarioConectadoDto("ANA", DateTime.UtcNow)]);
         Services.AddSingleton(store.Objeto);
         Services.AddSingleton(new ChatConfig());
-        var cut = Render<ListaUsuarios>();
+        IRenderedComponent<ListaUsuarios> cut = Render<ListaUsuarios>();
 
         // Act
         cut.FindAll(".usuario")[0].Click();

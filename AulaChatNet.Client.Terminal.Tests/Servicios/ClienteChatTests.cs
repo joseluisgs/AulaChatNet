@@ -6,25 +6,21 @@ using FluentAssertions;
 namespace AulaChatNet.Client.Terminal.Tests.Servicios;
 
 /// <summary>
-/// Suite de tests para ClienteChat: los caminos que NO necesitan servidor.
-/// El diferencial nuevo del contrato es saber SI el servidor respondió
-/// (HayServidor): de eso depende que el arranque repregunte el nick o
-/// conserve el que ya se escribió.
+///     Suite de tests para ClienteChat: los caminos que NO necesitan servidor.
+///     El diferencial nuevo del contrato es saber SI el servidor respondió
+///     (HayServidor): de eso depende que el arranque repregunte el nick o
+///     conserve el que ya se escribió.
 /// </summary>
 [TestFixture]
-public class ClienteChatTests
-{
-    #region Conexión sin servidor Tests
-
+public class ClienteChatTests {
     [Test]
-    public async Task ConectarAsync_SinServidor_DevuelveFalloDeRedSinTiposDeExcepcion()
-    {
+    public async Task ConectarAsync_SinServidor_DevuelveFalloDeRedSinTiposDeExcepcion() {
         // Arrange: nadie escucha en ese puerto → la conexión se rechaza al instante
         var chat = new ChatConfig { Canales = ["#general"] };
         using var cliente = new ClienteChat("http://127.0.0.1:59999/hubs/chat", chat);
 
         // Act
-        var resultado = await cliente.ConectarAsync("Ana", "#general");
+        ResultadoConexion resultado = await cliente.ConectarAsync("Ana", "#general");
 
         // Assert: QUÉ falló viaja tipado (no hay servidor → no se repregunta el nick)
         resultado.Exitoso.Should().BeFalse();
@@ -38,20 +34,15 @@ public class ClienteChatTests
         cliente.EstadoValor.Should().Be(EstadoConexion.Desconectado);
     }
 
-    #endregion
-
-    #region Conexión con rechazo del servidor Tests
-
     [Test]
-    public async Task ConectarAsync_ServidorRechazaElNick_DevuelveRechazoConServidor()
-    {
+    public async Task ConectarAsync_ServidorRechazaElNick_DevuelveRechazoConServidor() {
         // Arrange: servidor de prueba mínimo que siempre rechaza el alta
-        await using var servidor = await ServidorDePrueba.CrearAsync();
+        await using ServidorDePrueba servidor = await ServidorDePrueba.CrearAsync();
         var chat = new ChatConfig { Canales = ["#general"] };
         using var cliente = new ClienteChat($"{servidor.Url}/hubs/chat", chat);
 
         // Act
-        var resultado = await cliente.ConectarAsync("Ana", "#general");
+        ResultadoConexion resultado = await cliente.ConectarAsync("Ana", "#general");
 
         // Assert: el servidor RESPONDIÓ → HayServidor = true (aquí sí toca
         // repreguntar el nick, que es justo lo contrario que en el test anterior)
@@ -63,6 +54,4 @@ public class ClienteChatTests
 
         cliente.EstadoValor.Should().Be(EstadoConexion.Desconectado);
     }
-
-    #endregion
 }

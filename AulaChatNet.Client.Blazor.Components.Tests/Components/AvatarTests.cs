@@ -1,33 +1,33 @@
+using AngleSharp.Dom;
 using AulaChatNet.Client.Blazor.Components.Shared;
 using AulaChatNet.Shared.Configuracion;
 using Bunit;
-using Microsoft.Extensions.DependencyInjection;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace AulaChatNet.Client.Blazor.Components.Tests.Components;
 
 /// <summary>
-/// Pruebas del avatar con respaldo: la imagen de DiceBear y, si el navegador
-/// no puede cargarla (sin internet o API caída), las iniciales con el color
-/// determinista. El fallo se simula disparando el evento onerror a mano.
+///     Pruebas del avatar con respaldo: la imagen de DiceBear y, si el navegador
+///     no puede cargarla (sin internet o API caída), las iniciales con el color
+///     determinista. El fallo se simula disparando el evento onerror a mano.
 /// </summary>
 [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
-public class AvatarTests : BunitContext
-{
+public class AvatarTests : BunitContext {
     [SetUp]
-    public void SetUp() => Services.AddSingleton(new ChatConfig
-    {
-        AvatarBaseUrl = "https://api.dicebear.com/10.x"
-    });
+    public void SetUp() {
+        Services.AddSingleton(new ChatConfig {
+            AvatarBaseUrl = "https://api.dicebear.com/10.x"
+        });
+    }
 
     [Test]
-    public void ImagenDeDiceBear_UsaElNombreComoSemilla()
-    {
+    public void ImagenDeDiceBear_UsaElNombreComoSemilla() {
         // Arrange y act
-        var cut = Render<Avatar>(p => p.Add(a => a.Usuario, "Ana"));
+        IRenderedComponent<Avatar> cut = Render<Avatar>(p => p.Add(a => a.Usuario, "Ana"));
 
         // Assert: misma semilla → mismo avatar para siempre
-        var img = cut.Find("img");
+        IElement img = cut.Find("img");
         img.GetAttribute("src").Should()
             .StartWith("https://api.dicebear.com/10.x/")
             .And.Contain("seed=Ana");
@@ -35,11 +35,9 @@ public class AvatarTests : BunitContext
     }
 
     [Test]
-    public void CuandoLaImagenFalla_PintaInicialesConColorDeFondo()
-    {
+    public void CuandoLaImagenFalla_PintaInicialesConColorDeFondo() {
         // Arrange
-        var cut = Render<Avatar>(p =>
-        {
+        IRenderedComponent<Avatar> cut = Render<Avatar>(p => {
             p.Add(a => a.Usuario, "Ana");
             p.Add(a => a.Tamano, 40);
         });
@@ -49,7 +47,7 @@ public class AvatarTests : BunitContext
 
         // Assert: círculo con iniciales (sin corchetes: ellos son de la
         // terminal) y el color determinista del usuario
-        var circulo = cut.Find("span.avatar-iniciales");
+        IElement circulo = cut.Find("span.avatar-iniciales");
         circulo.TextContent.Should().Be("AN");
         circulo.GetAttribute("style").Should()
             .Contain("width: 40px")
@@ -57,10 +55,9 @@ public class AvatarTests : BunitContext
     }
 
     [Test]
-    public void TrasElFallo_NoVuelveAPedirLaImagen()
-    {
+    public void TrasElFallo_NoVuelveAPedirLaImagen() {
         // Arrange
-        var cut = Render<Avatar>(p => p.Add(a => a.Usuario, "Ana"));
+        IRenderedComponent<Avatar> cut = Render<Avatar>(p => p.Add(a => a.Usuario, "Ana"));
 
         // Act
         cut.Find("img").TriggerEvent("onerror", EventArgs.Empty);
@@ -70,10 +67,9 @@ public class AvatarTests : BunitContext
     }
 
     [Test]
-    public void UsuarioDeUnaPalabra_MuestraDosLetras()
-    {
+    public void UsuarioDeUnaPalabra_MuestraDosLetras() {
         // Arrange y act
-        var cut = Render<Avatar>(p => p.Add(a => a.Usuario, "Luis"));
+        IRenderedComponent<Avatar> cut = Render<Avatar>(p => p.Add(a => a.Usuario, "Luis"));
 
         // Act
         cut.Find("img").TriggerEvent("onerror", EventArgs.Empty);

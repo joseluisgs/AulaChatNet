@@ -1,22 +1,21 @@
 namespace AulaChatNet.Shared.Dtos;
 
 /// <summary>
-/// Aviso dirigido de mención: llega SOLO a la persona nombrada con @ en un
-/// mensaje del canal. El mensaje en sí viaja aparte, por el flujo normal de
-/// <see cref="MensajeDto"/>: este DTO no es un mensaje, es un empujoncito
-/// para que su cliente pite y parpadee.
-///
-/// <remarks>
-/// Por qué un DTO propio y no un campo en MensajeDto: la mención es un
-/// AVISO y no parte del contenido — quien no fue nombrado jamás lo verá,
-/// así que no puede vivir en el mensaje que recibe todo el canal. Mismo
-/// razonamiento que <see cref="MensajePrivadoDto"/> con los privados:
-/// contrato propio para destino propio.
-/// </remarks>
+///     Aviso dirigido de mención: llega SOLO a la persona nombrada con @ en un
+///     mensaje del canal. El mensaje en sí viaja aparte, por el flujo normal de
+///     <see cref="MensajeDto" />: este DTO no es un mensaje, es un empujoncito
+///     para que su cliente pite y parpadee.
+///     <remarks>
+///         Por qué un DTO propio y no un campo en MensajeDto: la mención es un
+///         AVISO y no parte del contenido — quien no fue nombrado jamás lo verá,
+///         así que no puede vivir en el mensaje que recibe todo el canal. Mismo
+///         razonamiento que <see cref="MensajePrivadoDto" /> con los privados:
+///         contrato propio para destino propio.
+///     </remarks>
 /// </summary>
 /// <example>
-/// Mensaje JSON típico en el cliente:
-/// <code>
+///     Mensaje JSON típico en el cliente:
+///     <code>
 /// {
 ///   "emisor": "Luis",
 ///   "canal": "#general",

@@ -2,15 +2,13 @@
 // librería AulaChatNet.Client.Blazor.Components (compartida con la app de escritorio);
 // aquí solo se ARRANCA el host WebAssembly: configuración, logging del
 // navegador y registro de servicios.
+
 using AulaChatNet.Client.Blazor.Components;
 using AulaChatNet.Client.Blazor.Components.Configuracion;
 using AulaChatNet.Client.Blazor.Components.Infrastructures;
 using AulaChatNet.Shared.Configuracion;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using Serilog;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
@@ -21,11 +19,11 @@ var builder = WebAssemblyHostBuilder.CreateDefault(args);
 // config está en builder.Configuration. Ojo: en WASM todo lo que aquí se lee
 // es PÚBLICO — solo puede haber ajustes de presentación (canales, límites,
 // avatar), nunca secretos. La validación real la hace el servidor.
-var chat = builder.Configuration
+ChatConfig chat = builder.Configuration
     .GetSection(ChatConfig.Seccion)
     .Get<ChatConfig>() ?? new ChatConfig();
 
-var web = builder.Configuration
+WebConfig web = builder.Configuration
     .GetSection(WebConfig.Seccion)
     .Get<WebConfig>() ?? new WebConfig();
 
@@ -46,7 +44,7 @@ Log.Logger = new LoggerConfiguration()
     .WriteTo.BrowserConsole()
     .CreateLogger();
 
-builder.Logging.AddSerilog(Log.Logger, dispose: true);
+builder.Logging.AddSerilog(Log.Logger, true);
 
 // Aviso de arranque: la primera línea que se ve en la pestaña Console
 // (igual que el "Terminal arrancada" de la cliente de consola)
@@ -56,14 +54,13 @@ Log.Information("AulaChatNet web arrancada (entorno {Entorno})",
 // URL base del servidor. Por defecto (UrlServidor vacío) se usa el MISMO
 // ORIGEN desde el que se sirve la app: el servidor aloja el WASM, con lo que
 // no hay CORS ni ninguna URL escrita a mano en el código.
-var baseServidor = string.IsNullOrWhiteSpace(web.UrlServidor)
+string baseServidor = string.IsNullOrWhiteSpace(web.UrlServidor)
     ? builder.HostEnvironment.BaseAddress.TrimEnd('/')
     : web.UrlServidor.TrimEnd('/');
 
 // HttpClient para GET /estadisticas (la misma consulta que hace la terminal
 // antes de registrarse). Timeout corto: la cifra de bienvenida es opcional.
-builder.Services.AddScoped(_ => new HttpClient
-{
+builder.Services.AddScoped(_ => new HttpClient {
     BaseAddress = new Uri($"{baseServidor}/"),
     Timeout = TimeSpan.FromSeconds(3)
 });

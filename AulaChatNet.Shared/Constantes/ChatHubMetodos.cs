@@ -1,12 +1,11 @@
 namespace AulaChatNet.Shared.Constantes;
 
 /// <summary>
-/// Nombres de los métodos públicos del ChatHub.
-/// Los clientes no escriben los nombres "a pelo": usan estas constantes
-/// para que un cambio de nombre en el servidor no rompa los clientes en silencio.
+///     Nombres de los métodos públicos del ChatHub.
+///     Los clientes no escriben los nombres "a pelo": usan estas constantes
+///     para que un cambio de nombre en el servidor no rompa los clientes en silencio.
 /// </summary>
-public static class ChatHubMetodos
-{
+public static class ChatHubMetodos {
     /// <summary>Método para darse de alta al conectar: ConnectAsync(usuario).</summary>
     public const string Conectar = "ConnectAsync";
 
@@ -20,54 +19,54 @@ public static class ChatHubMetodos
     public const string CambiarNick = "CambiarNickAsync";
 
     /// <summary>
-    /// Método de CONSULTA (no difunde): devuelve los conectados de un canal
-    /// cualquiera solo a quien lo pregunta: ObtenerUsuariosAsync(canal).
+    ///     Método de CONSULTA (no difunde): devuelve los conectados de un canal
+    ///     cualquiera solo a quien lo pregunta: ObtenerUsuariosAsync(canal).
     /// </summary>
     public const string ObtenerUsuarios = "ObtenerUsuariosAsync";
 
     /// <summary>
-    /// Método de CONSULTA (no difunde): el historial ANTIGUO de tu canal por
-    /// páginas, solo para quien lo pregunta: ObtenerHistorialAsync(antesDe, cantidad).
-    /// Es una invocación CON RETORNO —como ObtenerUsuariosAsync— y no un
-    /// evento: aquí no interesa avisar a nadie, sino contestar UNA pregunta.
+    ///     Método de CONSULTA (no difunde): el historial ANTIGUO de tu canal por
+    ///     páginas, solo para quien lo pregunta: ObtenerHistorialAsync(antesDe, cantidad).
+    ///     Es una invocación CON RETORNO —como ObtenerUsuariosAsync— y no un
+    ///     evento: aquí no interesa avisar a nadie, sino contestar UNA pregunta.
     /// </summary>
     public const string Historial = "ObtenerHistorialAsync";
 
     /// <summary>
-    /// Método para enviar un mensaje a UNA persona concreta de tu canal:
-    /// EnviarPrivadoAsync(destinatario, texto). NO se difunde al grupo.
+    ///     Método para enviar un mensaje a UNA persona concreta de tu canal:
+    ///     EnviarPrivadoAsync(destinatario, texto). NO se difunde al grupo.
     /// </summary>
     public const string EnviarPrivado = "EnviarPrivadoAsync";
 
     /// <summary>
-    /// Método para avisar de que estás escribiendo: EscribiendoAsync().
-    /// Sin argumentos y SIN texto: el servidor solo reenvía tu nombre al
-    /// resto de tu canal, que es quien decide cuánto dura en pantalla.
+    ///     Método para avisar de que estás escribiendo: EscribiendoAsync().
+    ///     Sin argumentos y SIN texto: el servidor solo reenvía tu nombre al
+    ///     resto de tu canal, que es quien decide cuánto dura en pantalla.
     /// </summary>
     public const string Escribiendo = "EscribiendoAsync";
 
     /// <summary>
-    /// Método para reaccionar a un mensaje: ReaccionarAsync(idMensaje, emoji).
-    /// El servidor ALTERNA (si ya tenías ese emoji, te lo quita), valida que
-    /// el emoji esté en la lista cerrada de Shared y difunde el estado del
-    /// mensaje a todo el canal — también a ti, para que veas tu propio chip.
+    ///     Método para reaccionar a un mensaje: ReaccionarAsync(idMensaje, emoji).
+    ///     El servidor ALTERNA (si ya tenías ese emoji, te lo quita), valida que
+    ///     el emoji esté en la lista cerrada de Shared y difunde el estado del
+    ///     mensaje a todo el canal — también a ti, para que veas tu propio chip.
     /// </summary>
     public const string Reaccionar = "ReaccionarAsync";
 
     /// <summary>
-    /// Método para editar un mensaje propio: EditarMensajeAsync(idMensaje, texto).
-    /// El servidor comprueba que el mensaje exista, sea tuyo y sea normal;
-    /// si todo cuadra, actualiza la caché y la base de datos y difunde el
-    /// mensaje COMPLETO al canal, para que cada cliente sustituya su fila
-    /// buscándola por Id — mismo camino de reemplazo que las reacciones.
+    ///     Método para editar un mensaje propio: EditarMensajeAsync(idMensaje, texto).
+    ///     El servidor comprueba que el mensaje exista, sea tuyo y sea normal;
+    ///     si todo cuadra, actualiza la caché y la base de datos y difunde el
+    ///     mensaje COMPLETO al canal, para que cada cliente sustituya su fila
+    ///     buscándola por Id — mismo camino de reemplazo que las reacciones.
     /// </summary>
     public const string Editar = "EditarMensajeAsync";
 
     /// <summary>
-    /// Método para borrar un mensaje propio: BorrarMensajeAsync(idMensaje).
-    /// Misma comprobación de propiedad que editar; si cuadra, quita el
-    /// mensaje de la caché y de SQLite, y avisa al canal con su Id para
-    /// que cada cliente lo quite de su vista.
+    ///     Método para borrar un mensaje propio: BorrarMensajeAsync(idMensaje).
+    ///     Misma comprobación de propiedad que editar; si cuadra, quita el
+    ///     mensaje de la caché y de SQLite, y avisa al canal con su Id para
+    ///     que cada cliente lo quite de su vista.
     /// </summary>
     public const string Borrar = "BorrarMensajeAsync";
 }

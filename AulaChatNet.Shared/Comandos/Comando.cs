@@ -1,23 +1,20 @@
 namespace AulaChatNet.Shared.Comandos;
 
 /// <summary>
-/// Representa lo que el usuario quiere hacer: un comando (/canal, /salir...)
-/// o un mensaje a enviar al canal actual.
-///
-/// <remarks>
-/// Es un <c>record</c> jerárquico: cada variante se declara dentro del tipo
-/// base, y el pattern matching del <c>switch</c> las distingue sin casts ni
-/// enums paralelos. Añadir un comando nuevo es añadir una línea aquí, su
-/// caso en el parser y su fila en <see cref="AyudaComandos"/> — nada más.
-///
-/// Vive en Shared porque los DOS clientes (terminal y web) interpretan la
-/// misma línea escrita del mismo modo: el parser se escribe una vez y cada
-/// cliente ejecuta sus variantes con sus propios recursos (Spectre en una
-/// punta, stores de Blazor en la otra).
-/// </remarks>
+///     Representa lo que el usuario quiere hacer: un comando (/canal, /salir...)
+///     o un mensaje a enviar al canal actual.
+///     <remarks>
+///         Es un <c>record</c> jerárquico: cada variante se declara dentro del tipo
+///         base, y el pattern matching del <c>switch</c> las distingue sin casts ni
+///         enums paralelos. Añadir un comando nuevo es añadir una línea aquí, su
+///         caso en el parser y su fila en <see cref="AyudaComandos" /> — nada más.
+///         Vive en Shared porque los DOS clientes (terminal y web) interpretan la
+///         misma línea escrita del mismo modo: el parser se escribe una vez y cada
+///         cliente ejecuta sus variantes con sus propios recursos (Spectre en una
+///         punta, stores de Blazor en la otra).
+///     </remarks>
 /// </summary>
-public abstract record Comando
-{
+public abstract record Comando {
     /// <summary>Texto normal: se envía al canal actual.</summary>
     /// <param name="Texto">Texto escrito por el usuario (ya recortado).</param>
     public sealed record Enviar(string Texto) : Comando;
@@ -42,33 +39,33 @@ public abstract record Comando
     public sealed record Usuarios(string? NombreCanal = null) : Comando;
 
     /// <summary>
-    /// /privado quien texto: mensaje privado a UNA persona de tu canal.
-    /// No se difunde al resto y no se guarda: es efímero.
+    ///     /privado quien texto: mensaje privado a UNA persona de tu canal.
+    ///     No se difunde al resto y no se guarda: es efímero.
     /// </summary>
     /// <param name="Destinatario">Nombre de quien lo recibe (en tu canal actual).</param>
     /// <param name="Texto">Contenido del mensaje (mismo límite que un mensaje normal).</param>
     public sealed record Privado(string Destinatario, string Texto) : Comando;
 
     /// <summary>
-    /// /reaccion emoji: alterna una reacción sobre el último mensaje del
-    /// canal (en la web, sobre el mensaje elegido con el ratón).
-    /// Pulsar la misma reacción otra vez la quita: es un interruptor.
+    ///     /reaccion emoji: alterna una reacción sobre el último mensaje del
+    ///     canal (en la web, sobre el mensaje elegido con el ratón).
+    ///     Pulsar la misma reacción otra vez la quita: es un interruptor.
     /// </summary>
     /// <param name="Emoji">Emoji escrito por el usuario; lo valida de la lista cerrada cada cliente y el servidor.</param>
     public sealed record Reaccion(string Emoji) : Comando;
 
     /// <summary>
-    /// /editar texto: cambia el texto de TU último mensaje en el canal.
-    /// El servidor valida que el mensaje exista, sea tuyo y sea normal; si
-    /// cuadra, lo sustituye en la caché y en la base de datos, y difunde el
-    /// resultado a todo el canal (mismo Id y hora, marcado como editado).
+    ///     /editar texto: cambia el texto de TU último mensaje en el canal.
+    ///     El servidor valida que el mensaje exista, sea tuyo y sea normal; si
+    ///     cuadra, lo sustituye en la caché y en la base de datos, y difunde el
+    ///     resultado a todo el canal (mismo Id y hora, marcado como editado).
     /// </summary>
     /// <param name="Texto">Nuevo texto del mensaje (mismo límite que un envío normal).</param>
     public sealed record Editar(string Texto) : Comando;
 
     /// <summary>
-    /// /borrar: elimina TU último mensaje del canal de la vista de todos y
-    /// de la base de datos. No se puede deshacer.
+    ///     /borrar: elimina TU último mensaje del canal de la vista de todos y
+    ///     de la base de datos. No se puede deshacer.
     /// </summary>
     public sealed record Borrar : Comando;
 
@@ -96,8 +93,7 @@ public abstract record Comando
 }
 
 /// <summary>Acciones que admite el comando /sesion.</summary>
-public enum AccionSesion
-{
+public enum AccionSesion {
     /// <summary>Ver qué hay guardado en el perfil del usuario.</summary>
     Ver,
 

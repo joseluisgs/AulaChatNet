@@ -1,20 +1,16 @@
-﻿using System;
+using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace AulaChatNet.Server.Migrations
-{
+namespace AulaChatNet.Server.Migrations {
     /// <inheritdoc />
-    public partial class InicialMensajes : Migration
-    {
+    public partial class InicialMensajes : Migration {
         /// <inheritdoc />
-        protected override void Up(MigrationBuilder migrationBuilder)
-        {
+        protected override void Up(MigrationBuilder migrationBuilder) {
             migrationBuilder.CreateTable(
                 name: "Mensajes",
-                columns: table => new
-                {
+                columns: table => new {
                     Id = table.Column<Guid>(type: "TEXT", nullable: false),
                     Canal = table.Column<string>(type: "TEXT", maxLength: 50, nullable: false),
                     Usuario = table.Column<string>(type: "TEXT", maxLength: 50, nullable: false),
@@ -22,8 +18,7 @@ namespace AulaChatNet.Server.Migrations
                     Timestamp = table.Column<DateTime>(type: "TEXT", nullable: false),
                     Tipo = table.Column<int>(type: "INTEGER", nullable: false)
                 },
-                constraints: table =>
-                {
+                constraints: table => {
                     table.PrimaryKey("PK_Mensajes", x => x.Id);
                 });
 
@@ -39,8 +34,7 @@ namespace AulaChatNet.Server.Migrations
         }
 
         /// <inheritdoc />
-        protected override void Down(MigrationBuilder migrationBuilder)
-        {
+        protected override void Down(MigrationBuilder migrationBuilder) {
             migrationBuilder.DropTable(
                 name: "Mensajes");
         }

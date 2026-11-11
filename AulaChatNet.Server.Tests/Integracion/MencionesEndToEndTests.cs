@@ -7,46 +7,35 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace AulaChatNet.Server.Tests.Integracion;
 
 /// <summary>
-/// Prueba de REDES de las menciones (Fase 4.2): el ChatHub y los servicios
-/// de verdad, Kestrel escuchando en un puerto aleatorio y clientes
-/// SignalR reales.
-///
-/// <remarks>
-/// Lo que aporta frente a las pruebas con dobles: que el aviso dirigido
-/// VIAJA por la red (se serializa igual que lo verá el cliente) y que NO
-/// se cuela a nadie más — ni al que escribió ni a quien está en otra sala.
-/// </remarks>
+///     Prueba de REDES de las menciones (Fase 4.2): el ChatHub y los servicios
+///     de verdad, Kestrel escuchando en un puerto aleatorio y clientes
+///     SignalR reales.
+///     <remarks>
+///         Lo que aporta frente a las pruebas con dobles: que el aviso dirigido
+///         VIAJA por la red (se serializa igual que lo verá el cliente) y que NO
+///         se cuela a nadie más — ni al que escribió ni a quien está en otra sala.
+///     </remarks>
 /// </summary>
 [TestFixture]
-public class MencionesEndToEndTests
-{
-    private const string Ruta = "/menciones";
-    private static readonly TimeSpan Espera = TimeSpan.FromSeconds(5);
-
-    private WebApplication _servidor = null!;
-    private readonly List<HubConnection> _clientes = [];
-
+public class MencionesEndToEndTests {
     [SetUp]
-    public async Task SetUp()
-    {
+    public async Task SetUp() {
         // Misma configuración que el appsettings del servidor real, pero en
         // memoria: así no hay que tocar ficheros ni puertos fijos
-        var configuracion = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
+        IConfigurationRoot configuracion = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
                 [$"{ChatConfig.Seccion}:HubRuta"] = Ruta,
                 [$"{ChatConfig.Seccion}:Canales:0"] = "#general",
                 [$"{ChatConfig.Seccion}:Canales:1"] = "#smr"
             })
             .Build();
 
-        var builder = WebApplication.CreateBuilder();
+        WebApplicationBuilder builder = WebApplication.CreateBuilder();
         builder.WebHost.UseUrls("http://127.0.0.1:0"); // puerto 0 = que elija el sistema
         builder.Logging.ClearProviders(); // sin esto, la salida de Kestrel ensucia la de los tests
 
@@ -61,19 +50,24 @@ public class MencionesEndToEndTests
     }
 
     [TearDown]
-    public async Task TearDown()
-    {
-        foreach (var cliente in _clientes)
+    public async Task TearDown() {
+        foreach (HubConnection cliente in _clientes) {
             await cliente.DisposeAsync();
+        }
 
         await _servidor.DisposeAsync();
     }
 
+    private const string Ruta = "/menciones";
+    private static readonly TimeSpan Espera = TimeSpan.FromSeconds(5);
+
+    private WebApplication _servidor = null!;
+    private readonly List<HubConnection> _clientes = [];
+
     /// <summary>Crea un cliente SignalR REAL conectado al servidor de prueba.</summary>
     /// <returns>La conexión, aún sin registrar en ningún canal.</returns>
-    private async Task<HubConnection> CrearClienteAsync()
-    {
-        var cliente = new HubConnectionBuilder()
+    private async Task<HubConnection> CrearClienteAsync() {
+        HubConnection cliente = new HubConnectionBuilder()
             .WithUrl($"{_servidor.Urls.First()}{Ruta}")
             .Build();
 
@@ -84,20 +78,18 @@ public class MencionesEndToEndTests
     }
 
     /// <summary>Registra a un cliente en un canal y falla el test si el alta sale mal.</summary>
-    private static async Task RegistrarAsync(HubConnection cliente, string usuario, string canal)
-    {
-        var error = await cliente.InvokeAsync<string?>(ChatHubMetodos.Conectar, usuario, canal);
+    private static async Task RegistrarAsync(HubConnection cliente, string usuario, string canal) {
+        string? error = await cliente.InvokeAsync<string?>(ChatHubMetodos.Conectar, usuario, canal);
 
         error.Should().BeNull("el alta de {0} debe salir bien", usuario);
     }
 
     [Test]
-    public async Task Mencion_LlegaPorLaRedSoloAQuienNombran()
-    {
+    public async Task Mencion_LlegaPorLaRedSoloAQuienNombran() {
         // Arrange: Ana y Luis en #general, Marta en OTRA sala
-        var ana = await CrearClienteAsync();
-        var luis = await CrearClienteAsync();
-        var marta = await CrearClienteAsync();
+        HubConnection ana = await CrearClienteAsync();
+        HubConnection luis = await CrearClienteAsync();
+        HubConnection marta = await CrearClienteAsync();
 
         // Cada cliente registra SUS avisos de mención: Ana los espera con un
         // TCS —el aviso viaja por un canal distinto al de la invocación, así
@@ -119,7 +111,7 @@ public class MencionesEndToEndTests
         await RegistrarAsync(marta, "Marta", "#smr");
 
         // Act: Luis menciona a Ana en su canal
-        var error = await luis.InvokeAsync<string?>(
+        string? error = await luis.InvokeAsync<string?>(
             ChatHubMetodos.Enviar, "@Ana ¿me pasas el ejercicio 3?");
 
         // Assert: el mensaje salió bien — la mención no lo convierte en otra
@@ -127,7 +119,7 @@ public class MencionesEndToEndTests
         error.Should().BeNull();
 
         // ...y el AVISO viajó por la red hasta Ana, con su emisor y su canal
-        var mencion = await avisoDeAna.Task.WaitAsync(Espera);
+        MencionDto mencion = await avisoDeAna.Task.WaitAsync(Espera);
         mencion.Emisor.Should().Be("Luis");
         mencion.Canal.Should().Be("#general");
         mencion.Texto.Should().Contain("@Ana");
